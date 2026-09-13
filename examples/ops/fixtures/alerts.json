@@ -1,0 +1,8 @@
+{
+  "alerts": [
+    { "id": "alt-9001", "service": "payments", "rule": "HighErrorRate", "state": "firing", "silenced_until": "" },
+    { "id": "alt-9002", "service": "payments", "rule": "LatencyP99Above2s", "state": "firing", "silenced_until": "" },
+    { "id": "alt-9003", "service": "notifications", "rule": "QueueBacklog", "state": "silenced", "silenced_until": "2026-03-11T09:30:00Z" },
+    { "id": "alt-9004", "service": "checkout", "rule": "CertificateExpiry", "state": "firing", "silenced_until": "" }
+  ]
+}

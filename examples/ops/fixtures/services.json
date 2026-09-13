@@ -1,0 +1,78 @@
+{
+  "services": [
+    { "name": "checkout", "environment": "production", "status": "running", "version": "2.4.1", "replicas": 4, "restarts": 0 },
+    { "name": "payments", "environment": "production", "status": "degraded", "version": "3.2.0", "replicas": 6, "restarts": 5 },
+    { "name": "api-gateway", "environment": "production", "status": "running", "version": "1.9.3", "replicas": 8, "restarts": 1 },
+    { "name": "search", "environment": "staging", "status": "running", "version": "0.8.2", "replicas": 2, "restarts": 0 },
+    { "name": "notifications", "environment": "staging", "status": "degraded", "version": "1.1.0", "replicas": 2, "restarts": 3 },
+    { "name": "reporting", "environment": "staging", "status": "stopped", "version": "4.0.0", "replicas": 1, "restarts": 7 }
+  ],
+  "logs": [
+    {
+      "service": "checkout",
+      "lines": [
+        "2026-03-11T08:12:04Z INFO  checkout 2.4.1 ready, listening on 8080",
+        "2026-03-11T08:14:31Z INFO  order 88213 accepted in 142ms",
+        "2026-03-11T08:15:02Z WARN  payments call took 1812ms, above the 1000ms budget",
+        "2026-03-11T08:15:44Z WARN  payments call took 2104ms, retrying once",
+        "2026-03-11T08:16:10Z ERROR payments timeout after 3000ms, order 88251 rejected",
+        "2026-03-11T08:16:11Z INFO  circuit breaker for payments half-open",
+        "2026-03-11T08:17:59Z ERROR payments timeout after 3000ms, order 88266 rejected",
+        "2026-03-11T08:18:20Z INFO  order 88270 accepted in 188ms"
+      ]
+    },
+    {
+      "service": "payments",
+      "lines": [
+        "2026-03-11T08:02:18Z INFO  payments 3.2.0 ready, listening on 8080",
+        "2026-03-11T08:09:41Z ERROR connection pool exhausted, 40 of 40 in use",
+        "2026-03-11T08:10:03Z ERROR timeout acquiring connection after 3000ms",
+        "2026-03-11T08:11:27Z WARN  pool wait time 2870ms, above the 500ms budget",
+        "2026-03-11T08:13:55Z ERROR timeout acquiring connection after 3000ms",
+        "2026-03-11T08:14:02Z WARN  restarting worker 3 after unhandled rejection",
+        "2026-03-11T08:15:36Z ERROR timeout acquiring connection after 3000ms",
+        "2026-03-11T08:16:40Z ERROR settlement batch 4471 abandoned, will retry"
+      ]
+    },
+    {
+      "service": "api-gateway",
+      "lines": [
+        "2026-03-11T07:58:00Z INFO  api-gateway 1.9.3 ready, listening on 443",
+        "2026-03-11T08:10:12Z WARN  upstream payments returned 503, 3 in the last minute",
+        "2026-03-11T08:12:45Z WARN  upstream payments returned 503, 9 in the last minute",
+        "2026-03-11T08:14:00Z INFO  route table reloaded, 42 routes",
+        "2026-03-11T08:16:12Z WARN  upstream payments returned 503, 14 in the last minute",
+        "2026-03-11T08:18:30Z INFO  tls session cache hit rate 0.94"
+      ]
+    },
+    {
+      "service": "search",
+      "lines": [
+        "2026-03-11T06:40:11Z INFO  search 0.8.2 ready, listening on 8080",
+        "2026-03-11T07:02:39Z INFO  index rebuild finished in 214s, 1.2M documents",
+        "2026-03-11T07:45:50Z WARN  query latency p99 820ms, above the 500ms budget",
+        "2026-03-11T08:05:02Z INFO  cache warmed, 18k entries"
+      ]
+    },
+    {
+      "service": "notifications",
+      "lines": [
+        "2026-03-11T05:30:00Z INFO  notifications 1.1.0 ready, listening on 8080",
+        "2026-03-11T07:20:14Z WARN  queue depth 12400, above the 5000 threshold",
+        "2026-03-11T07:41:52Z ERROR delivery to provider failed, status 429",
+        "2026-03-11T07:55:08Z WARN  queue depth 18900, consumers 2",
+        "2026-03-11T08:10:33Z ERROR delivery to provider failed, status 429"
+      ]
+    },
+    {
+      "service": "reporting",
+      "lines": [
+        "2026-03-11T04:00:00Z INFO  reporting 4.0.0 starting",
+        "2026-03-11T04:00:07Z ERROR migration 0042 failed: column owner_id does not exist",
+        "2026-03-11T04:00:07Z ERROR startup aborted, exit code 1",
+        "2026-03-11T04:05:11Z ERROR startup aborted, exit code 1",
+        "2026-03-11T04:12:44Z ERROR startup aborted, exit code 1"
+      ]
+    }
+  ]
+}

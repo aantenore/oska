@@ -1,0 +1,24 @@
+{
+  "name": "01_greeting",
+  "description": "An opening greeting is answered from the catalogue alone, with no model call.",
+  "level": 1,
+  "provider_script": [],
+  "turns": [
+    {
+      "user": "hello",
+      "expect": {
+        "kind": "greeting",
+        "contains": [
+          "I can",
+          "check the health of a service",
+          "restart a service",
+          "triage an incident on a service"
+        ],
+        "outcomes": [],
+        "pending": null,
+        "receipts": 0,
+        "verification": null
+      }
+    }
+  ]
+}

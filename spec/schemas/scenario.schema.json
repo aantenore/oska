@@ -1,0 +1,323 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://oska.spec/schemas/scenario.schema.json",
+  "title": "OSKA conformance scenario",
+  "description": "One recorded session with per-turn expectations, executed against a scripted model provider, optionally followed by a proposal lifecycle.",
+  "type": "object",
+  "required": [
+    "name",
+    "turns"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Scenario identifier; also used as the session identifier for the run."
+    },
+    "description": {
+      "type": "string",
+      "description": "What this scenario proves, in one sentence."
+    },
+    "level": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 3,
+      "default": 2,
+      "description": "Lowest conformance level this scenario belongs to. A scenario carrying a learning block belongs to level 3."
+    },
+    "provider_script": {
+      "type": "array",
+      "default": [],
+      "description": "Model responses, consumed in order, one per model call.",
+      "items": {
+        "$ref": "#/$defs/scriptStep"
+      }
+    },
+    "turns": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/turn"
+      },
+      "description": "The turns of the session, in order."
+    },
+    "learning": {
+      "$ref": "#/$defs/learning",
+      "description": "What happens to the session after its turns: a candidate procedure is drafted from it, moved through the states named here, and checked."
+    }
+  },
+  "$defs": {
+    "scriptStep": {
+      "type": "object",
+      "required": [
+        "response"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "purpose": {
+          "type": "string",
+          "description": "Which call this step answers, used in failure messages."
+        },
+        "expect_contains": {
+          "type": "string",
+          "description": "Substring the prompt reaching this step must contain."
+        },
+        "response": {
+          "type": "object",
+          "description": "The JSON object the provider returns for this call."
+        }
+      }
+    },
+    "turn": {
+      "type": "object",
+      "required": [
+        "user",
+        "expect"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "user": {
+          "type": "string",
+          "description": "The user's text for this turn."
+        },
+        "expect": {
+          "$ref": "#/$defs/expectation"
+        },
+        "connector_behaviours": {
+          "$ref": "#/$defs/connectorBehaviours",
+          "description": "Applied before the turn runs. This is the only placement accepted."
+        }
+      }
+    },
+    "expectation": {
+      "type": "object",
+      "required": [
+        "kind",
+        "outcomes"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "new_task",
+            "continue_task",
+            "provide_input",
+            "approve",
+            "reject",
+            "greeting",
+            "off_scope",
+            "cancel_task"
+          ],
+          "description": "The route kind the turn must produce."
+        },
+        "contains": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "description": "Fragments the reply must contain."
+        },
+        "outcomes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "read",
+              "receipt",
+              "ledger_hit",
+              "denied",
+              "rejected",
+              "invalid_plan",
+              "approval_pending",
+              "cancelled"
+            ]
+          },
+          "description": "The outcome kinds of the turn, in order, exactly."
+        },
+        "pending": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "input",
+            "approval",
+            null
+          ],
+          "description": "What the session waits for after the turn."
+        },
+        "receipts": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of receipts in the session after the turn."
+        },
+        "verification": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "verified",
+            "unverified",
+            "failed",
+            null
+          ],
+          "description": "Verification status of the most recent receipt, or null when there is none."
+        }
+      }
+    },
+    "connectorBehaviours": {
+      "type": "object",
+      "description": "Failures or overrides injected before the turn runs, keyed by integration identifier then operation name.",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "properties": {
+            "fail": {
+              "type": "boolean",
+              "description": "Make the operation report failure."
+            },
+            "error": {
+              "type": "string",
+              "description": "The error message the failure reports."
+            },
+            "fail_after": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Let this many calls through before failing."
+            },
+            "override": {
+              "type": "object",
+              "description": "Data the operation returns instead of reading the fixture."
+            }
+          }
+        }
+      }
+    },
+    "learning": {
+      "type": "object",
+      "required": [
+        "expect"
+      ],
+      "additionalProperties": false,
+      "description": "The proposal lifecycle a level 3 scenario runs after its turns.",
+      "properties": {
+        "draft_from_session": {
+          "type": "boolean",
+          "default": true,
+          "description": "Draft the candidate from the session the turns built. A runner may refuse any other source."
+        },
+        "provider_script": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "description": "Model responses for the drafting, spent by a provider of its own. Without one the candidate is built from the recorded operations alone.",
+          "items": {
+            "$ref": "#/$defs/scriptStep"
+          }
+        },
+        "expect_refused": {
+          "$ref": "#/$defs/refusedTransition",
+          "description": "A transition that must be refused. It is attempted first, while the proposal is still a draft, and must leave the stored state unchanged."
+        },
+        "transitions": {
+          "type": "array",
+          "default": [],
+          "description": "The moves to perform, in order.",
+          "items": {
+            "$ref": "#/$defs/transition"
+          }
+        },
+        "expect": {
+          "$ref": "#/$defs/learningExpectation"
+        }
+      }
+    },
+    "transition": {
+      "type": "object",
+      "required": [
+        "to",
+        "by"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "to": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The state to move to."
+        },
+        "by": {
+          "type": "string",
+          "description": "The actor asking for the move."
+        },
+        "note": {
+          "type": "string",
+          "default": "",
+          "description": "Why, recorded with the transition."
+        }
+      }
+    },
+    "refusedTransition": {
+      "type": "object",
+      "required": [
+        "to"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "to": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The state the refused move names."
+        },
+        "by": {
+          "type": "string",
+          "default": "",
+          "description": "The actor of the refused move; empty is the usual case."
+        }
+      }
+    },
+    "learningExpectation": {
+      "type": "object",
+      "required": [
+        "state"
+      ],
+      "additionalProperties": false,
+      "description": "Where the proposal must end up. An unset field is not checked.",
+      "properties": {
+        "state": {
+          "type": "string",
+          "enum": [
+            "draft",
+            "submitted",
+            "approved",
+            "rejected",
+            "published"
+          ],
+          "description": "The state the proposal must be in when the block finishes."
+        },
+        "published_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Identifier the catalogue must hold, published, and read from the publication root."
+        },
+        "quality_passed": {
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "description": "Whether the quality report must pass."
+        }
+      }
+    }
+  }
+}

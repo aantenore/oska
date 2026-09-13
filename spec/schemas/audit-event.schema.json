@@ -1,0 +1,110 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://oska.spec/schemas/audit-event.schema.json",
+  "title": "OSKA audit event",
+  "description": "One typed record of one step of one turn.",
+  "type": "object",
+  "required": ["kind", "session_id", "turn_id", "at"],
+  "additionalProperties": false,
+  "properties": {
+    "kind": {
+      "type": "string",
+      "enum": [
+        "turn",
+        "route",
+        "discovery",
+        "hydrate",
+        "plan",
+        "policy",
+        "approval_requested",
+        "approval_decided",
+        "execute",
+        "verify",
+        "ledger_hit",
+        "reply",
+        "proposal"
+      ],
+      "description": "Which step of the turn this event records."
+    },
+    "session_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The session the event belongs to."
+    },
+    "turn_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The turn the event belongs to; stable across every event of one turn."
+    },
+    "at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the event was raised, with a time zone."
+    },
+    "data": {
+      "type": "object",
+      "default": {},
+      "description": "Fields specific to the event kind. Conventional keys are listed below; the object is open so an implementation may add its own.",
+      "properties": {
+        "turn": { "type": "integer", "description": "turn: the turn number in the session." },
+        "text": { "type": "string", "description": "turn: the user's text." },
+        "kind": { "type": "string", "description": "route, reply: the turn kind decided." },
+        "source": {
+          "type": "string",
+          "enum": ["rule", "fast_path", "model"],
+          "description": "route: which routing stage decided."
+        },
+        "confidence": { "type": "number", "description": "route: the router's confidence." },
+        "language": { "type": ["string", "null"], "description": "route: the language detected." },
+        "ranked": { "type": "array", "description": "discovery: the ranked candidates." },
+        "chosen": { "type": ["string", "null"], "description": "discovery: the procedure chosen." },
+        "tie": { "type": "boolean", "description": "discovery: whether the top two were within the margin." },
+        "entities": { "type": "array", "description": "hydrate: the entity skills in the closure." },
+        "integrations": { "type": "array", "description": "hydrate: the integration skills in the closure." },
+        "step": { "type": "integer", "description": "hydrate: the index of the current step." },
+        "steps": { "type": "integer", "description": "hydrate: how many steps the goal has." },
+        "valid": { "type": "boolean", "description": "plan: whether the plan passed validation." },
+        "issues": { "type": "array", "description": "plan: why the plan was rejected." },
+        "operations": { "type": "array", "description": "plan: the operations planned." },
+        "missing": { "type": "array", "description": "plan: the inputs still needed." },
+        "reply_intent": { "type": "string", "description": "plan: what the reply should be about." },
+        "skill_id": { "type": "string", "description": "policy: the procedure the policy belongs to." },
+        "operation": { "type": "string", "description": "policy, execute, verify, ledger_hit: the operation." },
+        "effect": {
+          "type": "string",
+          "enum": ["allow", "deny", "require_second_approval"],
+          "description": "policy: the effect applied."
+        },
+        "reason": { "type": "string", "description": "policy, approval_decided: why." },
+        "stage": {
+          "type": "string",
+          "enum": ["plan", "approval", "intent"],
+          "description": "policy, execute: when in the write path this event was raised."
+        },
+        "approval_id": { "type": "string", "description": "approval_requested, approval_decided: the approval." },
+        "payload_hash": { "type": "string", "description": "approval_requested: the frozen payload hash." },
+        "decision": {
+          "type": "string",
+          "enum": ["approved", "rejected", "cancelled"],
+          "description": "approval_decided: what the human or the engine decided."
+        },
+        "approvals_given": { "type": "integer", "description": "approval_decided: how many approvals stand." },
+        "approvals_required": { "type": "integer", "description": "approval_decided: how many are needed." },
+        "integration_id": { "type": "string", "description": "execute, verify, ledger_hit: the integration." },
+        "write": { "type": "boolean", "description": "execute: whether the operation writes." },
+        "receipt_id": { "type": "string", "description": "execute, verify, ledger_hit: the receipt." },
+        "ledger_key": { "type": "string", "description": "execute, ledger_hit: the idempotency key." },
+        "verification": {
+          "type": "string",
+          "enum": ["verified", "unverified", "failed"],
+          "description": "verify, ledger_hit: the read-back result."
+        },
+        "evidence": { "type": "object", "description": "verify: what the read-back showed." },
+        "pending": { "type": ["string", "null"], "description": "reply: what the session waits for." },
+        "proposal_id": { "type": "string", "description": "proposal: the proposal." },
+        "state": { "type": "string", "description": "proposal: the state moved to." },
+        "by": { "type": "string", "description": "proposal: the actor who moved it." }
+      }
+    }
+  }
+}

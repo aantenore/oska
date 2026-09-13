@@ -1,0 +1,136 @@
+{
+  "name": "04_rollback_rejected",
+  "description": "A rollback with no target version asks for one, then stops for approval and is rejected.",
+  "level": 2,
+  "provider_script": [
+    {
+      "purpose": "router classification",
+      "expect_contains": "put the notifications service back on the version it ran yesterday",
+      "response": {
+        "kind": "new_task",
+        "runbook_id": "runbook.deployment_rollback",
+        "confidence": 0.9,
+        "language": "en"
+      }
+    },
+    {
+      "purpose": "plan",
+      "expect_contains": "back on the version",
+      "response": {
+        "runbook_id": "runbook.deployment_rollback",
+        "operations": [],
+        "missing": [
+          {
+            "field": "target_version",
+            "question": "Which version should notifications go back to?"
+          }
+        ],
+        "reply_intent": "ask for the version to roll back to"
+      }
+    },
+    {
+      "purpose": "router classification",
+      "expect_contains": "1.0.9",
+      "response": {
+        "kind": "provide_input",
+        "runbook_id": "runbook.deployment_rollback",
+        "confidence": 0.9,
+        "language": "en"
+      }
+    },
+    {
+      "purpose": "plan",
+      "expect_contains": "\"target_version\": \"1.0.9\"",
+      "response": {
+        "runbook_id": "runbook.deployment_rollback",
+        "operations": [
+          {
+            "integration_id": "integration.container_runtime",
+            "operation": "service.status",
+            "payload": {
+              "service": "notifications"
+            },
+            "write": false,
+            "purpose": "read the environment the service runs in"
+          },
+          {
+            "integration_id": "integration.deployment_control",
+            "operation": "deployment.get",
+            "payload": {
+              "service": "notifications"
+            },
+            "write": false,
+            "purpose": "read the deployment in place"
+          },
+          {
+            "integration_id": "integration.deployment_control",
+            "operation": "deployment.rollback",
+            "payload": {
+              "service": "notifications",
+              "target_version": "1.0.9"
+            },
+            "write": true,
+            "purpose": "put the earlier version back"
+          }
+        ],
+        "missing": [],
+        "reply_intent": "report the rollback of notifications to 1.0.9"
+      }
+    },
+    {
+      "purpose": "reply writing",
+      "expect_contains": "\"kind\": \"rejected\"",
+      "response": {
+        "reply": "Nothing was rolled back. You rejected the change, so notifications stays on the version it is serving."
+      }
+    }
+  ],
+  "turns": [
+    {
+      "user": "put the notifications service back on the version it ran yesterday",
+      "expect": {
+        "kind": "new_task",
+        "contains": [
+          "Which version"
+        ],
+        "outcomes": [],
+        "pending": "input",
+        "receipts": 0,
+        "verification": null
+      }
+    },
+    {
+      "user": "1.0.9",
+      "expect": {
+        "kind": "provide_input",
+        "contains": [
+          "deployment.rollback",
+          "{\"service\":\"notifications\",\"target_version\":\"1.0.9\"}"
+        ],
+        "outcomes": [
+          "read",
+          "read",
+          "approval_pending"
+        ],
+        "pending": "approval",
+        "receipts": 0,
+        "verification": null
+      }
+    },
+    {
+      "user": "no",
+      "expect": {
+        "kind": "reject",
+        "contains": [
+          "Nothing was rolled back"
+        ],
+        "outcomes": [
+          "rejected"
+        ],
+        "pending": null,
+        "receipts": 0,
+        "verification": null
+      }
+    }
+  ]
+}

@@ -1,0 +1,329 @@
+"""Planner, scripted provider and the chat-completions provider."""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import httpx
+import pytest
+
+from opsdeck.catalog.registry import SkillRegistry
+from opsdeck.catalog.resolver import CapabilityResolver
+from opsdeck.contracts.common import Hydrated, Message, Outcome, RankedSkill
+from opsdeck.contracts.plan import Plan
+from opsdeck.planner.openai_compatible import OpenAICompatibleProvider
+from opsdeck.planner.planner import InvalidPlanError, Planner, validate_plan
+from opsdeck.planner.provider import ModelProviderError
+from opsdeck.planner.scripted import ScriptedModelProvider
+
+RUNBOOK = "runbook.service_restart"
+INTEGRATION = "integration.container_runtime"
+CONVERSATION = [Message(role="user", content="restart the checkout service")]
+_FENCED_ANSWER = 'Here you go:\n```json\n{"reply": "done"}\n```\nthanks'
+
+
+@pytest.fixture
+def hydrated(registry: SkillRegistry) -> Hydrated:
+    """The restart procedure with everything it declares."""
+    return registry.closure(RUNBOOK)
+
+
+def _plan_response(operations: list[dict], missing: list[dict] | None = None) -> dict:
+    return {
+        "runbook_id": RUNBOOK,
+        "operations": operations,
+        "missing": missing or [],
+        "reply_intent": "report the restart",
+    }
+
+
+def _operation(name: str, payload: dict, write: bool) -> dict:
+    return {
+        "integration_id": INTEGRATION,
+        "operation": name,
+        "payload": payload,
+        "write": write,
+        "purpose": "act on the service",
+    }
+
+
+def _planner(
+    script: list[dict], registry: SkillRegistry, resolver: CapabilityResolver
+) -> tuple[Planner, ScriptedModelProvider]:
+    provider = ScriptedModelProvider(script)
+    return Planner(provider, registry, resolver), provider
+
+
+def test_undeclared_operation_is_rejected_then_repaired(
+    hydrated: Hydrated, registry: SkillRegistry, resolver: CapabilityResolver
+) -> None:
+    script = [
+        {
+            "purpose": "first attempt, invents an operation",
+            "response": _plan_response(
+                [_operation("service.delete", {"service": "checkout"}, True)]
+            ),
+        },
+        {
+            "purpose": "repair",
+            "expect_contains": "declares no operation service.delete",
+            "response": _plan_response(
+                [_operation("service.status", {"service": "checkout"}, False)]
+            ),
+        },
+    ]
+    planner, provider = _planner(script, registry, resolver)
+
+    plan = planner.plan(hydrated, CONVERSATION, {})
+
+    assert [operation.operation for operation in plan.operations] == ["service.status"]
+    assert plan.runbook_id == RUNBOOK
+    assert provider.remaining() == 0
+
+
+def test_schema_failure_is_repaired_once_then_raises(
+    hydrated: Hydrated, registry: SkillRegistry, resolver: CapabilityResolver
+) -> None:
+    broken = _plan_response([_operation("service.restart", {"service": 7}, True)])
+    script = [
+        {"purpose": "first attempt", "response": broken},
+        {"purpose": "repair", "expect_contains": "input schema", "response": broken},
+    ]
+    planner, provider = _planner(script, registry, resolver)
+
+    with pytest.raises(InvalidPlanError) as raised:
+        planner.plan(hydrated, CONVERSATION, {})
+
+    assert provider.remaining() == 0
+    assert any("input schema" in issue for issue in raised.value.issues)
+
+
+def test_write_flag_must_match_the_declaration(hydrated: Hydrated) -> None:
+    wrong_flag = _operation("service.restart", {"service": "checkout"}, False)
+    plan = _plan_from(_plan_response([wrong_flag]))
+
+    issues = validate_plan(plan, hydrated)
+
+    assert any("write=False" in issue for issue in issues)
+
+
+def test_missing_required_input_is_accepted_when_it_is_asked_for(hydrated: Hydrated) -> None:
+    asked = _plan_from(
+        _plan_response(
+            [_operation("service.restart", {}, True)],
+            [{"field": "service", "question": "Which service?"}],
+        )
+    )
+    silent = _plan_from(_plan_response([_operation("service.restart", {}, True)]))
+
+    assert validate_plan(asked, hydrated) == []
+    assert any("`missing`" in issue for issue in validate_plan(silent, hydrated))
+
+
+def test_pick_falls_back_to_the_first_candidate_on_an_invalid_answer(
+    registry: SkillRegistry, resolver: CapabilityResolver
+) -> None:
+    script = [{"response": {"skill_id": "runbook.not_a_procedure"}}]
+    planner, _ = _planner(script, registry, resolver)
+    candidates = [
+        RankedSkill(skill_id=RUNBOOK, score=0.7),
+        RankedSkill(skill_id="runbook.service_health", score=0.69),
+    ]
+
+    assert planner.pick("restart it", candidates, registry) == RUNBOOK
+
+
+def test_pick_returns_a_listed_candidate(
+    registry: SkillRegistry, resolver: CapabilityResolver
+) -> None:
+    script = [{"response": {"skill_id": "runbook.service_health"}}]
+    planner, _ = _planner(script, registry, resolver)
+    candidates = [
+        RankedSkill(skill_id=RUNBOOK, score=0.7),
+        RankedSkill(skill_id="runbook.service_health", score=0.69),
+    ]
+
+    assert planner.pick("how is it doing", candidates, registry) == "runbook.service_health"
+
+
+def test_write_reply_sees_only_the_outcomes(
+    registry: SkillRegistry, resolver: CapabilityResolver
+) -> None:
+    script = [
+        {
+            "purpose": "reply",
+            "expect_contains": "checkout",
+            "response": {"reply": "The service is running."},
+        }
+    ]
+    planner, _ = _planner(script, registry, resolver)
+    outcomes = [
+        Outcome(
+            kind="read",
+            integration_id=INTEGRATION,
+            operation="service.status",
+            data={"service": "checkout"},
+        )
+    ]
+
+    reply = planner.write_reply(outcomes, "report the status", ["restart it"], "en", CONVERSATION)
+
+    assert reply == "The service is running."
+
+
+def test_script_mismatch_names_the_expectation_and_the_message() -> None:
+    provider = ScriptedModelProvider(
+        [{"purpose": "plan", "expect_contains": "rollback", "response": {}}]
+    )
+
+    with pytest.raises(ModelProviderError) as raised:
+        provider.complete_json("system", [Message(role="user", content="restart checkout")], {})
+
+    message = str(raised.value)
+    assert "rollback" in message
+    assert "restart checkout" in message
+    assert provider.remaining() == 1
+
+
+def test_script_exhaustion_names_the_last_purpose() -> None:
+    provider = ScriptedModelProvider([{"purpose": "the only plan", "response": {"ok": True}}])
+    messages = [Message(role="user", content="restart checkout")]
+    provider.complete_json("system", messages, {})
+
+    with pytest.raises(ModelProviderError) as raised:
+        provider.complete_json("system", messages, {})
+
+    assert "the only plan" in str(raised.value)
+    assert provider.remaining() == 0
+
+
+def test_a_script_can_be_read_from_a_file(tmp_path: Path) -> None:
+    path = tmp_path / "scenario.json"
+    path.write_text(
+        json.dumps({"name": "a scenario", "provider_script": [{"response": {"reply": "hello"}}]}),
+        encoding="utf-8",
+    )
+    provider = ScriptedModelProvider(path)
+
+    assert provider.remaining() == 1
+    assert provider.complete_json("system", CONVERSATION, {}) == {"reply": "hello"}
+
+
+def test_scripted_embeddings_are_deterministic_and_track_overlap() -> None:
+    provider = ScriptedModelProvider([])
+    texts = [
+        "restart the checkout service",
+        "restart the checkout service now",
+        "silence an alert for thirty minutes",
+    ]
+
+    first = provider.embed(texts)
+    second = provider.embed(texts)
+
+    assert first == second
+    assert len({len(vector) for vector in first}) == 1
+    near = _cosine(first[0], first[1])
+    far = _cosine(first[0], first[2])
+    assert near > far
+    assert far == pytest.approx(0.0, abs=1e-9)
+
+
+def test_provider_uses_the_json_schema_response_format() -> None:
+    seen: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        seen.append(body)
+        return httpx.Response(
+            200,
+            json={"choices": [{"message": {"content": json.dumps({"reply": "done"})}}]},
+        )
+
+    provider = _http_provider(handler)
+
+    answer = provider.complete_json("system", CONVERSATION, {"type": "object"})
+
+    assert answer == {"reply": "done"}
+    assert seen[0]["response_format"]["type"] == "json_schema"
+    assert seen[0]["messages"][0] == {"role": "system", "content": "system"}
+
+
+def test_provider_falls_back_when_the_endpoint_rejects_response_format() -> None:
+    seen: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        seen.append(body)
+        if "response_format" in body:
+            return httpx.Response(
+                400, json={"error": {"message": "response_format is not supported"}}
+            )
+        return httpx.Response(
+            200,
+            json={
+                "choices": [
+                    {"message": {"content": _FENCED_ANSWER}}
+                ]
+            },
+        )
+
+    provider = _http_provider(handler)
+
+    answer = provider.complete_json("system", CONVERSATION, {"type": "object"})
+
+    assert answer == {"reply": "done"}
+    assert len(seen) == 2
+    assert "response_format" not in seen[1]
+    assert "JSON schema" in seen[1]["messages"][0]["content"]
+
+
+def test_provider_reports_the_upstream_message() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(401, json={"error": {"message": "invalid key"}})
+
+    provider = _http_provider(handler)
+
+    with pytest.raises(ModelProviderError, match="invalid key"):
+        provider.complete_json("system", CONVERSATION, {"type": "object"})
+
+
+def test_provider_embeds_through_the_embeddings_endpoint() -> None:
+    paths: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        paths.append(request.url.path)
+        return httpx.Response(
+            200,
+            json={
+                "data": [
+                    {"index": 1, "embedding": [0.0, 1.0]},
+                    {"index": 0, "embedding": [1.0, 0.0]},
+                ]
+            },
+        )
+
+    provider = _http_provider(handler)
+
+    vectors = provider.embed(["one", "two"])
+
+    assert paths == ["/v1/embeddings"]
+    assert vectors == [[1.0, 0.0], [0.0, 1.0]]
+
+
+def _http_provider(handler) -> OpenAICompatibleProvider:
+    return OpenAICompatibleProvider(
+        base_url="https://models.example/v1",
+        api_key="key",
+        chat_model="chat",
+        embedding_model="embed",
+        transport=httpx.MockTransport(handler),
+    )
+
+
+def _plan_from(response: dict) -> Plan:
+    return Plan.model_validate(response)
+
+
+def _cosine(left: list[float], right: list[float]) -> float:
+    return sum(a * b for a, b in zip(left, right, strict=True))

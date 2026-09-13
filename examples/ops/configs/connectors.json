@@ -1,0 +1,113 @@
+{
+  "version": 1,
+  "integrations": {
+    "integration.container_runtime": {
+      "type": "mock",
+      "fixture": "../fixtures/services.json",
+      "operations": {
+        "service.status": {
+          "collection": "services",
+          "match": "name",
+          "payload_field": "service",
+          "as": "service"
+        },
+        "service.logs": {
+          "collection": "logs",
+          "match": "service",
+          "payload_field": "service",
+          "project": "lines",
+          "as": "lines",
+          "contains": { "in": "lines", "from": "pattern" },
+          "limit_field": "lines",
+          "limit_default": 50
+        },
+        "service.restart": {
+          "collection": "services",
+          "match": "name",
+          "payload_field": "service",
+          "as": "service",
+          "set": { "status": "running", "restarts": "+1" }
+        },
+        "service.scale": {
+          "collection": "services",
+          "match": "name",
+          "payload_field": "service",
+          "as": "service",
+          "set": { "replicas": "$replicas" }
+        }
+      }
+    },
+    "integration.deployment_control": {
+      "type": "mock",
+      "fixture": "../fixtures/deployments.json",
+      "operations": {
+        "deployment.get": {
+          "collection": "deployments",
+          "match": "service",
+          "payload_field": "service",
+          "where": { "current": true },
+          "as": "deployment"
+        },
+        "deployment.list": {
+          "collection": "deployments",
+          "filter": ["service"],
+          "limit_field": "limit",
+          "limit_default": 10,
+          "as": "deployments"
+        },
+        "deployment.rollback": {
+          "collection": "deployments",
+          "match": "service",
+          "payload_field": "service",
+          "where": { "current": true },
+          "as": "deployment",
+          "set": { "state": "rolled_back", "version": "$target_version" }
+        }
+      }
+    },
+    "integration.alerting": {
+      "type": "mock",
+      "fixture": "../fixtures/alerts.json",
+      "operations": {
+        "alert.list": {
+          "collection": "alerts",
+          "filter": ["service", "alert_id", "state"],
+          "field_map": { "alert_id": "id" },
+          "as": "alerts"
+        },
+        "alert.silence": {
+          "collection": "alerts",
+          "match": "id",
+          "payload_field": "alert_id",
+          "as": "alert",
+          "set": { "state": "silenced", "silence_minutes": "$minutes" }
+        }
+      }
+    },
+    "integration.incident_tracker": {
+      "type": "mock",
+      "fixture": "../fixtures/incidents.json",
+      "operations": {
+        "incident.get": {
+          "collection": "incidents",
+          "match": "id",
+          "payload_field": "incident_id",
+          "as": "incident"
+        },
+        "incident.list": {
+          "collection": "incidents",
+          "filter": ["service", "state"],
+          "as": "incidents"
+        },
+        "incident.note": {
+          "collection": "incidents",
+          "match": "id",
+          "payload_field": "incident_id",
+          "as": "incident",
+          "append": { "notes": "$note" },
+          "set": { "last_note": "$note" }
+        }
+      }
+    }
+  }
+}

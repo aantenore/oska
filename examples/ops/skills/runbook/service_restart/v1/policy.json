@@ -1,0 +1,20 @@
+{
+  "skill_id": "runbook.service_restart",
+  "default": "deny",
+  "rules": [
+    {
+      "operation": "service.restart",
+      "effect": "allow",
+      "when": { "service.environment": { "ne": "production" } },
+      "max_per_session": 2,
+      "reason": "Outside production a restart is routine and reversible by redeploying."
+    },
+    {
+      "operation": "service.restart",
+      "effect": "require_second_approval",
+      "when": { "service.environment": { "eq": "production" } },
+      "max_per_session": 2,
+      "reason": "A production restart drops in-flight requests and is visible to customers."
+    }
+  ]
+}

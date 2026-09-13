@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://oska.spec/schemas/plan.schema.json",
+  "title": "OSKA plan",
+  "description": "The typed, ordered operations produced for one procedure, plus the inputs it still needs.",
+  "type": "object",
+  "required": ["procedure_id"],
+  "additionalProperties": false,
+  "properties": {
+    "procedure_id": {
+      "type": "string",
+      "pattern": "^(runbook|composite)\\.[a-z0-9_]+$",
+      "description": "The procedure this plan belongs to. Named `runbook_id` in the reference implementation."
+    },
+    "operations": {
+      "type": "array",
+      "default": [],
+      "description": "Operations to run, in order. Every entry must be declared by an integration in the procedure's hydrated closure.",
+      "items": { "$ref": "#/$defs/plannedOperation" }
+    },
+    "missing": {
+      "type": "array",
+      "default": [],
+      "description": "Inputs the plan cannot supply. Each carries the question to ask the user.",
+      "items": { "$ref": "#/$defs/missingInput" }
+    },
+    "reply_intent": {
+      "type": "string",
+      "default": "",
+      "description": "Short instruction for the reply writer. Adds no facts."
+    }
+  },
+  "$defs": {
+    "plannedOperation": {
+      "type": "object",
+      "required": ["integration_id", "operation"],
+      "additionalProperties": false,
+      "properties": {
+        "integration_id": {
+          "type": "string",
+          "pattern": "^integration\\.[a-z0-9_]+$",
+          "description": "The integration that declares this operation."
+        },
+        "operation": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The declared operation name."
+        },
+        "payload": {
+          "type": "object",
+          "default": {},
+          "description": "Arguments, validated against the operation's input schema before execution."
+        },
+        "write": {
+          "type": "boolean",
+          "default": false,
+          "description": "Must match the declaration; a mismatch invalidates the plan."
+        },
+        "purpose": {
+          "type": "string",
+          "default": "",
+          "description": "Why this operation is in the plan, for the audit trail and the approval summary."
+        }
+      }
+    },
+    "missingInput": {
+      "type": "object",
+      "required": ["field", "question"],
+      "additionalProperties": false,
+      "properties": {
+        "field": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The payload field the answer fills."
+        },
+        "question": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The question to ask, in the user's language."
+        }
+      }
+    }
+  }
+}

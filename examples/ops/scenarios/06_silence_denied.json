@@ -1,0 +1,72 @@
+{
+  "name": "06_silence_denied",
+  "description": "A silence longer than the policy allows is refused, with the reason the policy carries.",
+  "level": 2,
+  "provider_script": [
+    {
+      "purpose": "router classification",
+      "expect_contains": "mute the paging on the payments alert for eight hours",
+      "response": {
+        "kind": "new_task",
+        "runbook_id": "runbook.alert_silence",
+        "confidence": 0.9,
+        "language": "en"
+      }
+    },
+    {
+      "purpose": "plan",
+      "expect_contains": "eight hours",
+      "response": {
+        "runbook_id": "runbook.alert_silence",
+        "operations": [
+          {
+            "integration_id": "integration.alerting",
+            "operation": "alert.list",
+            "payload": {
+              "service": "payments"
+            },
+            "write": false,
+            "purpose": "find the alert that is firing"
+          },
+          {
+            "integration_id": "integration.alerting",
+            "operation": "alert.silence",
+            "payload": {
+              "alert_id": "alt-9001",
+              "minutes": 480
+            },
+            "write": true,
+            "purpose": "silence the alert for the requested time"
+          }
+        ],
+        "missing": [],
+        "reply_intent": "report whether the alert was silenced"
+      }
+    },
+    {
+      "purpose": "reply writing",
+      "expect_contains": "\"kind\": \"denied\"",
+      "response": {
+        "reply": "The alert is still firing. A silence longer than four hours outlives the work it was set for, so the policy refused it."
+      }
+    }
+  ],
+  "turns": [
+    {
+      "user": "mute the paging on the payments alert for eight hours",
+      "expect": {
+        "kind": "new_task",
+        "contains": [
+          "four hours"
+        ],
+        "outcomes": [
+          "read",
+          "denied"
+        ],
+        "pending": null,
+        "receipts": 0,
+        "verification": null
+      }
+    }
+  ]
+}

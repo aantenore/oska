@@ -1,0 +1,108 @@
+{
+  "name": "05_goal_replacement",
+  "description": "A request that changes the outcome replaces the procedure under way; nothing is written.",
+  "level": 2,
+  "provider_script": [
+    {
+      "purpose": "router classification",
+      "expect_contains": "put the notifications service back on the version it ran yesterday",
+      "response": {
+        "kind": "new_task",
+        "runbook_id": "runbook.deployment_rollback",
+        "confidence": 0.9,
+        "language": "en"
+      }
+    },
+    {
+      "purpose": "plan",
+      "expect_contains": "back on the version",
+      "response": {
+        "runbook_id": "runbook.deployment_rollback",
+        "operations": [],
+        "missing": [
+          {
+            "field": "target_version",
+            "question": "Which version should notifications go back to?"
+          }
+        ],
+        "reply_intent": "ask for the version to roll back to"
+      }
+    },
+    {
+      "purpose": "router classification",
+      "expect_contains": "actually just show me the log lines mentioning timeout for checkout",
+      "response": {
+        "kind": "new_task",
+        "runbook_id": null,
+        "confidence": 0.9,
+        "language": "en"
+      }
+    },
+    {
+      "purpose": "tie break",
+      "expect_contains": "log lines mentioning timeout",
+      "response": {
+        "skill_id": "runbook.log_search"
+      }
+    },
+    {
+      "purpose": "plan",
+      "expect_contains": "log lines mentioning timeout",
+      "response": {
+        "runbook_id": "runbook.log_search",
+        "operations": [
+          {
+            "integration_id": "integration.container_runtime",
+            "operation": "service.logs",
+            "payload": {
+              "service": "checkout",
+              "pattern": "timeout",
+              "lines": 200
+            },
+            "write": false,
+            "purpose": "find the lines that mention the pattern"
+          }
+        ],
+        "missing": [],
+        "reply_intent": "report the matching log lines for checkout"
+      }
+    },
+    {
+      "purpose": "reply writing",
+      "expect_contains": "\"kind\": \"read\"",
+      "response": {
+        "reply": "Two lines in the last 200 mention timeout for checkout, both payments timeouts after 3000ms that rejected an order."
+      }
+    }
+  ],
+  "turns": [
+    {
+      "user": "put the notifications service back on the version it ran yesterday",
+      "expect": {
+        "kind": "new_task",
+        "contains": [
+          "Which version"
+        ],
+        "outcomes": [],
+        "pending": "input",
+        "receipts": 0,
+        "verification": null
+      }
+    },
+    {
+      "user": "actually just show me the log lines mentioning timeout for checkout",
+      "expect": {
+        "kind": "new_task",
+        "contains": [
+          "timeout"
+        ],
+        "outcomes": [
+          "read"
+        ],
+        "pending": null,
+        "receipts": 0,
+        "verification": null
+      }
+    }
+  ]
+}

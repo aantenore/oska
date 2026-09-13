@@ -1,0 +1,8 @@
+{
+  "provider": "none",
+  "base_url": null,
+  "api_key": null,
+  "chat_model": "chat-model-name",
+  "embedding_model": "embedding-model-name",
+  "timeout_seconds": 30.0
+}

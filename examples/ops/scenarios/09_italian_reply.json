@@ -1,0 +1,73 @@
+{
+  "name": "09_italian_reply",
+  "description": "The reply is written in the language the router reported, and suggests only what the catalogue offers for what was read.",
+  "level": 1,
+  "provider_script": [
+    {
+      "purpose": "router classification",
+      "expect_contains": "mi puoi dire come procede il servizio di ricerca in staging",
+      "response": {
+        "kind": "new_task",
+        "runbook_id": "runbook.service_health",
+        "confidence": 0.9,
+        "language": "it"
+      }
+    },
+    {
+      "purpose": "plan",
+      "expect_contains": "come procede il servizio",
+      "response": {
+        "runbook_id": "runbook.service_health",
+        "operations": [
+          {
+            "integration_id": "integration.container_runtime",
+            "operation": "service.status",
+            "payload": {
+              "service": "search"
+            },
+            "write": false,
+            "purpose": "read the state of the service"
+          },
+          {
+            "integration_id": "integration.container_runtime",
+            "operation": "service.logs",
+            "payload": {
+              "service": "search",
+              "lines": 50
+            },
+            "write": false,
+            "purpose": "read the tail of the log"
+          }
+        ],
+        "missing": [],
+        "reply_intent": "report the state of search and its most recent log lines"
+      }
+    },
+    {
+      "purpose": "reply writing",
+      "expect_contains": "roll it back",
+      "response": {
+        "reply": "Il servizio search e in esecuzione sulla versione 0.8.2 con 2 repliche e nessun riavvio. Nel log recente non compaiono errori. Posso riavviarlo oppure riportarlo a una versione precedente."
+      }
+    }
+  ],
+  "turns": [
+    {
+      "user": "mi puoi dire come procede il servizio di ricerca in staging",
+      "expect": {
+        "kind": "new_task",
+        "contains": [
+          "riavviarlo",
+          "0.8.2"
+        ],
+        "outcomes": [
+          "read",
+          "read"
+        ],
+        "pending": null,
+        "receipts": 0,
+        "verification": null
+      }
+    }
+  ]
+}

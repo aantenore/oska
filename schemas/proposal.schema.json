@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://opsdeck.local/schemas/proposal.schema.json",
+  "title": "Skill proposal",
+  "type": "object",
+  "required": ["proposal_id", "state", "source_session_id", "skill_markdown", "quality"],
+  "additionalProperties": false,
+  "properties": {
+    "proposal_id": { "type": "string", "minLength": 1 },
+    "state": {
+      "type": "string",
+      "enum": ["draft", "submitted", "approved", "rejected", "published"]
+    },
+    "source_session_id": { "type": "string", "minLength": 1 },
+    "skill_markdown": { "type": "string" },
+    "policy": { "type": ["object", "null"] },
+    "quality": {
+      "type": "object",
+      "required": ["issues", "score"],
+      "additionalProperties": false,
+      "properties": {
+        "issues": { "type": "array", "items": { "type": "string" } },
+        "score": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "history": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["state", "at", "by"],
+        "additionalProperties": false,
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": ["draft", "submitted", "approved", "rejected", "published"]
+          },
+          "at": { "type": "string", "format": "date-time" },
+          "by": { "type": "string" },
+          "note": { "type": "string" }
+        }
+      }
+    }
+  }
+}

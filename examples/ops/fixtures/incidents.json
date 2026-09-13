@@ -1,0 +1,31 @@
+{
+  "incidents": [
+    {
+      "id": "inc-501",
+      "service": "payments",
+      "severity": "sev1",
+      "state": "open",
+      "summary": "Payment authorisations timing out since the 3.2.0 release",
+      "notes": [],
+      "last_note": ""
+    },
+    {
+      "id": "inc-502",
+      "service": "notifications",
+      "severity": "sev3",
+      "state": "mitigated",
+      "summary": "Queue backlog in staging after the provider started rate limiting",
+      "notes": ["2026-03-11T07:58:00Z consumers raised from 1 to 2, backlog draining"],
+      "last_note": "2026-03-11T07:58:00Z consumers raised from 1 to 2, backlog draining"
+    },
+    {
+      "id": "inc-503",
+      "service": "api-gateway",
+      "severity": "sev2",
+      "state": "closed",
+      "summary": "Elevated 5xx during the 1.9.3 rollout, cleared by itself",
+      "notes": ["2026-03-10T16:44:00Z error rate back to baseline, no action taken"],
+      "last_note": "2026-03-10T16:44:00Z error rate back to baseline, no action taken"
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "skill_id": "runbook.incident_note",
+  "default": "deny",
+  "rules": [
+    {
+      "operation": "incident.note",
+      "effect": "allow",
+      "max_per_session": 10,
+      "reason": "A note is additive and carries no operational risk."
+    }
+  ]
+}

@@ -1,0 +1,81 @@
+{
+  "name": "10_invalid_plan",
+  "description": "A plan that names an operation the catalogue does not declare is refused twice and nothing runs.",
+  "level": 2,
+  "provider_script": [
+    {
+      "purpose": "router classification",
+      "expect_contains": "wipe the reporting service off the estate for good",
+      "response": {
+        "kind": "new_task",
+        "runbook_id": "runbook.service_restart",
+        "confidence": 0.9,
+        "language": "en"
+      }
+    },
+    {
+      "purpose": "plan",
+      "expect_contains": "wipe the reporting service",
+      "response": {
+        "runbook_id": "runbook.service_restart",
+        "operations": [
+          {
+            "integration_id": "integration.container_runtime",
+            "operation": "service.delete",
+            "payload": {
+              "service": "reporting"
+            },
+            "write": true,
+            "purpose": "remove the service"
+          }
+        ],
+        "missing": [],
+        "reply_intent": "report what was done to the service"
+      }
+    },
+    {
+      "purpose": "plan repair",
+      "expect_contains": "declares no operation service.delete",
+      "response": {
+        "runbook_id": "runbook.service_restart",
+        "operations": [
+          {
+            "integration_id": "integration.container_runtime",
+            "operation": "service.delete",
+            "payload": {
+              "service": "reporting"
+            },
+            "write": true,
+            "purpose": "remove the service"
+          }
+        ],
+        "missing": [],
+        "reply_intent": "report what was done to the service"
+      }
+    },
+    {
+      "purpose": "reply writing",
+      "expect_contains": "\"kind\": \"invalid_plan\"",
+      "response": {
+        "reply": "Nothing ran. The plan asked for an operation this installation does not declare, so it was refused before anything was sent."
+      }
+    }
+  ],
+  "turns": [
+    {
+      "user": "wipe the reporting service off the estate for good",
+      "expect": {
+        "kind": "new_task",
+        "contains": [
+          "Nothing ran"
+        ],
+        "outcomes": [
+          "invalid_plan"
+        ],
+        "pending": null,
+        "receipts": 0,
+        "verification": null
+      }
+    }
+  ]
+}

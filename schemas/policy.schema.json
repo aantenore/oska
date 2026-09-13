@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://opsdeck.local/schemas/policy.schema.json",
+  "title": "Policy",
+  "type": "object",
+  "required": ["skill_id", "rules"],
+  "additionalProperties": false,
+  "properties": {
+    "skill_id": {
+      "type": "string",
+      "pattern": "^(runbook|entity|integration|composite)\\.[a-z0-9_]+$"
+    },
+    "default": { "type": "string", "enum": ["deny"] },
+    "rules": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["operation", "effect"],
+        "additionalProperties": false,
+        "properties": {
+          "operation": { "type": "string", "minLength": 1 },
+          "effect": {
+            "type": "string",
+            "enum": ["allow", "deny", "require_second_approval"]
+          },
+          "when": {
+            "type": "object",
+            "description": "Dotted path mapped to a single-operator condition.",
+            "additionalProperties": {
+              "type": "object",
+              "minProperties": 1,
+              "maxProperties": 1,
+              "additionalProperties": false,
+              "properties": {
+                "eq": {},
+                "ne": {},
+                "in": { "type": "array" },
+                "not_in": { "type": "array" },
+                "lt": { "type": "number" },
+                "lte": { "type": "number" },
+                "gt": { "type": "number" },
+                "gte": { "type": "number" }
+              }
+            }
+          },
+          "max_per_session": { "type": ["integer", "null"], "minimum": 0 },
+          "reason": { "type": "string" }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,143 @@
+{
+  "name": "14_composite_triage",
+  "description": "A composite runs its procedures in order; the write in the last one still stops for its own approval.",
+  "level": 2,
+  "provider_script": [
+    {
+      "purpose": "router classification",
+      "expect_contains": "run triage on incident inc-501 for the payments service",
+      "response": {
+        "kind": "new_task",
+        "runbook_id": "composite.incident_triage",
+        "confidence": 0.9,
+        "language": "en"
+      }
+    },
+    {
+      "purpose": "plan step 1, service health",
+      "expect_contains": "run triage on incident",
+      "response": {
+        "runbook_id": "runbook.service_health",
+        "operations": [
+          {
+            "integration_id": "integration.container_runtime",
+            "operation": "service.status",
+            "payload": {
+              "service": "payments"
+            },
+            "write": false,
+            "purpose": "read the state of the service"
+          },
+          {
+            "integration_id": "integration.container_runtime",
+            "operation": "service.logs",
+            "payload": {
+              "service": "payments",
+              "lines": 50
+            },
+            "write": false,
+            "purpose": "read the tail of the log"
+          }
+        ],
+        "missing": [],
+        "reply_intent": "report the health of payments"
+      }
+    },
+    {
+      "purpose": "plan step 2, log search",
+      "expect_contains": "run triage on incident",
+      "response": {
+        "runbook_id": "runbook.log_search",
+        "operations": [
+          {
+            "integration_id": "integration.container_runtime",
+            "operation": "service.logs",
+            "payload": {
+              "service": "payments",
+              "pattern": "timeout",
+              "lines": 200
+            },
+            "write": false,
+            "purpose": "find the lines behind the incident"
+          }
+        ],
+        "missing": [],
+        "reply_intent": "report the matching log lines"
+      }
+    },
+    {
+      "purpose": "plan step 3, incident note",
+      "expect_contains": "run triage on incident",
+      "response": {
+        "runbook_id": "runbook.incident_note",
+        "operations": [
+          {
+            "integration_id": "integration.incident_tracker",
+            "operation": "incident.get",
+            "payload": {
+              "incident_id": "inc-501"
+            },
+            "write": false,
+            "purpose": "read the incident before writing to it"
+          },
+          {
+            "integration_id": "integration.incident_tracker",
+            "operation": "incident.note",
+            "payload": {
+              "incident_id": "inc-501",
+              "note": "status degraded on 3.2.0, log shows repeated connection pool timeouts, triage started"
+            },
+            "write": true,
+            "purpose": "record what the first two steps found"
+          }
+        ],
+        "missing": [],
+        "reply_intent": "report the note written on inc-501"
+      }
+    },
+    {
+      "purpose": "reply writing",
+      "expect_contains": "\"kind\": \"receipt\"",
+      "response": {
+        "reply": "The triage note is on inc-501 and reading the incident back shows it as the most recent entry."
+      }
+    }
+  ],
+  "turns": [
+    {
+      "user": "run triage on incident inc-501 for the payments service",
+      "expect": {
+        "kind": "new_task",
+        "contains": [
+          "incident.note",
+          "inc-501"
+        ],
+        "outcomes": [
+          "read",
+          "read",
+          "read",
+          "read",
+          "approval_pending"
+        ],
+        "pending": "approval",
+        "receipts": 0,
+        "verification": null
+      }
+    },
+    {
+      "user": "yes",
+      "expect": {
+        "kind": "approve",
+        "contains": [
+          "inc-501"
+        ],
+        "outcomes": [
+          "receipt"
+        ],
+        "pending": null,
+        "receipts": 1,
+        "verification": "verified"
+      }
+    }
+  ]
+}

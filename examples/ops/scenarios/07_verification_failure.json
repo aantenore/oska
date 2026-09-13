@@ -1,0 +1,169 @@
+{
+  "name": "07_verification_failure",
+  "description": "The read-back contradicts the write: the receipt is not verified, the reply says so, and the ledger blocks a second attempt.",
+  "level": 2,
+  "provider_script": [
+    {
+      "purpose": "router classification",
+      "expect_contains": "reporting is stuck in staging and needs to be restarted",
+      "response": {
+        "kind": "new_task",
+        "runbook_id": "runbook.service_restart",
+        "confidence": 0.9,
+        "language": "en"
+      }
+    },
+    {
+      "purpose": "plan",
+      "expect_contains": "is stuck",
+      "response": {
+        "runbook_id": "runbook.service_restart",
+        "operations": [
+          {
+            "integration_id": "integration.container_runtime",
+            "operation": "service.status",
+            "payload": {
+              "service": "reporting"
+            },
+            "write": false,
+            "purpose": "read the current state"
+          },
+          {
+            "integration_id": "integration.container_runtime",
+            "operation": "service.restart",
+            "payload": {
+              "service": "reporting"
+            },
+            "write": true,
+            "purpose": "restart the stuck service"
+          }
+        ],
+        "missing": [],
+        "reply_intent": "report the restart of reporting and what the read-back showed"
+      }
+    },
+    {
+      "purpose": "reply writing",
+      "expect_contains": "\"kind\": \"receipt\"",
+      "response": {
+        "reply": "The restart of reporting was sent, but the read-back still reports the service stopped, so it is not verified. I have not repeated it."
+      }
+    },
+    {
+      "purpose": "router classification",
+      "expect_contains": "reporting is still down, send that restart again",
+      "response": {
+        "kind": "new_task",
+        "runbook_id": "runbook.service_restart",
+        "confidence": 0.9,
+        "language": "en"
+      }
+    },
+    {
+      "purpose": "plan",
+      "expect_contains": "still down",
+      "response": {
+        "runbook_id": "runbook.service_restart",
+        "operations": [
+          {
+            "integration_id": "integration.container_runtime",
+            "operation": "service.status",
+            "payload": {
+              "service": "reporting"
+            },
+            "write": false,
+            "purpose": "read the current state"
+          },
+          {
+            "integration_id": "integration.container_runtime",
+            "operation": "service.restart",
+            "payload": {
+              "service": "reporting"
+            },
+            "write": true,
+            "purpose": "restart the service again"
+          }
+        ],
+        "missing": [],
+        "reply_intent": "report that the restart was already attempted in this session"
+      }
+    },
+    {
+      "purpose": "reply writing",
+      "expect_contains": "\"kind\": \"ledger_hit\"",
+      "response": {
+        "reply": "Nothing ran again. This session already asked for that restart and the attempt it recorded was never confirmed."
+      }
+    }
+  ],
+  "turns": [
+    {
+      "user": "reporting is stuck in staging and needs to be restarted",
+      "expect": {
+        "kind": "new_task",
+        "contains": [
+          "{\"service\":\"reporting\"}"
+        ],
+        "outcomes": [
+          "read",
+          "approval_pending"
+        ],
+        "pending": "approval",
+        "receipts": 0,
+        "verification": null
+      }
+    },
+    {
+      "user": "yes",
+      "connector_behaviours": {
+        "integration.container_runtime": {
+          "service.status": {
+            "override": {
+              "service": {
+                "name": "reporting",
+                "environment": "staging",
+                "status": "stopped",
+                "version": "4.0.0",
+                "replicas": 1,
+                "restarts": 7
+              }
+            }
+          }
+        }
+      },
+      "expect": {
+        "kind": "approve",
+        "contains": [
+          "not verified"
+        ],
+        "outcomes": [
+          "receipt"
+        ],
+        "pending": null,
+        "receipts": 1,
+        "verification": "failed"
+      }
+    },
+    {
+      "user": "reporting is still down, send that restart again",
+      "connector_behaviours": {
+        "integration.container_runtime": {
+          "service.status": null
+        }
+      },
+      "expect": {
+        "kind": "new_task",
+        "contains": [
+          "already asked"
+        ],
+        "outcomes": [
+          "read",
+          "ledger_hit"
+        ],
+        "pending": null,
+        "receipts": 1,
+        "verification": "failed"
+      }
+    }
+  ]
+}

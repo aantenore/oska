@@ -1,0 +1,246 @@
+{
+  "name": "12_max_per_session",
+  "description": "The third restart of a session is refused by the per-session limit, which counts the attempt that was never confirmed.",
+  "level": 2,
+  "provider_script": [
+    {
+      "purpose": "router classification",
+      "expect_contains": "the search service in staging needs a restart, it is wedged again",
+      "response": {
+        "kind": "new_task",
+        "runbook_id": "runbook.service_restart",
+        "confidence": 0.9,
+        "language": "en"
+      }
+    },
+    {
+      "purpose": "plan",
+      "expect_contains": "search service",
+      "response": {
+        "runbook_id": "runbook.service_restart",
+        "operations": [
+          {
+            "integration_id": "integration.container_runtime",
+            "operation": "service.status",
+            "payload": {
+              "service": "search"
+            },
+            "write": false,
+            "purpose": "read the current state"
+          },
+          {
+            "integration_id": "integration.container_runtime",
+            "operation": "service.restart",
+            "payload": {
+              "service": "search"
+            },
+            "write": true,
+            "purpose": "restart the wedged service"
+          }
+        ],
+        "missing": [],
+        "reply_intent": "report the restart of search"
+      }
+    },
+    {
+      "purpose": "reply writing",
+      "expect_contains": "\"kind\": \"receipt\"",
+      "response": {
+        "reply": "search has been restarted and the read-back shows it running again."
+      }
+    },
+    {
+      "purpose": "router classification",
+      "expect_contains": "the notifications service in staging is wedged, bounce it",
+      "response": {
+        "kind": "new_task",
+        "runbook_id": "runbook.service_restart",
+        "confidence": 0.9,
+        "language": "en"
+      }
+    },
+    {
+      "purpose": "plan",
+      "expect_contains": "bounce it",
+      "response": {
+        "runbook_id": "runbook.service_restart",
+        "operations": [
+          {
+            "integration_id": "integration.container_runtime",
+            "operation": "service.status",
+            "payload": {
+              "service": "notifications"
+            },
+            "write": false,
+            "purpose": "read the current state"
+          },
+          {
+            "integration_id": "integration.container_runtime",
+            "operation": "service.restart",
+            "payload": {
+              "service": "notifications"
+            },
+            "write": true,
+            "purpose": "restart the wedged service"
+          }
+        ],
+        "missing": [],
+        "reply_intent": "report the restart of notifications"
+      }
+    },
+    {
+      "purpose": "reply writing",
+      "expect_contains": "\"kind\": \"receipt\"",
+      "response": {
+        "reply": "The restart of notifications was sent, but the read-back still reports the service degraded, so it is not verified."
+      }
+    },
+    {
+      "purpose": "router classification",
+      "expect_contains": "the reporting service needs a restart as well",
+      "response": {
+        "kind": "new_task",
+        "runbook_id": "runbook.service_restart",
+        "confidence": 0.9,
+        "language": "en"
+      }
+    },
+    {
+      "purpose": "plan",
+      "expect_contains": "as well",
+      "response": {
+        "runbook_id": "runbook.service_restart",
+        "operations": [
+          {
+            "integration_id": "integration.container_runtime",
+            "operation": "service.status",
+            "payload": {
+              "service": "reporting"
+            },
+            "write": false,
+            "purpose": "read the current state"
+          },
+          {
+            "integration_id": "integration.container_runtime",
+            "operation": "service.restart",
+            "payload": {
+              "service": "reporting"
+            },
+            "write": true,
+            "purpose": "restart the service"
+          }
+        ],
+        "missing": [],
+        "reply_intent": "report whether reporting was restarted"
+      }
+    },
+    {
+      "purpose": "reply writing",
+      "expect_contains": "\"kind\": \"denied\"",
+      "response": {
+        "reply": "reporting was not restarted. This session has already used the two restarts the policy allows it."
+      }
+    }
+  ],
+  "turns": [
+    {
+      "user": "the search service in staging needs a restart, it is wedged again",
+      "expect": {
+        "kind": "new_task",
+        "contains": [
+          "{\"service\":\"search\"}"
+        ],
+        "outcomes": [
+          "read",
+          "approval_pending"
+        ],
+        "pending": "approval",
+        "receipts": 0,
+        "verification": null
+      }
+    },
+    {
+      "user": "yes",
+      "expect": {
+        "kind": "approve",
+        "contains": [
+          "restarted"
+        ],
+        "outcomes": [
+          "receipt"
+        ],
+        "pending": null,
+        "receipts": 1,
+        "verification": "verified"
+      }
+    },
+    {
+      "user": "the notifications service in staging is wedged, bounce it",
+      "expect": {
+        "kind": "new_task",
+        "contains": [
+          "{\"service\":\"notifications\"}"
+        ],
+        "outcomes": [
+          "read",
+          "approval_pending"
+        ],
+        "pending": "approval",
+        "receipts": 1,
+        "verification": "verified"
+      }
+    },
+    {
+      "user": "yes",
+      "connector_behaviours": {
+        "integration.container_runtime": {
+          "service.status": {
+            "override": {
+              "service": {
+                "name": "notifications",
+                "environment": "staging",
+                "status": "degraded",
+                "version": "1.1.0",
+                "replicas": 2,
+                "restarts": 3
+              }
+            }
+          }
+        }
+      },
+      "expect": {
+        "kind": "approve",
+        "contains": [
+          "not verified"
+        ],
+        "outcomes": [
+          "receipt"
+        ],
+        "pending": null,
+        "receipts": 2,
+        "verification": "failed"
+      }
+    },
+    {
+      "user": "the reporting service needs a restart as well",
+      "connector_behaviours": {
+        "integration.container_runtime": {
+          "service.status": null
+        }
+      },
+      "expect": {
+        "kind": "new_task",
+        "contains": [
+          "already used"
+        ],
+        "outcomes": [
+          "read",
+          "denied"
+        ],
+        "pending": null,
+        "receipts": 2,
+        "verification": "failed"
+      }
+    }
+  ]
+}

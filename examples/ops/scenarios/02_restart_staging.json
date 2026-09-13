@@ -1,0 +1,151 @@
+{
+  "name": "02_restart_staging",
+  "description": "A restart outside production: exact-payload approval, verified receipt, and a second identical request that the ledger stops.",
+  "level": 2,
+  "provider_script": [
+    {
+      "purpose": "router classification",
+      "expect_contains": "the search service in staging needs a restart, it is wedged again",
+      "response": {
+        "kind": "new_task",
+        "runbook_id": "runbook.service_restart",
+        "confidence": 0.9,
+        "language": "en"
+      }
+    },
+    {
+      "purpose": "plan",
+      "expect_contains": "needs a restart",
+      "response": {
+        "runbook_id": "runbook.service_restart",
+        "operations": [
+          {
+            "integration_id": "integration.container_runtime",
+            "operation": "service.status",
+            "payload": {
+              "service": "search"
+            },
+            "write": false,
+            "purpose": "read the current state"
+          },
+          {
+            "integration_id": "integration.container_runtime",
+            "operation": "service.restart",
+            "payload": {
+              "service": "search"
+            },
+            "write": true,
+            "purpose": "restart the wedged service"
+          }
+        ],
+        "missing": [],
+        "reply_intent": "report the restart of search and whether the read-back confirmed it"
+      }
+    },
+    {
+      "purpose": "reply writing",
+      "expect_contains": "\"kind\": \"receipt\"",
+      "response": {
+        "reply": "search has been restarted and the read-back shows it running again under the same name, so the receipt is verified."
+      }
+    },
+    {
+      "purpose": "router classification",
+      "expect_contains": "restart the search service in staging again",
+      "response": {
+        "kind": "new_task",
+        "runbook_id": "runbook.service_restart",
+        "confidence": 0.9,
+        "language": "en"
+      }
+    },
+    {
+      "purpose": "plan",
+      "expect_contains": "restart the search service",
+      "response": {
+        "runbook_id": "runbook.service_restart",
+        "operations": [
+          {
+            "integration_id": "integration.container_runtime",
+            "operation": "service.status",
+            "payload": {
+              "service": "search"
+            },
+            "write": false,
+            "purpose": "read the current state"
+          },
+          {
+            "integration_id": "integration.container_runtime",
+            "operation": "service.restart",
+            "payload": {
+              "service": "search"
+            },
+            "write": true,
+            "purpose": "restart the service again"
+          }
+        ],
+        "missing": [],
+        "reply_intent": "report that the restart was already done in this session"
+      }
+    },
+    {
+      "purpose": "reply writing",
+      "expect_contains": "\"kind\": \"ledger_hit\"",
+      "response": {
+        "reply": "Nothing ran again: this session already restarted search, and the receipt from that restart still stands."
+      }
+    }
+  ],
+  "turns": [
+    {
+      "user": "the search service in staging needs a restart, it is wedged again",
+      "expect": {
+        "kind": "new_task",
+        "contains": [
+          "approval",
+          "service.restart",
+          "{\"service\":\"search\"}"
+        ],
+        "outcomes": [
+          "read",
+          "approval_pending"
+        ],
+        "pending": "approval",
+        "receipts": 0,
+        "verification": null
+      }
+    },
+    {
+      "user": "yes",
+      "expect": {
+        "kind": "approve",
+        "contains": [
+          "restarted",
+          "verified"
+        ],
+        "outcomes": [
+          "receipt"
+        ],
+        "pending": null,
+        "receipts": 1,
+        "verification": "verified"
+      }
+    },
+    {
+      "user": "restart the search service in staging again",
+      "expect": {
+        "kind": "new_task",
+        "contains": [
+          "already restarted search"
+        ],
+        "outcomes": [
+          "read",
+          "ledger_hit"
+        ],
+        "pending": null,
+        "receipts": 1,
+        "verification": "verified"
+      }
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "skill_id": "runbook.alert_silence",
+  "default": "deny",
+  "rules": [
+    {
+      "operation": "alert.silence",
+      "effect": "deny",
+      "when": { "minutes": { "gt": 240 } },
+      "reason": "A silence longer than four hours outlives the work it was set for."
+    },
+    {
+      "operation": "alert.silence",
+      "effect": "allow",
+      "when": { "minutes": { "lte": 240 } },
+      "max_per_session": 4,
+      "reason": "A bounded silence while the cause is worked on."
+    }
+  ]
+}

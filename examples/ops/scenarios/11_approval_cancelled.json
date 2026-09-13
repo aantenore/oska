@@ -1,0 +1,132 @@
+{
+  "name": "11_approval_cancelled",
+  "description": "A new request while a write waits for approval cancels that approval and starts again, with a new approval of its own.",
+  "level": 2,
+  "provider_script": [
+    {
+      "purpose": "router classification",
+      "expect_contains": "the notifications service in staging is wedged, bounce it",
+      "response": {
+        "kind": "new_task",
+        "runbook_id": "runbook.service_restart",
+        "confidence": 0.9,
+        "language": "en"
+      }
+    },
+    {
+      "purpose": "plan",
+      "expect_contains": "bounce it",
+      "response": {
+        "runbook_id": "runbook.service_restart",
+        "operations": [
+          {
+            "integration_id": "integration.container_runtime",
+            "operation": "service.status",
+            "payload": {
+              "service": "notifications"
+            },
+            "write": false,
+            "purpose": "read the current state"
+          },
+          {
+            "integration_id": "integration.container_runtime",
+            "operation": "service.restart",
+            "payload": {
+              "service": "notifications"
+            },
+            "write": true,
+            "purpose": "restart the wedged service"
+          }
+        ],
+        "missing": [],
+        "reply_intent": "report the restart of notifications"
+      }
+    },
+    {
+      "purpose": "router classification",
+      "expect_contains": "on second thought roll that service back to the earlier version instead",
+      "response": {
+        "kind": "new_task",
+        "runbook_id": "runbook.deployment_rollback",
+        "confidence": 0.9,
+        "language": "en"
+      }
+    },
+    {
+      "purpose": "plan",
+      "expect_contains": "roll that service back",
+      "response": {
+        "runbook_id": "runbook.deployment_rollback",
+        "operations": [
+          {
+            "integration_id": "integration.container_runtime",
+            "operation": "service.status",
+            "payload": {
+              "service": "notifications"
+            },
+            "write": false,
+            "purpose": "read the environment the service runs in"
+          },
+          {
+            "integration_id": "integration.deployment_control",
+            "operation": "deployment.get",
+            "payload": {
+              "service": "notifications"
+            },
+            "write": false,
+            "purpose": "read the deployment in place and its previous version"
+          },
+          {
+            "integration_id": "integration.deployment_control",
+            "operation": "deployment.rollback",
+            "payload": {
+              "service": "notifications",
+              "target_version": "1.0.9"
+            },
+            "write": true,
+            "purpose": "put the previous version back"
+          }
+        ],
+        "missing": [],
+        "reply_intent": "report the rollback of notifications"
+      }
+    }
+  ],
+  "turns": [
+    {
+      "user": "the notifications service in staging is wedged, bounce it",
+      "expect": {
+        "kind": "new_task",
+        "contains": [
+          "service.restart"
+        ],
+        "outcomes": [
+          "read",
+          "approval_pending"
+        ],
+        "pending": "approval",
+        "receipts": 0,
+        "verification": null
+      }
+    },
+    {
+      "user": "on second thought roll that service back to the earlier version instead",
+      "expect": {
+        "kind": "new_task",
+        "contains": [
+          "deployment.rollback",
+          "{\"service\":\"notifications\",\"target_version\":\"1.0.9\"}"
+        ],
+        "outcomes": [
+          "cancelled",
+          "read",
+          "read",
+          "approval_pending"
+        ],
+        "pending": "approval",
+        "receipts": 0,
+        "verification": null
+      }
+    }
+  ]
+}

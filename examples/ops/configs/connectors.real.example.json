@@ -1,0 +1,90 @@
+{
+  "version": 1,
+  "_comment": "The same catalog bound to real systems instead of the fixtures. JSON holds no comments, so this file stands in for the commented-out alternative: copy it over connectors.json and fill in the addresses. Operation names and payload fields are the ones declared by the integration skills and do not change with the binding.",
+  "integrations": {
+    "integration.container_runtime": {
+      "type": "http",
+      "base_url": "https://runtime.internal/api/v1",
+      "headers": { "Authorization": "Bearer ${RUNTIME_TOKEN}" },
+      "operations": {
+        "service.status": { "method": "GET", "path": "/services/{service}" },
+        "service.logs": {
+          "method": "GET",
+          "path": "/services/{service}/logs",
+          "query_fields": ["lines", "pattern"]
+        },
+        "service.restart": {
+          "method": "POST",
+          "path": "/services/{service}/restart",
+          "body_fields": []
+        },
+        "service.scale": {
+          "method": "POST",
+          "path": "/services/{service}/scale",
+          "body_fields": ["replicas"]
+        }
+      }
+    },
+    "integration.deployment_control": {
+      "type": "shell",
+      "operations": {
+        "deployment.get": {
+          "argv": ["deployctl", "get", "--service", "{service}", "--output", "json"],
+          "timeout": 15
+        },
+        "deployment.list": {
+          "argv": ["deployctl", "list", "--service", "{service}", "--output", "json"],
+          "timeout": 15
+        },
+        "deployment.rollback": {
+          "argv": [
+            "deployctl",
+            "rollback",
+            "--service",
+            "{service}",
+            "--to",
+            "{target_version}",
+            "--output",
+            "json"
+          ],
+          "timeout": 120
+        }
+      }
+    },
+    "integration.alerting": {
+      "type": "http",
+      "base_url": "https://alerting.internal/api/v2",
+      "headers": { "Authorization": "Bearer ${ALERTING_TOKEN}" },
+      "operations": {
+        "alert.list": {
+          "method": "GET",
+          "path": "/alerts",
+          "query_fields": ["service", "alert_id", "state"]
+        },
+        "alert.silence": {
+          "method": "POST",
+          "path": "/alerts/{alert_id}/silence",
+          "body_fields": ["minutes"]
+        }
+      }
+    },
+    "integration.incident_tracker": {
+      "type": "http",
+      "base_url": "https://incidents.internal/api/v1",
+      "headers": { "Authorization": "Bearer ${INCIDENTS_TOKEN}" },
+      "operations": {
+        "incident.get": { "method": "GET", "path": "/incidents/{incident_id}" },
+        "incident.list": {
+          "method": "GET",
+          "path": "/incidents",
+          "query_fields": ["service", "state"]
+        },
+        "incident.note": {
+          "method": "POST",
+          "path": "/incidents/{incident_id}/notes",
+          "body_fields": ["note"]
+        }
+      }
+    }
+  }
+}

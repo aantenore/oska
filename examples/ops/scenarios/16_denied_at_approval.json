@@ -1,0 +1,103 @@
+{
+  "name": "16_denied_at_approval",
+  "description": "The policy is read again after the approval: the service is in production by then, one approval no longer covers the write, and nothing runs.",
+  "level": 2,
+  "provider_script": [
+    {
+      "purpose": "router classification",
+      "expect_contains": "the reporting service in staging has to be restarted",
+      "response": {
+        "kind": "new_task",
+        "runbook_id": "runbook.service_restart",
+        "confidence": 0.9,
+        "language": "en"
+      }
+    },
+    {
+      "purpose": "plan",
+      "expect_contains": "has to be restarted",
+      "response": {
+        "runbook_id": "runbook.service_restart",
+        "operations": [
+          {
+            "integration_id": "integration.container_runtime",
+            "operation": "service.status",
+            "payload": {
+              "service": "reporting"
+            },
+            "write": false,
+            "purpose": "read the current state"
+          },
+          {
+            "integration_id": "integration.container_runtime",
+            "operation": "service.restart",
+            "payload": {
+              "service": "reporting"
+            },
+            "write": true,
+            "purpose": "restart the service"
+          }
+        ],
+        "missing": [],
+        "reply_intent": "report the restart of reporting"
+      }
+    },
+    {
+      "purpose": "reply writing",
+      "expect_contains": "\"kind\": \"denied\"",
+      "response": {
+        "reply": "Nothing ran. Read again before the write, reporting is in production, where a restart needs two approvals and only one stands."
+      }
+    }
+  ],
+  "turns": [
+    {
+      "user": "the reporting service in staging has to be restarted, it is stuck",
+      "expect": {
+        "kind": "new_task",
+        "contains": [
+          "service.restart",
+          "{\"service\":\"reporting\"}"
+        ],
+        "outcomes": [
+          "read",
+          "approval_pending"
+        ],
+        "pending": "approval",
+        "receipts": 0,
+        "verification": null
+      }
+    },
+    {
+      "user": "yes",
+      "connector_behaviours": {
+        "integration.container_runtime": {
+          "service.status": {
+            "override": {
+              "service": {
+                "name": "reporting",
+                "environment": "production",
+                "status": "stopped",
+                "version": "4.0.0",
+                "replicas": 1,
+                "restarts": 7
+              }
+            }
+          }
+        }
+      },
+      "expect": {
+        "kind": "approve",
+        "contains": [
+          "two approvals"
+        ],
+        "outcomes": [
+          "denied"
+        ],
+        "pending": null,
+        "receipts": 0,
+        "verification": null
+      }
+    }
+  ]
+}

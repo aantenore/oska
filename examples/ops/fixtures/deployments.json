@@ -1,0 +1,12 @@
+{
+  "deployments": [
+    { "id": "dep-1001", "service": "api-gateway", "version": "1.9.3", "previous_version": "1.9.2", "state": "succeeded", "current": true, "created_at": "2026-03-10T16:20:00Z" },
+    { "id": "dep-1002", "service": "payments", "version": "3.2.0", "previous_version": "3.1.7", "state": "succeeded", "current": true, "created_at": "2026-03-11T07:55:00Z" },
+    { "id": "dep-1003", "service": "payments", "version": "3.1.7", "previous_version": "3.1.6", "state": "succeeded", "current": false, "created_at": "2026-03-04T11:05:00Z" },
+    { "id": "dep-1004", "service": "checkout", "version": "2.4.1", "previous_version": "2.4.0", "state": "succeeded", "current": true, "created_at": "2026-03-09T13:41:00Z" },
+    { "id": "dep-1005", "service": "checkout", "version": "2.4.0", "previous_version": "2.3.8", "state": "succeeded", "current": false, "created_at": "2026-03-02T09:12:00Z" },
+    { "id": "dep-1006", "service": "search", "version": "0.8.2", "previous_version": "0.8.1", "state": "succeeded", "current": true, "created_at": "2026-03-11T06:38:00Z" },
+    { "id": "dep-1007", "service": "notifications", "version": "1.1.0", "previous_version": "1.0.9", "state": "succeeded", "current": true, "created_at": "2026-03-11T05:28:00Z" },
+    { "id": "dep-1008", "service": "reporting", "version": "4.0.0", "previous_version": "3.9.4", "state": "failed", "current": true, "created_at": "2026-03-11T03:58:00Z" }
+  ]
+}

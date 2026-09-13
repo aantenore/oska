@@ -1,0 +1,20 @@
+{
+  "skill_id": "runbook.deployment_rollback",
+  "default": "deny",
+  "rules": [
+    {
+      "operation": "deployment.rollback",
+      "effect": "allow",
+      "when": { "service.environment": { "ne": "production" } },
+      "max_per_session": 3,
+      "reason": "Outside production a rollback is cheap and easily repeated."
+    },
+    {
+      "operation": "deployment.rollback",
+      "effect": "require_second_approval",
+      "when": { "service.environment": { "eq": "production" } },
+      "max_per_session": 2,
+      "reason": "A production rollback changes what every customer is served."
+    }
+  ]
+}

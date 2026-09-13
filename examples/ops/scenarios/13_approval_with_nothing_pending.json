@@ -1,0 +1,33 @@
+{
+  "name": "13_approval_with_nothing_pending",
+  "description": "An approval offered when nothing is waiting runs nothing and answers with the scope.",
+  "level": 1,
+  "provider_script": [
+    {
+      "purpose": "router classification",
+      "expect_contains": "yes",
+      "response": {
+        "kind": "approve",
+        "runbook_id": null,
+        "confidence": 0.4,
+        "language": "en"
+      }
+    }
+  ],
+  "turns": [
+    {
+      "user": "yes",
+      "expect": {
+        "kind": "approve",
+        "contains": [
+          "not something I can do here",
+          "silence an alert"
+        ],
+        "outcomes": [],
+        "pending": null,
+        "receipts": 0,
+        "verification": null
+      }
+    }
+  ]
+}

@@ -1,0 +1,138 @@
+{
+  "name": "15_learning_lifecycle",
+  "description": "A restart that was carried out and confirmed becomes a candidate procedure, which a named reviewer submits, approves and publishes; a move without an actor is refused.",
+  "level": 3,
+  "provider_script": [
+    {
+      "purpose": "router classification",
+      "expect_contains": "the search service in staging is wedged, restart it",
+      "response": {
+        "kind": "new_task",
+        "runbook_id": "runbook.service_restart",
+        "confidence": 0.9,
+        "language": "en"
+      }
+    },
+    {
+      "purpose": "plan",
+      "expect_contains": "restart it",
+      "response": {
+        "runbook_id": "runbook.service_restart",
+        "operations": [
+          {
+            "integration_id": "integration.container_runtime",
+            "operation": "service.status",
+            "payload": {
+              "service": "search"
+            },
+            "write": false,
+            "purpose": "read the current state"
+          },
+          {
+            "integration_id": "integration.container_runtime",
+            "operation": "service.restart",
+            "payload": {
+              "service": "search"
+            },
+            "write": true,
+            "purpose": "restart the wedged service"
+          }
+        ],
+        "missing": [],
+        "reply_intent": "report the restart of search and whether the read-back confirmed it"
+      }
+    },
+    {
+      "purpose": "reply writing",
+      "expect_contains": "\"kind\": \"receipt\"",
+      "response": {
+        "reply": "search has been restarted and the read-back shows it running again, so the receipt is verified."
+      }
+    }
+  ],
+  "turns": [
+    {
+      "user": "the search service in staging is wedged, restart it",
+      "expect": {
+        "kind": "new_task",
+        "contains": [
+          "approval",
+          "service.restart",
+          "{\"service\":\"search\"}"
+        ],
+        "outcomes": [
+          "read",
+          "approval_pending"
+        ],
+        "pending": "approval",
+        "receipts": 0,
+        "verification": null
+      }
+    },
+    {
+      "user": "yes",
+      "expect": {
+        "kind": "approve",
+        "contains": [
+          "restarted",
+          "verified"
+        ],
+        "outcomes": [
+          "receipt"
+        ],
+        "pending": null,
+        "receipts": 1,
+        "verification": "verified"
+      }
+    }
+  ],
+  "learning": {
+    "draft_from_session": true,
+    "provider_script": [
+      {
+        "purpose": "drafting the candidate procedure",
+        "expect_contains": "integration.container_runtime service.restart",
+        "response": {
+          "description": "Restarts one wedged service and confirms from its status that it came back up.",
+          "triggers": [
+            "restart a wedged service",
+            "bounce a service that stopped responding",
+            "the service is stuck, restart it"
+          ],
+          "action": "restart a wedged service",
+          "purpose": "Brings a service that stopped answering back into a running state, and reports what the status read afterwards showed.",
+          "preconditions": "- The service name is known.\n- The service is not in the middle of a deployment.",
+          "steps": "1. Read the current status of the service.\n2. Call `service.restart` with the service name.\n3. Read the status back and compare it with what was expected.",
+          "verification": "The status read after the restart reports the service running. The response to the restart itself is not evidence; if the read-back disagrees, report the restart as unverified and do not repeat it.",
+          "rollback": "A restart cannot be undone. If the service does not come back, roll the deployment back or raise an incident."
+        }
+      }
+    ],
+    "expect_refused": {
+      "to": "submitted",
+      "by": ""
+    },
+    "transitions": [
+      {
+        "to": "submitted",
+        "by": "s.reyes",
+        "note": "recorded from a session that ran it once"
+      },
+      {
+        "to": "approved",
+        "by": "s.reyes",
+        "note": "wording and policy read"
+      },
+      {
+        "to": "published",
+        "by": "s.reyes",
+        "note": "published as a new version"
+      }
+    ],
+    "expect": {
+      "state": "published",
+      "published_id": "runbook.service_restart",
+      "quality_passed": true
+    }
+  }
+}
