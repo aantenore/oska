@@ -7,7 +7,10 @@ there, not of moving anything.
 
 Work through five steps, in order. Each is testable on its own and useful
 before the next is done. The fragments below are drawn from the reference
-domain under `examples/ops/`: services, deployments, incidents and alerts.
+domain under `examples/ops/`: services, deployments, incidents and alerts. The
+second domain under `examples/access/` is the smaller template to copy from —
+three entities, three integrations, four procedures and a composite, which is
+about the least that still exercises the whole write path.
 
 ## 1. Declare the ontology
 

@@ -2,7 +2,10 @@
 
 `--skills` is read the same way everywhere: it replaces the catalog roots of
 the settings, so a command that builds a registry and a command that builds a
-whole runtime read the same catalog. Expected failures leave one line on
+whole runtime read the same catalog. `--connectors` does the same for the file
+that binds the declared integrations, because a catalog and the bindings of its
+operations travel together: a command pointed at one domain's skills has to be
+pointed at that domain's connectors too. Expected failures leave one line on
 standard error and a non-zero status; nothing prints a traceback.
 """
 
@@ -20,6 +23,7 @@ from opsdeck.planner.provider import ModelProvider
 from opsdeck.services import Services, build_services
 
 __all__ = [
+    "ConnectorsOption",
     "JsonOption",
     "SchemasOption",
     "SessionOption",
@@ -33,6 +37,10 @@ __all__ = [
 SkillsOption = Annotated[
     list[Path] | None,
     typer.Option("--skills", help="Catalog root. Repeat for more than one."),
+]
+ConnectorsOption = Annotated[
+    Path | None,
+    typer.Option("--connectors", help="File binding the declared integrations to connectors."),
 ]
 SchemasOption = Annotated[
     Path | None,
@@ -48,12 +56,18 @@ JsonOption = Annotated[
 ]
 
 
-def settings_for(skills: list[Path] | None = None) -> Settings:
-    """Settings from the environment, with the catalog roots the caller named."""
+def settings_for(
+    skills: list[Path] | None = None,
+    connectors: Path | None = None,
+) -> Settings:
+    """Settings from the environment, with the catalog and bindings the caller named."""
     settings = load_settings()
+    update: dict[str, object] = {}
     if skills:
-        return settings.model_copy(update={"skills_roots": list(skills)})
-    return settings
+        update["skills_roots"] = list(skills)
+    if connectors is not None:
+        update["connectors_config"] = Path(connectors)
+    return settings.model_copy(update=update) if update else settings
 
 
 def registry_for(settings: Settings) -> SkillRegistry:

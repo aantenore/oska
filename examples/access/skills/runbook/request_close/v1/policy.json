@@ -1,0 +1,12 @@
+{
+  "skill_id": "runbook.request_close",
+  "default": "deny",
+  "rules": [
+    {
+      "operation": "request.close",
+      "effect": "allow",
+      "max_per_session": 5,
+      "reason": "Closing a request records what was already done and reaches nothing outside the tracker."
+    }
+  ]
+}

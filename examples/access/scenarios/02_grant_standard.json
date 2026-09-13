@@ -1,0 +1,174 @@
+{
+  "name": "02_grant_standard",
+  "description": "A membership in a standard group: exact-payload approval, verified read-back, and a second identical request that the ledger stops.",
+  "level": 2,
+  "provider_script": [
+    {
+      "purpose": "router classification",
+      "expect_contains": "tnovak started on the support rota this week",
+      "response": {
+        "kind": "new_task",
+        "runbook_id": "runbook.access_grant",
+        "confidence": 0.9,
+        "language": "en"
+      }
+    },
+    {
+      "purpose": "plan",
+      "expect_contains": "support desk group",
+      "response": {
+        "runbook_id": "runbook.access_grant",
+        "operations": [
+          {
+            "integration_id": "integration.directory",
+            "operation": "group.get",
+            "payload": {
+              "group": "support-desk"
+            },
+            "write": false,
+            "purpose": "read how much reach the group carries"
+          },
+          {
+            "integration_id": "integration.directory",
+            "operation": "user.groups",
+            "payload": {
+              "username": "tnovak"
+            },
+            "write": false,
+            "purpose": "read what the account already belongs to"
+          },
+          {
+            "integration_id": "integration.access_control",
+            "operation": "membership.grant",
+            "payload": {
+              "username": "tnovak",
+              "group": "support-desk"
+            },
+            "write": true,
+            "purpose": "put the account into the group"
+          }
+        ],
+        "missing": [],
+        "reply_intent": "report whether tnovak is now in support-desk and whether the read-back confirmed it"
+      }
+    },
+    {
+      "purpose": "reply writing",
+      "expect_contains": "\"kind\": \"receipt\"",
+      "response": {
+        "reply": "tnovak is now in support-desk, and reading the membership back shows it active for that account and that group, so the receipt is verified."
+      }
+    },
+    {
+      "purpose": "router classification",
+      "expect_contains": "add tnovak to the support desk group as well",
+      "response": {
+        "kind": "new_task",
+        "runbook_id": "runbook.access_grant",
+        "confidence": 0.9,
+        "language": "en"
+      }
+    },
+    {
+      "purpose": "plan",
+      "expect_contains": "as well, I am not sure the first one went through",
+      "response": {
+        "runbook_id": "runbook.access_grant",
+        "operations": [
+          {
+            "integration_id": "integration.directory",
+            "operation": "group.get",
+            "payload": {
+              "group": "support-desk"
+            },
+            "write": false,
+            "purpose": "read the group again"
+          },
+          {
+            "integration_id": "integration.directory",
+            "operation": "user.groups",
+            "payload": {
+              "username": "tnovak"
+            },
+            "write": false,
+            "purpose": "read what the account belongs to now"
+          },
+          {
+            "integration_id": "integration.access_control",
+            "operation": "membership.grant",
+            "payload": {
+              "username": "tnovak",
+              "group": "support-desk"
+            },
+            "write": true,
+            "purpose": "grant the same membership again"
+          }
+        ],
+        "missing": [],
+        "reply_intent": "report that this membership was already granted in this session"
+      }
+    },
+    {
+      "purpose": "reply writing",
+      "expect_contains": "\"kind\": \"ledger_hit\"",
+      "response": {
+        "reply": "Nothing was sent again: this session already granted tnovak the support-desk membership, and the receipt from that grant still stands."
+      }
+    }
+  ],
+  "turns": [
+    {
+      "user": "tnovak started on the support rota this week and cannot see the shared queue, put him in the support desk group",
+      "expect": {
+        "kind": "new_task",
+        "contains": [
+          "approval",
+          "membership.grant",
+          "{\"group\":\"support-desk\",\"username\":\"tnovak\"}"
+        ],
+        "outcomes": [
+          "read",
+          "read",
+          "approval_pending"
+        ],
+        "pending": "approval",
+        "receipts": 0,
+        "verification": null
+      }
+    },
+    {
+      "user": "yes",
+      "expect": {
+        "kind": "approve",
+        "contains": [
+          "membership.grant",
+          "verified"
+        ],
+        "outcomes": [
+          "receipt"
+        ],
+        "pending": null,
+        "receipts": 1,
+        "verification": "verified"
+      }
+    },
+    {
+      "user": "add tnovak to the support desk group as well, I am not sure the first one went through",
+      "expect": {
+        "kind": "new_task",
+        "contains": [
+          "already granted tnovak",
+          "was already done in this session"
+        ],
+        "outcomes": [
+          "read",
+          "read",
+          "ledger_hit"
+        ],
+        "pending": null,
+        "receipts": 1,
+        "verification": "verified"
+      }
+    }
+  ]
+}

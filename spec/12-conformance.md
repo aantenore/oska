@@ -189,6 +189,22 @@ reply calls a write verified while the receipt it names says otherwise.
 
 C17 belongs to level 2: it proves `OSKA-GOV-7`, which level 2 requires.
 
+## The reference suites
+
+The reference implementation runs two suites, over two catalogues that share no
+vocabulary: `examples/ops/scenarios/` over an operational domain of services,
+deployments, incidents and alerts, and `examples/access/scenarios/` over an
+access management domain of accounts, groups and requests. The reference
+scenario named for each category above is the one in the operational suite.
+
+A level is attained per suite, because a level is a statement about a
+catalogue and the runtime that serves it, not about the package alone. The
+operational suite attains level 3: it runs all seventeen categories, C15 and
+C16 included. The access suite attains level 2: it runs C1, C2 twice, C3, C10
+and C12, and declares no scenario of level 3, so it claims none. A second domain
+that runs no evolution scenario does not lower the level the first attains, and
+does not inherit it either.
+
 ## Checklist
 
 Every requirement, the module that satisfies it in the reference

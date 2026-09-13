@@ -1,0 +1,47 @@
+{
+  "users": [
+    { "username": "amoreau", "display_name": "Alba Moreau", "department": "finance", "status": "active", "groups": ["finance-reports"] },
+    { "username": "rsilva", "display_name": "Rui Silva", "department": "support", "status": "active", "groups": ["support-desk"] },
+    { "username": "jokafor", "display_name": "Joy Okafor", "department": "engineering", "status": "active", "groups": ["release-managers", "directory-readers"] },
+    { "username": "lhaddad", "display_name": "Leila Haddad", "department": "finance", "status": "suspended", "groups": ["finance-reports", "billing-admins"] },
+    { "username": "tnovak", "display_name": "Tomas Novak", "department": "support", "status": "active", "groups": [] },
+    { "username": "mfiore", "display_name": "Marco Fiore", "department": "engineering", "status": "active", "groups": ["directory-readers"] }
+  ],
+  "groups": [
+    {
+      "name": "finance-reports",
+      "description": "Read the monthly reporting workbooks and the figures behind them.",
+      "sensitivity": "standard",
+      "owner": "amoreau",
+      "members": ["amoreau", "lhaddad"]
+    },
+    {
+      "name": "support-desk",
+      "description": "Work the shared support queue and answer on behalf of the team.",
+      "sensitivity": "standard",
+      "owner": "rsilva",
+      "members": ["rsilva"]
+    },
+    {
+      "name": "directory-readers",
+      "description": "Look up accounts and group membership without changing either.",
+      "sensitivity": "standard",
+      "owner": "mfiore",
+      "members": ["jokafor", "mfiore"]
+    },
+    {
+      "name": "release-managers",
+      "description": "Approve and publish releases, and change what other teams ship.",
+      "sensitivity": "privileged",
+      "owner": "jokafor",
+      "members": ["jokafor"]
+    },
+    {
+      "name": "billing-admins",
+      "description": "Change billing records and read every payment the company took.",
+      "sensitivity": "privileged",
+      "owner": "amoreau",
+      "members": ["lhaddad"]
+    }
+  ]
+}

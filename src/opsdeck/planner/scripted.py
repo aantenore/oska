@@ -84,14 +84,24 @@ class ScriptedModelProvider:
         return [self._vector(text) for text in texts]
 
     def _vector(self, text: str) -> list[float]:
-        vector = [0.0] * self._dimensions
-        for token in _TOKEN_RE.findall(text.lower()):
-            digest = hashlib.sha1(token.encode("utf-8"), usedforsecurity=False).digest()
-            vector[int.from_bytes(digest, "big") % self._dimensions] += 1.0
-        norm = sum(value * value for value in vector) ** 0.5
-        if norm == 0.0:
-            return vector
-        return [value / norm for value in vector]
+        return hash_bag_vector(text, self._dimensions)
+
+
+def hash_bag_vector(text: str, dimensions: int = EMBEDDING_DIMENSIONS) -> list[float]:
+    """A deterministic unit vector: hashed tokens counted into fixed buckets.
+
+    Cosine similarity over these vectors behaves like token overlap, which is
+    enough to rank a catalog offline. Shared with the replay provider, so a text
+    a cassette never saw is embedded the same way everywhere.
+    """
+    vector = [0.0] * dimensions
+    for token in _TOKEN_RE.findall(text.lower()):
+        digest = hashlib.sha1(token.encode("utf-8"), usedforsecurity=False).digest()
+        vector[int.from_bytes(digest, "big") % dimensions] += 1.0
+    norm = sum(value * value for value in vector) ** 0.5
+    if norm == 0.0:
+        return vector
+    return [value / norm for value in vector]
 
 
 def _read_script(script: list[dict] | Path | str) -> list[dict]:

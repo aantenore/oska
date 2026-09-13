@@ -6,10 +6,12 @@ what the runtime says about itself (the scope, the question it asks, the exact
 payload it is asking approval for) is never handed to a model, because that
 text has to match the declarations word for word.
 
-What the turn wrote is in the same category. A reply the model phrased carries
-the deterministic receipt line of every write it performed or replayed,
+What the turn wrote is in the same category. Every reply carries the
+deterministic receipt line of every write the turn performed or replayed,
 appended after its own text, so the rule that a reply states writes only from
-receipts holds by construction rather than by instruction.
+receipts holds by construction rather than by instruction. That includes a turn
+that wrote and then stopped for something else: the approval it asks for next
+does not excuse it from naming what it has already done.
 """
 
 from __future__ import annotations
@@ -43,6 +45,10 @@ _NO_PLANNER = (
     "Planning a procedure needs a model provider, and none is configured. "
     "I can still tell you what this installation can do."
 )
+# The only reply whose own text already lists every outcome of the turn, receipts
+# included, so it is the only one nothing is appended to.
+_STATES_ITS_OUTCOMES: tuple[str, ...] = ("outcomes",)
+
 _APPROVAL_HEAD = "This changes something, so it needs your approval first."
 _APPROVAL_TAIL = "Reply yes to approve it, or no to leave it alone."
 _FIRST_OF_TWO = "Two approvals are required: this is approval 1 of 2."
@@ -80,7 +86,10 @@ class ReplyBuilder:
             written = self._write(state, outcomes, offered, reply_intent, language)
             if written:
                 return "\n".join([written, *receipt_lines(outcomes)])
-        return self.template(kind, outcomes, pending, offered)
+        text = self.template(kind, outcomes, pending, offered)
+        if kind in _STATES_ITS_OUTCOMES:
+            return text
+        return "\n".join([text, *receipt_lines(outcomes)])
 
     def template(
         self,

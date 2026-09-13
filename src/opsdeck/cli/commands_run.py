@@ -30,6 +30,7 @@ from opsdeck.contracts.receipt import WriteReceipt
 from opsdeck.engine.engine import Engine
 from opsdeck.planner.openai_compatible import OpenAICompatibleProvider
 from opsdeck.planner.provider import ModelProvider, ModelProviderError
+from opsdeck.planner.recording import RecordingProvider, ReplayProvider
 from opsdeck.planner.scripted import ScriptedModelProvider
 
 __all__ = ["receipts", "register", "run"]
@@ -60,6 +61,14 @@ TextOption = Annotated[
     str | None,
     typer.Option("--text", help="One turn. Without it the command reads standard input."),
 ]
+RecordOption = Annotated[
+    Path | None,
+    typer.Option("--record", help="Write every model call to this cassette, appending to it."),
+]
+ReplayOption = Annotated[
+    Path | None,
+    typer.Option("--replay", help="Answer from this cassette instead of a provider."),
+]
 
 
 def register(app: typer.Typer) -> None:
@@ -73,11 +82,14 @@ def run(
     text: TextOption = None,
     provider: ProviderOption = None,
     script: ScriptOption = None,
+    record: RecordOption = None,
+    replay: ReplayOption = None,
     skills: SkillsOption = None,
 ) -> None:
     """Run one turn, or read turns from standard input until it ends."""
     settings = settings_for(skills)
-    engine = services_for(settings, provider=_provider(settings, provider, script)).engine
+    chosen = _provider(settings, provider, script, record, replay)
+    engine = services_for(settings, provider=chosen).engine
     if text is not None:
         _turn(engine, session, text)
         return
@@ -99,6 +111,32 @@ def receipts(
 
 
 def _provider(
+    settings: Settings,
+    chosen: Provider | None,
+    script: Path | None,
+    record: Path | None = None,
+    replay: Path | None = None,
+) -> ModelProvider | None:
+    """The provider the run uses: replayed, recorded around, or as configured."""
+    if record is not None and replay is not None:
+        fail("--record writes a cassette and --replay reads one; use one of them")
+    if replay is not None:
+        try:
+            return ReplayProvider(replay)
+        except ModelProviderError as exc:
+            fail(f"the cassette could not be read: {exc}")
+    inner = _configured_provider(settings, chosen, script)
+    if record is None:
+        return inner
+    if inner is None:
+        fail("--record needs a provider to record; the provider in force is none")
+    try:
+        return RecordingProvider(inner, record)
+    except (OSError, ModelProviderError) as exc:
+        fail(f"the cassette could not be opened: {exc}")
+
+
+def _configured_provider(
     settings: Settings, chosen: Provider | None, script: Path | None
 ) -> ModelProvider | None:
     """The provider the flags ask for, else the one the settings name, else none."""

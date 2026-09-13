@@ -1,0 +1,164 @@
+{
+  "name": "04_revoke_repeated",
+  "description": "A membership taken away, verified by the read-back; asking for the same revocation again answers from the receipt instead of sending it.",
+  "level": 2,
+  "provider_script": [
+    {
+      "purpose": "router classification",
+      "expect_contains": "lhaddad left on Friday",
+      "response": {
+        "kind": "new_task",
+        "runbook_id": "runbook.access_revoke",
+        "confidence": 0.9,
+        "language": "en"
+      }
+    },
+    {
+      "purpose": "plan",
+      "expect_contains": "billing admins",
+      "response": {
+        "runbook_id": "runbook.access_revoke",
+        "operations": [
+          {
+            "integration_id": "integration.directory",
+            "operation": "user.groups",
+            "payload": {
+              "username": "lhaddad"
+            },
+            "write": false,
+            "purpose": "confirm the membership is held"
+          },
+          {
+            "integration_id": "integration.directory",
+            "operation": "group.get",
+            "payload": {
+              "group": "billing-admins"
+            },
+            "write": false,
+            "purpose": "read what the group reaches"
+          },
+          {
+            "integration_id": "integration.access_control",
+            "operation": "membership.revoke",
+            "payload": {
+              "username": "lhaddad",
+              "group": "billing-admins"
+            },
+            "write": true,
+            "purpose": "take the account out of the group"
+          }
+        ],
+        "missing": [],
+        "reply_intent": "report whether lhaddad is out of billing-admins and whether the read-back confirmed it"
+      }
+    },
+    {
+      "purpose": "reply writing",
+      "expect_contains": "\"kind\": \"receipt\"",
+      "response": {
+        "reply": "lhaddad is out of billing-admins, and reading the membership back shows it revoked for that account and that group, so the receipt is verified."
+      }
+    },
+    {
+      "purpose": "router classification",
+      "expect_contains": "take lhaddad out of billing admins again",
+      "response": {
+        "kind": "new_task",
+        "runbook_id": "runbook.access_revoke",
+        "confidence": 0.9,
+        "language": "en"
+      }
+    },
+    {
+      "purpose": "plan",
+      "expect_contains": "nobody has confirmed it to me",
+      "response": {
+        "runbook_id": "runbook.access_revoke",
+        "operations": [
+          {
+            "integration_id": "integration.directory",
+            "operation": "user.groups",
+            "payload": {
+              "username": "lhaddad"
+            },
+            "write": false,
+            "purpose": "read what the account belongs to now"
+          },
+          {
+            "integration_id": "integration.access_control",
+            "operation": "membership.revoke",
+            "payload": {
+              "username": "lhaddad",
+              "group": "billing-admins"
+            },
+            "write": true,
+            "purpose": "revoke the same membership again"
+          }
+        ],
+        "missing": [],
+        "reply_intent": "report that this revocation was already done in this session"
+      }
+    },
+    {
+      "purpose": "reply writing",
+      "expect_contains": "\"kind\": \"ledger_hit\"",
+      "response": {
+        "reply": "Nothing was sent again: this session already revoked the billing-admins membership of lhaddad, and the receipt from that revocation still stands."
+      }
+    }
+  ],
+  "turns": [
+    {
+      "user": "lhaddad left on Friday and her account is suspended, take her out of the billing admins group",
+      "expect": {
+        "kind": "new_task",
+        "contains": [
+          "approval",
+          "membership.revoke",
+          "{\"group\":\"billing-admins\",\"username\":\"lhaddad\"}"
+        ],
+        "outcomes": [
+          "read",
+          "read",
+          "approval_pending"
+        ],
+        "pending": "approval",
+        "receipts": 0,
+        "verification": null
+      }
+    },
+    {
+      "user": "yes",
+      "expect": {
+        "kind": "approve",
+        "contains": [
+          "membership.revoke",
+          "verified"
+        ],
+        "outcomes": [
+          "receipt"
+        ],
+        "pending": null,
+        "receipts": 1,
+        "verification": "verified"
+      }
+    },
+    {
+      "user": "take lhaddad out of billing admins again, nobody has confirmed it to me",
+      "expect": {
+        "kind": "new_task",
+        "contains": [
+          "already revoked",
+          "was already done in this session"
+        ],
+        "outcomes": [
+          "read",
+          "ledger_hit"
+        ],
+        "pending": null,
+        "receipts": 1,
+        "verification": "verified"
+      }
+    }
+  ]
+}

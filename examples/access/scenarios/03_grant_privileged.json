@@ -1,0 +1,115 @@
+{
+  "name": "03_grant_privileged",
+  "description": "A membership in a privileged group needs two approvals; the first one only records that it was given.",
+  "level": 2,
+  "provider_script": [
+    {
+      "purpose": "router classification",
+      "expect_contains": "mfiore is taking over the release rota",
+      "response": {
+        "kind": "new_task",
+        "runbook_id": "runbook.access_grant",
+        "confidence": 0.9,
+        "language": "en"
+      }
+    },
+    {
+      "purpose": "plan",
+      "expect_contains": "release managers",
+      "response": {
+        "runbook_id": "runbook.access_grant",
+        "operations": [
+          {
+            "integration_id": "integration.directory",
+            "operation": "group.get",
+            "payload": {
+              "group": "release-managers"
+            },
+            "write": false,
+            "purpose": "read how much reach the group carries"
+          },
+          {
+            "integration_id": "integration.directory",
+            "operation": "user.groups",
+            "payload": {
+              "username": "mfiore"
+            },
+            "write": false,
+            "purpose": "read what the account already belongs to"
+          },
+          {
+            "integration_id": "integration.access_control",
+            "operation": "membership.grant",
+            "payload": {
+              "username": "mfiore",
+              "group": "release-managers"
+            },
+            "write": true,
+            "purpose": "put the account into the privileged group"
+          }
+        ],
+        "missing": [],
+        "reply_intent": "report whether mfiore is now in release-managers and whether the read-back confirmed it"
+      }
+    },
+    {
+      "purpose": "reply writing",
+      "expect_contains": "\"kind\": \"receipt\"",
+      "response": {
+        "reply": "mfiore is now in release-managers, and reading the membership back shows it active for that account and that group, so the receipt is verified."
+      }
+    }
+  ],
+  "turns": [
+    {
+      "user": "mfiore is taking over the release rota from the next cycle, he needs to be in the release managers group",
+      "expect": {
+        "kind": "new_task",
+        "contains": [
+          "membership.grant",
+          "{\"group\":\"release-managers\",\"username\":\"mfiore\"}",
+          "1 of 2"
+        ],
+        "outcomes": [
+          "read",
+          "read",
+          "approval_pending"
+        ],
+        "pending": "approval",
+        "receipts": 0,
+        "verification": null
+      }
+    },
+    {
+      "user": "yes",
+      "expect": {
+        "kind": "approve",
+        "contains": [
+          "1 of 2 approvals recorded"
+        ],
+        "outcomes": [
+          "approval_pending"
+        ],
+        "pending": "approval",
+        "receipts": 0,
+        "verification": null
+      }
+    },
+    {
+      "user": "yes",
+      "expect": {
+        "kind": "approve",
+        "contains": [
+          "membership.grant",
+          "verified"
+        ],
+        "outcomes": [
+          "receipt"
+        ],
+        "pending": null,
+        "receipts": 1,
+        "verification": "verified"
+      }
+    }
+  ]
+}

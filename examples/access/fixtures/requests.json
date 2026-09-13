@@ -1,0 +1,32 @@
+{
+  "access_requests": [
+    {
+      "id": "req-4001",
+      "user": "tnovak",
+      "group": "support-desk",
+      "state": "open",
+      "justification": "Started on the support rota this week and cannot see the shared queue."
+    },
+    {
+      "id": "req-4002",
+      "user": "mfiore",
+      "group": "release-managers",
+      "state": "open",
+      "justification": "Taking over the release rota from the next cycle."
+    },
+    {
+      "id": "req-4003",
+      "user": "amoreau",
+      "group": "finance-reports",
+      "state": "granted",
+      "justification": "Owns the monthly close and needs the reporting workbooks."
+    },
+    {
+      "id": "req-4004",
+      "user": "rsilva",
+      "group": "directory-readers",
+      "state": "open",
+      "justification": "Looks up accounts several times a day and asks someone else each time."
+    }
+  ]
+}

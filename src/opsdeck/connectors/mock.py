@@ -7,7 +7,8 @@ system behind it. The mapping keys are:
 `collection`      the array in the fixture to work on.
 `match`           the record field an identifier is matched against.
 `payload_field`   the payload field carrying that identifier.
-`where`           extra equality conditions the record must meet.
+`where`           extra equality conditions the record must meet, each a
+                  literal or `$field` taken from the payload.
 `filter`          payload fields that narrow a list.
 `field_map`       record field names for payload fields that are spelled
                   differently.
@@ -158,14 +159,14 @@ class MockConnector:
         if source not in payload:
             raise ConnectorError(f"the payload carries no field {source}")
         wanted = payload[source]
-        where = mapping.get("where") or {}
+        where = _conditions(mapping, payload)
         for record in records:
             if record.get(field) == wanted and _matches(record, where):
                 return record
         raise _RecordMissing(_NOT_FOUND)
 
     def _select(self, records: list[dict], mapping: dict, payload: dict) -> list[dict]:
-        where = mapping.get("where") or {}
+        where = _conditions(mapping, payload)
         field_map = mapping.get("field_map") or {}
         wanted = {
             field_map.get(name, name): payload[name]
@@ -210,6 +211,15 @@ class MockConnector:
                 record[field] = _number(record.get(field, 0)) + int(raw)
             else:
                 record[field] = _resolve(raw, payload)
+
+
+def _conditions(mapping: dict, payload: dict) -> dict:
+    """The `where` conditions of a mapping, with `$field` read from the payload.
+
+    A binding that has to pin a record on more than the one field it matches on
+    says so here, the way `set` and `append` name a payload field.
+    """
+    return {field: _resolve(raw, payload) for field, raw in (mapping.get("where") or {}).items()}
 
 
 def _matches(record: dict, conditions: dict) -> bool:

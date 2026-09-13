@@ -221,6 +221,79 @@ second policy evaluation, and the learning lifecycle.
    write is level 1. A scenario with a write and its governance is level 2. Only
    a scenario with a learning block is level 3.
 
+## Recording a real session
+
+A script written by hand states what you believe the model will answer. A
+cassette states what it answered. Recording one is how the repair loop and the
+reply constraints get exercised against a real endpoint once, and then replayed
+offline for good.
+
+Point the settings at the endpoint first:
+
+```sh
+export OPSDECK_MODEL_BASE_URL=...
+export OPSDECK_MODEL_API_KEY=...
+export OPSDECK_MODEL_CHAT=...
+export OPSDECK_MODEL_EMBEDDING=...
+```
+
+Then run the turns, recording every call:
+
+```sh
+opsdeck run --provider openai_compatible \
+  --session restart --record cassettes/restart.json \
+  --text "the search service in staging needs a restart, it is wedged again"
+```
+
+A session is more than one turn, and each `run` is a separate process, so the
+approval is a second command with the same `--session` and the same `--record`.
+The cassette is read back and added to, so the two turns end up in one file, in
+order:
+
+```sh
+opsdeck run --provider openai_compatible \
+  --session restart --record cassettes/restart.json --text "yes"
+```
+
+`--record` wraps whichever provider is in force, so it also records a scripted
+run; what it cannot do is record nothing, and `--record` with the provider
+`none` stops with that message. The file is rewritten after every call, so a run
+that dies half way keeps the steps it already had.
+
+Then seed a scenario with it:
+
+```sh
+opsdeck cassette to-script cassettes/restart.json --out /tmp/script.json
+```
+
+That keeps the `purpose`, the `expect_contains` and the `response` of every
+completion and drops the rest — the requests and the embeddings, which a
+scenario does not read. Paste the result in as the `provider_script` of a
+scenario file and write the `turns` around it.
+
+Review the `expect_contains` before you commit the scenario. A recording sets
+each one to the first sixty characters of the last user message of that call,
+which is right for a classification and for a plan but arbitrary for a reply,
+where the last message is the outcome brief. Replace those with the fragment
+that says what the reply is written from — `"kind": "receipt"`,
+`"kind": "ledger_hit"` — as described below. An `expect_contains` you did not
+choose asserts that the prompt has not changed; one you chose asserts what you
+meant.
+
+## Replaying
+
+```sh
+opsdeck run --replay cassettes/restart.json --session restart --text "..."
+```
+
+Replaying needs no endpoint and no key. Completions are spent in the recorded
+order and checked against `expect_contains` exactly as a scenario script is; a
+request the cassette did not hold, or one call too many, stops with a message
+naming the cassette. Embeddings are looked up by text, and a text the recording
+never saw falls back to the same deterministic hash bag the scripted provider
+uses, so a catalog that grew since the recording still ranks instead of failing.
+`--record` and `--replay` are not used together.
+
 ## Keeping the scripts honest
 
 A scripted provider is a recording, and a recording can drift out of step with

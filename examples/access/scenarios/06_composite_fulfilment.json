@@ -1,0 +1,171 @@
+{
+  "name": "06_composite_fulfilment",
+  "description": "A composite runs its procedures in order; each write inside one still stops for its own approval, and the request is closed only after the membership reads back.",
+  "level": 2,
+  "provider_script": [
+    {
+      "purpose": "router classification",
+      "expect_contains": "settle request req-4001",
+      "response": {
+        "kind": "new_task",
+        "runbook_id": "composite.request_fulfilment",
+        "confidence": 0.9,
+        "language": "en"
+      }
+    },
+    {
+      "purpose": "plan step 1, access check",
+      "expect_contains": "settle request req-4001",
+      "response": {
+        "runbook_id": "runbook.access_check",
+        "operations": [
+          {
+            "integration_id": "integration.directory",
+            "operation": "user.get",
+            "payload": {
+              "username": "tnovak"
+            },
+            "write": false,
+            "purpose": "read the account the request names"
+          },
+          {
+            "integration_id": "integration.directory",
+            "operation": "user.groups",
+            "payload": {
+              "username": "tnovak"
+            },
+            "write": false,
+            "purpose": "read what the account already belongs to"
+          }
+        ],
+        "missing": [],
+        "reply_intent": "report what tnovak already has"
+      }
+    },
+    {
+      "purpose": "plan step 2, access grant",
+      "expect_contains": "settle request req-4001",
+      "response": {
+        "runbook_id": "runbook.access_grant",
+        "operations": [
+          {
+            "integration_id": "integration.directory",
+            "operation": "group.get",
+            "payload": {
+              "group": "support-desk"
+            },
+            "write": false,
+            "purpose": "read how much reach the group carries"
+          },
+          {
+            "integration_id": "integration.access_control",
+            "operation": "membership.grant",
+            "payload": {
+              "username": "tnovak",
+              "group": "support-desk"
+            },
+            "write": true,
+            "purpose": "grant the membership the request asks for"
+          }
+        ],
+        "missing": [],
+        "reply_intent": "report the support-desk membership of tnovak"
+      }
+    },
+    {
+      "purpose": "plan step 3, request close",
+      "expect_contains": "yes",
+      "response": {
+        "runbook_id": "runbook.request_close",
+        "operations": [
+          {
+            "integration_id": "integration.request_tracker",
+            "operation": "request.get",
+            "payload": {
+              "id": "req-4001"
+            },
+            "write": false,
+            "purpose": "read the request before writing to it"
+          },
+          {
+            "integration_id": "integration.request_tracker",
+            "operation": "request.close",
+            "payload": {
+              "id": "req-4001",
+              "state": "granted"
+            },
+            "write": true,
+            "purpose": "record the outcome that was reached"
+          }
+        ],
+        "missing": [],
+        "reply_intent": "report the outcome recorded on req-4001"
+      }
+    },
+    {
+      "purpose": "reply writing",
+      "expect_contains": "\"kind\": \"receipt\"",
+      "response": {
+        "reply": "req-4001 is closed as granted, and reading the request back shows that outcome on it."
+      }
+    }
+  ],
+  "turns": [
+    {
+      "user": "settle request req-4001, it has been open since Monday and the person is on the rota already",
+      "expect": {
+        "kind": "new_task",
+        "contains": [
+          "membership.grant",
+          "{\"group\":\"support-desk\",\"username\":\"tnovak\"}"
+        ],
+        "outcomes": [
+          "read",
+          "read",
+          "read",
+          "approval_pending"
+        ],
+        "pending": "approval",
+        "receipts": 0,
+        "verification": null
+      }
+    },
+    {
+      "user": "yes",
+      "expect": {
+        "kind": "approve",
+        "contains": [
+          "membership.grant",
+          "verified",
+          "request.close",
+          "{\"id\":\"req-4001\",\"state\":\"granted\"}"
+        ],
+        "outcomes": [
+          "receipt",
+          "read",
+          "approval_pending"
+        ],
+        "pending": "approval",
+        "receipts": 1,
+        "verification": "verified"
+      }
+    },
+    {
+      "user": "yes",
+      "expect": {
+        "kind": "approve",
+        "contains": [
+          "req-4001",
+          "request.close",
+          "verified"
+        ],
+        "outcomes": [
+          "receipt"
+        ],
+        "pending": null,
+        "receipts": 2,
+        "verification": "verified"
+      }
+    }
+  ]
+}

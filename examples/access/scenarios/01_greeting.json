@@ -1,0 +1,25 @@
+{
+  "name": "01_greeting",
+  "description": "An opening greeting is answered from this catalogue alone, with no model call and no vocabulary of its own.",
+  "level": 1,
+  "provider_script": [],
+  "turns": [
+    {
+      "user": "hello",
+      "expect": {
+        "kind": "greeting",
+        "contains": [
+          "I can",
+          "check what access a person has",
+          "add a person to a group",
+          "remove a person from a group",
+          "settle an open access request end to end"
+        ],
+        "outcomes": [],
+        "pending": null,
+        "receipts": 0,
+        "verification": null
+      }
+    }
+  ]
+}

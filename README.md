@@ -1,4 +1,4 @@
-# opsdeck
+# OSKA
 
 OSKA is a layered architectural standard for systems in which a language model
 acts on real systems on behalf of a person: ontology first, skill driven, with
@@ -7,7 +7,8 @@ lower. `opsdeck` is its reference implementation, a Python package that runs a
 catalog of declared skills and nothing else. The catalog under
 `examples/ops/` is the reference domain: a small estate of services with their
 deployments, incidents and alerts, and the procedures an on-call engineer runs
-against them. The standard is in [`spec/`](spec/README.md); the implementation
+against them. A second catalog under `examples/access/` runs the same core over
+a different vocabulary. The standard is in [`spec/`](spec/README.md); the implementation
 is in `src/opsdeck/`; the design notes for each package are in
 [`docs/`](docs/).
 
@@ -176,6 +177,7 @@ configs/          runtime.json and model.json: thresholds, paths, provider acces
 schemas/          JSON schemas for skills, policies and proposals
 src/opsdeck/      the packages listed in the layer table
 examples/ops/     the reference domain: skills, fixtures, connectors, scenarios
+examples/access/  the second domain, same shape and a smaller catalog
 spec/             the OSKA standard
 docs/             how this implementation works
 tests/            unit tests and the scenario suite
@@ -186,13 +188,39 @@ domain is declared, [`docs/skill-contract.md`](docs/skill-contract.md) for the
 file format, and [`docs/adopting.md`](docs/adopting.md) to put this on top of a
 system of your own.
 
+## A second domain
+
+`examples/access/` declares access management: accounts, groups and the
+requests to be put into them, with membership granted and taken away under a
+policy that turns on whether a group is privileged. It shares no vocabulary with
+the operational catalog and no code with it either — the package imports
+nothing from either directory. It is there to make the claim testable rather
+than stated: the same runtime, pointed at another catalog and another connector
+binding, greets from that catalog's own words, stops its writes for approval,
+reads them back and refuses the fourth grant of a session because that catalog's
+policy says three.
+
+```sh
+opsdeck capabilities --skills examples/access/skills
+opsdeck conform --skills examples/access/skills \
+  --scenarios examples/access/scenarios \
+  --connectors examples/access/configs/connectors.json
+```
+
+Six scenarios, conformance level 2: the evolution lifecycle of level 3 is
+exercised once, by the operational suite, because it is a property of the
+runtime and not of a domain. `examples/access/README.md` is the shorter of the
+two domain notes and the better one to copy.
+
 ## Status
 
 Version 0.1. Draft, private, not published anywhere. The interfaces are stable
-enough to build a second domain against and not stable enough to depend on. The
-scenario suite under `examples/ops/scenarios/` reaches OSKA conformance level 3
-(Adaptive): every level 1 and level 2 scenario passes, and the learning
-lifecycle scenario passes with it.
+enough to build a second domain against — one now exists — and not stable
+enough to depend on. The scenario suite under `examples/ops/scenarios/` reaches
+OSKA conformance level 3 (Adaptive): every level 1 and level 2 scenario passes,
+and the learning lifecycle scenario passes with it. The suite under
+`examples/access/scenarios/` reaches level 2, which is every level it declares
+a scenario for.
 
 ## License
 

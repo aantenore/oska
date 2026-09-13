@@ -1,0 +1,88 @@
+{
+  "version": 1,
+  "integrations": {
+    "integration.directory": {
+      "type": "mock",
+      "fixture": "../fixtures/directory.json",
+      "operations": {
+        "user.get": {
+          "collection": "users",
+          "match": "username",
+          "payload_field": "username",
+          "as": "user"
+        },
+        "user.groups": {
+          "collection": "users",
+          "match": "username",
+          "payload_field": "username",
+          "project": "groups",
+          "as": "groups"
+        },
+        "group.get": {
+          "collection": "groups",
+          "match": "name",
+          "payload_field": "group",
+          "as": "group"
+        },
+        "group.members": {
+          "collection": "groups",
+          "match": "name",
+          "payload_field": "group",
+          "project": "members",
+          "as": "members"
+        }
+      }
+    },
+    "integration.access_control": {
+      "type": "mock",
+      "fixture": "../fixtures/memberships.json",
+      "operations": {
+        "membership.list": {
+          "collection": "memberships",
+          "filter": ["username", "group"],
+          "as": "memberships"
+        },
+        "membership.grant": {
+          "collection": "memberships",
+          "match": "group",
+          "payload_field": "group",
+          "where": { "username": "$username" },
+          "as": "membership",
+          "set": { "state": "active" }
+        },
+        "membership.revoke": {
+          "collection": "memberships",
+          "match": "group",
+          "payload_field": "group",
+          "where": { "username": "$username" },
+          "as": "membership",
+          "set": { "state": "revoked" }
+        }
+      }
+    },
+    "integration.request_tracker": {
+      "type": "mock",
+      "fixture": "../fixtures/requests.json",
+      "operations": {
+        "request.get": {
+          "collection": "access_requests",
+          "match": "id",
+          "payload_field": "id",
+          "as": "access_request"
+        },
+        "request.list": {
+          "collection": "access_requests",
+          "filter": ["user", "state"],
+          "as": "access_requests"
+        },
+        "request.close": {
+          "collection": "access_requests",
+          "match": "id",
+          "payload_field": "id",
+          "as": "access_request",
+          "set": { "state": "$state" }
+        }
+      }
+    }
+  }
+}

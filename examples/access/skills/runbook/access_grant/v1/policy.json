@@ -1,0 +1,20 @@
+{
+  "skill_id": "runbook.access_grant",
+  "default": "deny",
+  "rules": [
+    {
+      "operation": "membership.grant",
+      "effect": "allow",
+      "when": { "group.sensitivity": { "ne": "privileged" } },
+      "max_per_session": 3,
+      "reason": "A standard group carries no reach over other people's work, and the membership can be taken away as easily as it was given."
+    },
+    {
+      "operation": "membership.grant",
+      "effect": "require_second_approval",
+      "when": { "group.sensitivity": { "eq": "privileged" } },
+      "max_per_session": 3,
+      "reason": "A privileged group can read or change what other people did, so the person asking is not the only person who agrees to it."
+    }
+  ]
+}

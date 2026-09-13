@@ -15,7 +15,7 @@ from typing import Annotated
 import typer
 
 from opsdeck.catalog.validator import CatalogError
-from opsdeck.cli.options import JsonOption, SkillsOption, fail, settings_for
+from opsdeck.cli.options import ConnectorsOption, JsonOption, SkillsOption, fail, settings_for
 from opsdeck.config import load_runtime_config
 from opsdeck.conformance import render_json, render_text, run_suite
 
@@ -66,9 +66,10 @@ def conform(
     scenarios: ScenariosOption = None,
     as_json: JsonOption = False,
     skills: SkillsOption = None,
+    connectors: ConnectorsOption = None,
 ) -> None:
     """Run a scenario directory and report the conformance level it reaches."""
-    settings = settings_for(skills)
+    settings = settings_for(skills, connectors)
     directory = Path(scenarios) if scenarios is not None else settings.scenarios_dir
     if not directory.is_dir():
         fail(f"no scenario directory at {directory}")

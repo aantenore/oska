@@ -14,6 +14,7 @@ import typer
 from opsdeck.catalog.resolver import CapabilityResolver
 from opsdeck.catalog.validator import validate_all
 from opsdeck.cli import commands_run, commands_serve
+from opsdeck.cli.commands_cassette import cassette
 from opsdeck.cli.commands_propose import propose
 from opsdeck.cli.options import (
     SchemasOption,
@@ -147,6 +148,7 @@ def _is_secret(name: str) -> bool:
 commands_run.register(app)
 commands_serve.register(app)
 app.add_typer(propose, name="propose")
+app.add_typer(cassette, name="cassette")
 
 
 if __name__ == "__main__":

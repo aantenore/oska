@@ -1,0 +1,306 @@
+{
+  "name": "05_grant_limit",
+  "description": "The fourth membership of a session is refused by the per-session limit the grant policy carries, with the reason it gives.",
+  "level": 2,
+  "provider_script": [
+    {
+      "purpose": "router classification",
+      "expect_contains": "tnovak needs the support desk group",
+      "response": {
+        "kind": "new_task",
+        "runbook_id": "runbook.access_grant",
+        "confidence": 0.9,
+        "language": "en"
+      }
+    },
+    {
+      "purpose": "plan",
+      "expect_contains": "support desk group",
+      "response": {
+        "runbook_id": "runbook.access_grant",
+        "operations": [
+          {
+            "integration_id": "integration.directory",
+            "operation": "group.get",
+            "payload": {
+              "group": "support-desk"
+            },
+            "write": false,
+            "purpose": "read how much reach the group carries"
+          },
+          {
+            "integration_id": "integration.access_control",
+            "operation": "membership.grant",
+            "payload": {
+              "username": "tnovak",
+              "group": "support-desk"
+            },
+            "write": true,
+            "purpose": "put the account into the group"
+          }
+        ],
+        "missing": [],
+        "reply_intent": "report the support-desk membership of tnovak"
+      }
+    },
+    {
+      "purpose": "reply writing",
+      "expect_contains": "\"kind\": \"receipt\"",
+      "response": {
+        "reply": "tnovak is now in support-desk and the membership reads back active."
+      }
+    },
+    {
+      "purpose": "router classification",
+      "expect_contains": "he also has to look accounts up",
+      "response": {
+        "kind": "new_task",
+        "runbook_id": "runbook.access_grant",
+        "confidence": 0.9,
+        "language": "en"
+      }
+    },
+    {
+      "purpose": "plan",
+      "expect_contains": "look accounts up",
+      "response": {
+        "runbook_id": "runbook.access_grant",
+        "operations": [
+          {
+            "integration_id": "integration.directory",
+            "operation": "group.get",
+            "payload": {
+              "group": "directory-readers"
+            },
+            "write": false,
+            "purpose": "read how much reach the group carries"
+          },
+          {
+            "integration_id": "integration.access_control",
+            "operation": "membership.grant",
+            "payload": {
+              "username": "tnovak",
+              "group": "directory-readers"
+            },
+            "write": true,
+            "purpose": "put the account into the group"
+          }
+        ],
+        "missing": [],
+        "reply_intent": "report the directory-readers membership of tnovak"
+      }
+    },
+    {
+      "purpose": "reply writing",
+      "expect_contains": "\"kind\": \"receipt\"",
+      "response": {
+        "reply": "tnovak is now in directory-readers and the membership reads back active."
+      }
+    },
+    {
+      "purpose": "router classification",
+      "expect_contains": "rsilva asks someone else to look accounts up several times a day",
+      "response": {
+        "kind": "new_task",
+        "runbook_id": "runbook.access_grant",
+        "confidence": 0.9,
+        "language": "en"
+      }
+    },
+    {
+      "purpose": "plan",
+      "expect_contains": "several times a day",
+      "response": {
+        "runbook_id": "runbook.access_grant",
+        "operations": [
+          {
+            "integration_id": "integration.directory",
+            "operation": "group.get",
+            "payload": {
+              "group": "directory-readers"
+            },
+            "write": false,
+            "purpose": "read how much reach the group carries"
+          },
+          {
+            "integration_id": "integration.access_control",
+            "operation": "membership.grant",
+            "payload": {
+              "username": "rsilva",
+              "group": "directory-readers"
+            },
+            "write": true,
+            "purpose": "put the account into the group"
+          }
+        ],
+        "missing": [],
+        "reply_intent": "report the directory-readers membership of rsilva"
+      }
+    },
+    {
+      "purpose": "reply writing",
+      "expect_contains": "\"kind\": \"receipt\"",
+      "response": {
+        "reply": "rsilva is now in directory-readers and the membership reads back active."
+      }
+    },
+    {
+      "purpose": "router classification",
+      "expect_contains": "mfiore wants the finance reports group too",
+      "response": {
+        "kind": "new_task",
+        "runbook_id": "runbook.access_grant",
+        "confidence": 0.9,
+        "language": "en"
+      }
+    },
+    {
+      "purpose": "plan",
+      "expect_contains": "finance reports group too",
+      "response": {
+        "runbook_id": "runbook.access_grant",
+        "operations": [
+          {
+            "integration_id": "integration.directory",
+            "operation": "group.get",
+            "payload": {
+              "group": "finance-reports"
+            },
+            "write": false,
+            "purpose": "read how much reach the group carries"
+          },
+          {
+            "integration_id": "integration.access_control",
+            "operation": "membership.grant",
+            "payload": {
+              "username": "mfiore",
+              "group": "finance-reports"
+            },
+            "write": true,
+            "purpose": "put the account into the group"
+          }
+        ],
+        "missing": [],
+        "reply_intent": "report whether mfiore was added to finance-reports"
+      }
+    },
+    {
+      "purpose": "reply writing",
+      "expect_contains": "\"kind\": \"denied\"",
+      "response": {
+        "reply": "mfiore was not added to finance-reports. This session has already used the three grants the policy allows it, so the request needs a session of its own or someone with a wider mandate."
+      }
+    }
+  ],
+  "turns": [
+    {
+      "user": "tnovak needs the support desk group, he is on the rota from this week",
+      "expect": {
+        "kind": "new_task",
+        "contains": [
+          "{\"group\":\"support-desk\",\"username\":\"tnovak\"}"
+        ],
+        "outcomes": [
+          "read",
+          "approval_pending"
+        ],
+        "pending": "approval",
+        "receipts": 0,
+        "verification": null
+      }
+    },
+    {
+      "user": "yes",
+      "expect": {
+        "kind": "approve",
+        "contains": [
+          "support-desk"
+        ],
+        "outcomes": [
+          "receipt"
+        ],
+        "pending": null,
+        "receipts": 1,
+        "verification": "verified"
+      }
+    },
+    {
+      "user": "he also has to look accounts up, so the directory readers group as well",
+      "expect": {
+        "kind": "new_task",
+        "contains": [
+          "{\"group\":\"directory-readers\",\"username\":\"tnovak\"}"
+        ],
+        "outcomes": [
+          "read",
+          "approval_pending"
+        ],
+        "pending": "approval",
+        "receipts": 1,
+        "verification": "verified"
+      }
+    },
+    {
+      "user": "yes",
+      "expect": {
+        "kind": "approve",
+        "contains": [
+          "directory-readers"
+        ],
+        "outcomes": [
+          "receipt"
+        ],
+        "pending": null,
+        "receipts": 2,
+        "verification": "verified"
+      }
+    },
+    {
+      "user": "rsilva asks someone else to look accounts up several times a day, put him in that group too",
+      "expect": {
+        "kind": "new_task",
+        "contains": [
+          "{\"group\":\"directory-readers\",\"username\":\"rsilva\"}"
+        ],
+        "outcomes": [
+          "read",
+          "approval_pending"
+        ],
+        "pending": "approval",
+        "receipts": 2,
+        "verification": "verified"
+      }
+    },
+    {
+      "user": "yes",
+      "expect": {
+        "kind": "approve",
+        "contains": [
+          "directory-readers"
+        ],
+        "outcomes": [
+          "receipt"
+        ],
+        "pending": null,
+        "receipts": 3,
+        "verification": "verified"
+      }
+    },
+    {
+      "user": "mfiore wants the finance reports group too while we are at it",
+      "expect": {
+        "kind": "new_task",
+        "contains": [
+          "three grants"
+        ],
+        "outcomes": [
+          "read",
+          "denied"
+        ],
+        "pending": null,
+        "receipts": 3,
+        "verification": "verified"
+      }
+    }
+  ]
+}

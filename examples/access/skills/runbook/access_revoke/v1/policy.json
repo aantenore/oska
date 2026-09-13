@@ -1,0 +1,12 @@
+{
+  "skill_id": "runbook.access_revoke",
+  "default": "deny",
+  "rules": [
+    {
+      "operation": "membership.revoke",
+      "effect": "allow",
+      "max_per_session": 3,
+      "reason": "Taking access away narrows what an account can reach, and the membership can be granted again if it was needed after all."
+    }
+  ]
+}
