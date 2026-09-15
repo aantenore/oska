@@ -29,7 +29,9 @@ Discovery:
 ```
 
 The indexed text of a procedure is its description and each of its triggers,
-indexed separately; a procedure's score is the best of its texts. Two index
+indexed separately, and, when they exist, the phrases derived from those
+triggers at publish time and the phrasings a scheduled job learned from traffic
+that reached the procedure; a procedure's score is the best of its texts. Two index
 implementations are expected: a lexical one that needs no model provider, and
 an embedding one that uses `embed`. Composites are excluded from ranking by
 configuration, because a composite's triggers overlap its members' by
@@ -39,6 +41,101 @@ A tie — the top two within a configured margin, both above a minimum score —
 resolved by asking the model to pick between the ranked candidates. With no
 provider, the top candidate wins. With nothing above the minimum score, nothing
 is chosen and the turn is out of scope.
+
+### Reaching a catalog in more languages than it was written in
+
+Responsibility: let a catalog whose triggers were written in one language be
+reached by requests in the languages it is actually used in, without a second
+set of authored triggers and without spending a model call on a turn.
+
+An author writes the trigger examples of a procedure once, in the language they
+work in. Translating each of them by hand does not scale, and a hand
+translation rots the moment a trigger is edited: nothing relates the two, so the
+rot is silent. Translating the request, or the catalog, while a turn is in
+flight moves the cost to the worst possible place — every turn pays it, and both
+the latency and the failure modes of a turn grow with the number of languages
+supported.
+
+So the paraphrases are derived once, when the procedure is published or when a
+scheduled job asks for them, and are stored beside the skill:
+
+```text
+enrich(skill, provider, config, languages) -> {language: [phrase]}
+write_examples(skill, examples, config) -> path
+read_examples(skill, config) -> {language: [phrase]}
+needs_enrichment(skill, config, languages) -> boolean
+```
+
+The publish-time contract has three parts.
+
+**Declared truth.** The triggers in the skill file are the only authored
+examples. Everything beside them is derived from them, is never edited by hand,
+and can be thrown away and produced again. A catalog with every derived file
+deleted still routes exactly as its declarations say; a derived file carries no
+authority of its own.
+
+**Source hash.** A derived file records a hash of the declared triggers it was
+made from. When the triggers are edited the hash stops matching and the file is
+ignored in full — never partly used, never repaired in place. An edited trigger
+can therefore lose paraphrases, but can never keep wrong ones, and the fix is
+always another pass rather than a correction by hand.
+
+**Derived files.** The file lives in the version directory of the skill it
+describes, so it is copied, superseded and removed with that version. An index
+that consumes derived files must notice when one is written: a fingerprint over
+the skill files alone does not change when a file beside them does.
+
+Derived phrases are indexed after the declared texts and are bounded by a cap
+per procedure; when the cap bites it is a derived phrase that gives way, never a
+declared one. Because a procedure scores the best of its texts and not their
+average, additional phrases can raise a score and cannot dilute one. What a
+ranking matched on is reported with the language the winning phrase was derived
+for, so a surprising route can be read back and explained rather than guessed
+at.
+
+### The words people actually used
+
+Responsibility: let a procedure be reached by the wording its traffic shows,
+without anyone editing what its author wrote.
+
+A scheduled job in the evolution layer reads the turns that reached a procedure
+and finished, and keeps the phrasings that say something the declarations do not
+already say. It writes them to one file per procedure under the state directory,
+never inside a skill directory:
+
+```text
+LearnedPhrases:
+  phrases(skill) -> [SkillText]           # read back, never written here
+  fingerprint(skills) -> string
+```
+
+They are indexed last: after the declared texts, after the derived phrases, and
+under the same cap per procedure, so the cap drops a learned phrase before a
+derived one and a derived one before anything declared. A ranking names what it
+matched on and says which of the three won it — a declared text as written, a
+derived phrase with the language it was derived for, a learned phrase as
+learned — so a route nobody expected can be read back to the sentence that
+caused it.
+
+An index folds these files into the fingerprint it holds, exactly as it does the
+derived ones, because the registry fingerprints the skill files alone. Writing a
+learned file rebuilds the index, and so does deleting one, which is what makes
+the deletion the whole of the undo: the ranking after a revert is the ranking
+from before it. Nothing in this layer writes these files, and reading them costs
+no model call.
+
+### Language of a turn
+
+The language a reply is written in is a fact of the session, not a property of
+the message. The routing decision may report the language of the turn; when it
+does, the session records it, and every later turn is answered in it until a
+decision reports something else. A turn the rules or the fast path decided
+reports no language and re-detects nothing: the session already knows. The
+runtime's configured default applies only to a session nothing has yet settled.
+
+This is why routing in another language and replying in another language are one
+mechanism and not two. Discovery reaches the procedure through the derived
+phrases; the reply comes back in the language the session settled on.
 
 ### Router
 
@@ -145,6 +242,12 @@ offline.
   other layer.
 - A missing provider degrades the system to catalogue-derived answers; it never
   degrades governance.
+- No feature adds a model call to a turn. Work that needs a model happens at
+  publish time or in a scheduled job, and a turn reads what that work left.
+- The declared triggers are the only authored examples; everything derived from
+  them is regenerable and is ignored as soon as it stops matching them.
+- The language of a session is settled by a routing decision and kept; it is not
+  detected again on a turn that never reached the model.
 
 ## Requirements
 
@@ -175,6 +278,34 @@ offline.
 - **OSKA-COG-11** — A conformant system MUST provide a scripted provider that
   satisfies the provider interface, and MUST be able to run its entire
   conformance suite with it, offline.
+- **OSKA-COG-12** — A feature MUST NOT add a model call to a turn. Work that
+  needs a model MUST be performed at publish time or by a scheduled job, and a
+  turn MUST NOT exceed the configured budget of model calls.
+- **OSKA-COG-13** — Routing examples derived from the declared triggers MUST be
+  produced outside a turn. A turn MAY read them and MUST NOT write them.
+- **OSKA-COG-14** — The declared triggers MUST remain the only authored routing
+  examples. Derived phrases MUST NOT be edited by hand and MUST be reproducible
+  from the declarations alone.
+- **OSKA-COG-15** — A derived file MUST record a hash of the declared triggers
+  it was derived from, and MUST be ignored in full when that hash no longer
+  matches the declarations.
+- **OSKA-COG-16** — Derived phrases MUST be indexed after the declared texts and
+  MUST be bounded by a configured cap per procedure; the cap MUST NOT drop a
+  declared text.
+- **OSKA-COG-17** — A ranking MUST report the text it matched on, and MUST
+  distinguish a derived phrase from a declared one by naming the language the
+  phrase was derived for, and a learned phrase from both by naming it as
+  learned.
+- **OSKA-COG-17a** — Phrasings learned from traffic MUST be indexed after the
+  declared texts and the derived phrases, under the same cap per procedure, and
+  MUST be read from the state directory and never from a skill directory. An
+  index MUST rebuild when one of their files is written or deleted.
+- **OSKA-COG-18** — A failure to derive routing examples MUST NOT fail the
+  publication that occasioned it, and MUST be reported.
+- **OSKA-COG-19** — The language of a reply MUST be a fact of the session,
+  settled by a routing decision that reports one and kept until another decision
+  reports a different one. A turn decided by the rules or by the fast path MUST
+  NOT detect it again.
 
 ## Rationale
 
@@ -208,6 +339,13 @@ reply may call a write verified unless its receipt says so.
 
 - `src/opsdeck/index/` — `base.py`, `keyword.py`, `embedding.py`,
   `discovery.py`.
+- `src/opsdeck/catalog/enrichment.py` — deriving, writing and reading the
+  routing examples, and the fingerprint that tells an index one was written.
+- `src/opsdeck/index/base.py` — the texts a procedure is indexed under, the cap
+  that declared texts survive, the label a ranking reports, and the learned
+  phrasings read back from the state directory with their own fingerprint.
+- `src/opsdeck/cli/commands_enrich.py` — asking for a pass over the catalog and
+  reading back what a procedure is indexed under.
 - `src/opsdeck/router/` — `base.py` (rules), `fast_path.py`,
   `model_router.py`.
 - `src/opsdeck/planner/` — `provider.py` (the interface), `scripted.py`, the

@@ -6,7 +6,7 @@ import math
 
 from opsdeck.contracts.common import RankedSkill
 from opsdeck.contracts.skill import Skill
-from opsdeck.index.base import IndexedText, indexed_texts, top_ranked
+from opsdeck.index.base import IndexedText, TextSource, indexed_texts, top_ranked
 from opsdeck.planner.provider import ModelProvider
 
 __all__ = ["EmbeddingIndex"]
@@ -24,9 +24,9 @@ class EmbeddingIndex:
         self._entries: list[IndexedText] = []
         self._vectors: list[list[float]] = []
 
-    def build(self, skills: list[Skill]) -> None:
-        """Embed the description and the triggers of every skill."""
-        self._entries = indexed_texts(skills)
+    def build(self, skills: list[Skill], texts: TextSource | None = None) -> None:
+        """Embed every text the given source indexes each skill under."""
+        self._entries = indexed_texts(skills, texts)
         self._vectors = []
         if not self._entries:
             return
@@ -51,7 +51,7 @@ class EmbeddingIndex:
             held = best.get(entry.skill_id)
             if held is None or score > held.score:
                 best[entry.skill_id] = RankedSkill(
-                    skill_id=entry.skill_id, score=score, matched_on=entry.text
+                    skill_id=entry.skill_id, score=score, matched_on=entry.label
                 )
         return top_ranked(best.values(), limit)
 

@@ -34,6 +34,9 @@ version, or the highest version of all when none is published.
 | `policy` | runbook | Path to the policy file, relative to the skill file |
 | `operations` | integration | The declared operations |
 | `fields`, `state_field`, `states`, `relations` | entity | The ontology |
+| `initial_state`, `final_states`, `lifecycle`, `state_read` | entity | The state machine, when the record has one |
+| `human_inputs` | runbook, composite | Payload fields only a person may supply |
+| `guardrails` | all | Identifiers of the promises this skill keeps |
 | `runbooks` | composite | The member runbooks, in order |
 
 The body is split on H2 headings. `purpose`, `preconditions`, `steps`,
@@ -85,6 +88,45 @@ touch production.
 `state_field` and `states` go together: one without the other is an error. The
 states are what the ontology check on an integration's `transitions` is made
 against.
+
+### The lifecycle
+
+A record whose states are a machine rather than a label declares that machine.
+Four more keys, all of them optional together and none of them alone:
+
+```yaml
+state_field: state
+states: [in_progress, succeeded, failed, rolled_back]
+initial_state: in_progress      # must be one of the declared states
+final_states:                   # states nothing moves out of
+  - rolled_back
+state_read: deployment.get      # a read bound to this entity; where the state comes from
+lifecycle:
+  - from: [in_progress, succeeded, failed]   # declared states, any number
+    to: rolled_back                          # a declared state
+    operation: deployment.rollback           # a write bound to this entity
+    required: false             # the move that completes the object. Defaults to false
+    offered: true               # whether the runtime may suggest it. Defaults to true
+```
+
+`state_read` is what makes the lifecycle enforceable: the runtime reads the
+current state through it, from the system of record, and never takes the state
+from the conversation. Declaring a lifecycle without it is an error.
+
+`required` marks the move that completes the object — until it is made, the
+object is not yet what the person asked for — and at most one move may be
+required out of any one state. `offered: false` marks a move that is legal but
+must never be suggested: the runtime plans and runs it when a person asks for
+it, and never proposes it. Neither field affects legality, only what is said.
+
+A state that only ever appears under `from` is a state the system of record
+puts the object in — `succeeded` and `failed` above are decided by a release
+going out, not by anything in this catalog. A state that appears under `to` and
+cannot be reached from `initial_state` is an error, because nothing here could
+ever put the object there.
+
+What the runtime does with all this is in
+[governance.md](governance.md#the-lifecycle-of-an-object).
 
 ## Integration
 
@@ -196,6 +238,11 @@ capabilities:
     - service.status             # must be a read declared by a listed integration
   writes:
     - service.restart            # must be a write declared by a listed integration
+guardrails:                      # must be defined by the configured guardrail catalog
+  - guardrail.declared_operations_only
+  - guardrail.identifiers_are_never_invented
+  - guardrail.exact_payload_approval
+  - guardrail.read_back_before_confirmation
 runtime:
   action: restart a service      # how it is named in a list of what the runtime can do
   action_on_selection: restart it # how it is named once a record is already on the table
@@ -238,6 +285,37 @@ returns it; the reply writer is given it as the list of things it may suggest.
 A runbook with an empty `writes` list needs no policy: reads are gated by
 declaration alone. A runbook that writes and declares no policy is a validation
 error, and at run time a missing policy denies.
+
+`guardrails` names the promises this procedure keeps, by identifier. The
+wording of each lives in the guardrail catalog and nowhere else, so several
+procedures claiming the same promise cannot claim it differently, and an
+identifier the catalog does not define fails validation. Entities and
+integrations may declare them too: a procedure is held to what its whole
+closure declares. The catalog format, and which promises are code and which are
+text, are in [governance.md](governance.md#guardrails).
+
+### Fields only a person may supply
+
+`human_inputs` names payload fields whose value has to come from the person,
+not from the model.
+
+```yaml
+human_inputs:
+  - note
+```
+
+The planner is told which fields these are and that it may not fill them in.
+If it does anyway, the plan is rejected with an issue naming the field, and the
+repair is to leave the field out of the payload and put it in `missing` with
+the question to ask. The turn then stops and asks, the answer is stored against
+that field, and the next plan carries the value the person gave — compared
+exactly, so a value that drifted between the question and the payload is caught
+the same way an invented one is.
+
+This is for fields where being approximately right is worse than being absent:
+the text of an incident note, a justification, a reason recorded against a
+change. A composite's members each declare their own, and a goal is held to the
+union.
 
 ### The policy beside it
 
@@ -343,6 +421,15 @@ command exits non-zero when there is at least one.
 | `ontology_transition_without_entity` | integration | An operation declares transitions but no entity in the catalog |
 | `ontology_unknown_transition_field` | integration | A transition names a field that is not the entity's state field |
 | `ontology_unknown_transition_state` | integration | A transition names a value that is not a declared state |
+| `ontology_lifecycle_without_states` | entity | A lifecycle is declared without a state field and its states |
+| `ontology_lifecycle_without_initial_state` | entity | A lifecycle is declared without the state an object starts in |
+| `ontology_unknown_lifecycle_state` | entity | The initial state, a final state, or a state named by a move is not one of the declared states |
+| `ontology_unknown_lifecycle_operation` | entity | A move names an operation that is not bound to this entity, or one that does not write |
+| `ontology_missing_state_read` | entity | A lifecycle is declared without `state_read` |
+| `ontology_unknown_state_read` | entity | `state_read` is not an operation bound to this entity, or is a write |
+| `ontology_move_from_final_state` | entity | A move leaves a state declared final |
+| `ontology_unreachable_state` | entity | A move leads to a state that cannot be reached from the initial state |
+| `ontology_conflicting_required_move` | entity | One state declares more than one required move |
 | `missing_runtime` | runbook, composite | No `runtime` block |
 | `too_few_triggers` | runbook, composite | Fewer than three triggers |
 | `duplicate_triggers` | runbook, composite | The same trigger twice |
@@ -354,10 +441,20 @@ command exits non-zero when there is at least one.
 | `invalid_policy` | runbook | The policy does not satisfy the typed model |
 | `policy_skill_mismatch` | runbook | `skill_id` in the policy names another skill |
 | `policy_undeclared_operation` | runbook | A rule names an operation that is not a capability of the procedure |
+| `guardrail_unknown_id` | all | A declared guardrail is not defined by the configured guardrail catalog |
+
+The guardrail rule reads the catalog named by `guardrails.catalog` in the runtime
+configuration, looked for in the working directory and then beside that file. A
+deployment that configures no catalog, or names one that is not there, defines no
+identifier: declaring any is then an error, and a catalog that declares none still
+validates. The same rule runs over a proposed procedure, so a promise nothing keeps
+cannot be published.
 
 Some constraints never become an issue code because the typed model refuses the
 file outright, and the registry reports it as `parse_error`: an id that does not
 match its type, a description outside 20 to 200 characters, triggers on an
-entity or an integration, operations on anything but an integration, fields or
-states on anything but an entity, `runbooks` on anything but a composite, a
-composite with no runbooks, and a write operation with no `verify`.
+entity or an integration, operations on anything but an integration, fields,
+states, relations or any of the lifecycle keys on anything but an entity,
+`human_inputs` on anything but a runbook or a composite, `runbooks` on anything
+but a composite, a composite with no runbooks, and a write operation with no
+`verify`.

@@ -20,6 +20,9 @@ PLANNER_RULES = (
     "Never invent an identifier, a name or a value; take them from the conversation"
     " or ask for them.",
     "Order reads before writes.",
+    "A field listed as a human input is never filled in from your own judgement:"
+    " leave it out of the payload and list it in `missing` with the question to ask,"
+    " unless the person has already given it.",
     "`reply_intent` is one short line telling the reply writer what this turn is about.",
 )
 
@@ -60,6 +63,9 @@ def planner_system(
     block = _ontology(hydrated.entities, ontology or {})
     if block:
         parts.append(f"Ontology:\n{block}")
+    reserved = _human_inputs(runbook, hydrated.runbooks)
+    if reserved:
+        parts.append(f"Human inputs, which only the person supplies:\n{reserved}")
     parts.append(f"Declared operations:\n{_operations(hydrated.integrations)}")
     parts.append(_rules("Rules:", PLANNER_RULES))
     return "\n\n".join(part for part in parts if part)
@@ -90,6 +96,16 @@ def _runbook_sections(runbook: Skill) -> str:
         if body:
             lines.append(f"{name.capitalize()}:\n{body}")
     return "\n\n".join(lines)
+
+
+def _human_inputs(runbook: Skill, members: Sequence[Skill]) -> str:
+    """The fields the procedures of this goal reserve to a person, one per line."""
+    fields: list[str] = []
+    for skill in (runbook, *members):
+        for field in skill.frontmatter.human_inputs:
+            if field not in fields:
+                fields.append(field)
+    return "\n".join(f"- {field}" for field in fields)
 
 
 def _entities(entities: Sequence[Skill]) -> str:

@@ -20,6 +20,11 @@ capabilities:
     - alert.list
   writes:
     - alert.silence
+guardrails:
+  - guardrail.declared_operations_only
+  - guardrail.identifiers_are_never_invented
+  - guardrail.exact_payload_approval
+  - guardrail.read_back_before_confirmation
 runtime:
   action: silence an alert
   action_on_selection: silence it
@@ -60,3 +65,7 @@ call worked.
 
 Silences expire on their own. To end one early, silence the alert again for one
 minute, or clear it in the alerting system by hand.
+
+An alert that is already silenced is not silenced again: the only move the
+alert lifecycle declares runs from `firing`, and the state comes from
+`alert.list` rather than from what was said earlier in the conversation.

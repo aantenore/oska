@@ -21,6 +21,9 @@ capabilities:
     - user.get
     - user.groups
     - group.get
+guardrails:
+  - guardrail.declared_operations_only
+  - guardrail.identifiers_are_never_invented
 runtime:
   action: check what access a person has
   action_on_selection: check their access

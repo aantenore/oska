@@ -69,6 +69,7 @@ class DiscoveryConfig(BaseModel):
     min_score: float = 0.2
     tie_margin: float = 0.05
     limit: int = 5
+    languages: list[str] = Field(default_factory=lambda: ["en"])
     exclude_types: list[str] = Field(default_factory=lambda: ["composite"])
 
 
@@ -143,6 +144,56 @@ class LearningConfig(BaseModel):
     publish_root: Path = Path("state/skills")
 
 
+class GuardrailsConfig(BaseModel):
+    """Where the guardrail catalog lives, and whether guardrails run at all."""
+
+    enabled: bool = True
+    catalog: Path = Path("configs/guardrails.json")
+
+
+class TracingConfig(BaseModel):
+    """Diagnostic traces, kept apart from the audit record and off by default."""
+
+    enabled: bool = False
+    path: Path = Path("state/traces.jsonl")
+
+
+class TurnConfig(BaseModel):
+    """What one turn may spend.
+
+    `max_model_calls` is the budget a turn may not exceed; work that needs more
+    belongs at publish time or in a scheduled job.
+    """
+
+    max_model_calls: int = 4
+
+
+class EnrichmentConfig(BaseModel):
+    """Routing examples written at publish time, never during a turn."""
+
+    enabled: bool = False
+    per_language: int = 3
+    cap_per_route: int = 24
+    filename: str = "generated-examples.json"
+
+
+class ImprovementConfig(BaseModel):
+    """Bounds a scheduled improvement job may work inside.
+
+    `bounds` names the tunables the job may move and the interval it may move
+    them in. Anything absent from it is not tunable.
+    """
+
+    learned_root: Path = Path("state/learned")
+    report_path: Path = Path("state/improvement.json")
+    max_phrases_per_skill: int = 24
+    cluster_threshold: float = 0.8
+    cluster_min_size: int = 3
+    bounds: dict[str, tuple[float, float]] = Field(
+        default_factory=lambda: {"min_score": (0.1, 0.5), "tie_margin": (0.02, 0.15)}
+    )
+
+
 class RuntimeConfig(BaseModel):
     """Contents of `runtime.json`."""
 
@@ -154,6 +205,11 @@ class RuntimeConfig(BaseModel):
     reply: ReplyConfig = Field(default_factory=ReplyConfig)
     learning: LearningConfig = Field(default_factory=LearningConfig)
     api: ApiConfig = Field(default_factory=ApiConfig)
+    guardrails: GuardrailsConfig = Field(default_factory=GuardrailsConfig)
+    tracing: TracingConfig = Field(default_factory=TracingConfig)
+    turn: TurnConfig = Field(default_factory=TurnConfig)
+    enrichment: EnrichmentConfig = Field(default_factory=EnrichmentConfig)
+    improvement: ImprovementConfig = Field(default_factory=ImprovementConfig)
 
 
 class ModelConfig(BaseModel):
@@ -175,6 +231,20 @@ def state_path(state_dir: Path, configured: Path) -> Path:
     if configured.is_absolute():
         return configured
     return Path(state_dir) / configured.name
+
+
+def guardrail_catalog_path(config: GuardrailsConfig, settings: Settings) -> Path:
+    """Where the guardrail catalog is read from.
+
+    A relative path is read from the working directory, and from the directory
+    of the runtime configuration when it is not there, so a deployment that
+    keeps its configuration together does not have to say where it is twice.
+    """
+    configured = Path(config.catalog)
+    if configured.is_absolute() or configured.exists():
+        return configured
+    beside = Path(settings.runtime_config).parent / configured.name
+    return beside if beside.exists() else configured
 
 
 def load_settings(env: Mapping[str, str] | None = None) -> Settings:

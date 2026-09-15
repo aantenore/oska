@@ -35,8 +35,13 @@ MODEL_LIKE = re.compile(
 )
 
 # Literals the scan reports that are not tunable values, by module path, each
-# with the reason it is not one. Nothing needs an entry at present.
-ALLOWED_LITERALS: dict[str, set[str]] = {}
+# with the reason it is not one.
+ALLOWED_LITERALS: dict[str, set[str]] = {
+    # The name of the file the improvement job writes and an index reads back.
+    # It is one artefact named in one place so that both layers agree, not a
+    # value an operator would tune.
+    "index/base.py": {"learned-examples.json"},
+}
 
 
 def _discovery(registry: SkillRegistry, **overrides: object) -> Discovery:

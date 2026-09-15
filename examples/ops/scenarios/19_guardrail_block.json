@@ -1,0 +1,24 @@
+{
+  "name": "19_guardrail_block",
+  "description": "A request carrying what looks like a credential is refused at the input boundary, in the words of the guardrail itself, before anything is classified or planned.",
+  "level": 2,
+  "provider_script": [],
+  "turns": [
+    {
+      "user": "restart the search service in staging, the api key is AKIA5T7QZ2WJ4KDLMNOP",
+      "expect": {
+        "kind": "guardrail",
+        "contains": [
+          "refused before anything is planned",
+          "Send the request again without it"
+        ],
+        "outcomes": [
+          "denied"
+        ],
+        "pending": null,
+        "receipts": 0,
+        "verification": null
+      }
+    }
+  ]
+}

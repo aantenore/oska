@@ -30,6 +30,14 @@ states:
   - succeeded
   - failed
   - rolled_back
+initial_state: in_progress
+final_states:
+  - rolled_back
+state_read: deployment.get
+lifecycle:
+  - from: [in_progress, succeeded, failed]
+    to: rolled_back
+    operation: deployment.rollback
 relations:
   - name: service
     target: entity.service
@@ -47,3 +55,20 @@ was on before.
 
 Exactly one deployment per service carries `current: true`. `previous_version`
 on that record is the rollback target when no explicit version is given.
+
+## Lifecycle
+
+A deployment starts `in_progress`. Whether it ends `succeeded` or `failed` is
+decided by the release going out, not by anything in this catalog, which is why
+no move here leads to either: they are states a deployment is found in.
+
+One move is this catalog's to make. `deployment.rollback` takes a deployment
+that is in progress, that succeeded or that failed, and puts an earlier version
+back in its place. Where it lands is `rolled_back`, and that is the end of the
+record: a rollback is undone by deploying forward, never by rolling back a
+rollback, so nothing moves out of `rolled_back` and a second rollback of the
+same deployment is refused before anything is sent.
+
+The state is read back through `deployment.get` for the service, never assumed
+from the conversation: the deployment someone is talking about may already have
+been rolled back by whoever was working on it first.

@@ -3,6 +3,11 @@
 A proposal is text until it parses, validates against the catalog it names and
 survives the lints below. `check` runs all three and reports what failed; it
 changes nothing.
+
+The middle of those three is the catalog's own validator, unchanged and not
+restated here, which is how a proposal is held to everything a published skill
+is held to: the references it makes, the policy it declares, and the guardrails
+it names, which have to be defined by the catalog this installation configures.
 """
 
 from __future__ import annotations

@@ -129,6 +129,21 @@ refused and leaves the state untouched.
 What is automated is everything up to the decision: the draft, the checks, the
 publication mechanics. What a person does is read the file and say yes.
 
+## Where this sits on the autonomy ladder
+
+The scheduled improvement job in `opsdeck.improvement` describes how far the
+system may improve itself without a person, in four levels, and this lifecycle
+is where the top two of them meet. Level 2 is drafting and stopping: the job
+turns a cluster of requests that reached nothing into a proposal in `draft`,
+and that is the last thing it does with it. Level 3 is every move after
+`draft`, and it has no code path at all — the improvement package imports
+neither `transition` nor anything that writes a policy or a connector binding,
+and a test walks the syntax tree of its modules to keep it that way.
+
+So there are two ways a proposal comes into being, `draft_from_session` and the
+job, and one way it moves: a person, through `transition`, with their name on
+every step. See [improvement.md](improvement.md).
+
 ## Command line
 
 ```sh

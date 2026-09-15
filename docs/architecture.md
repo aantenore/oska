@@ -50,6 +50,14 @@ them. `queries` answers the structural questions — `operations_on`,
 renders the graph as JSON or mermaid. `OntologyCache` rebuilds it when the
 catalog fingerprint changes.
 
+An entity may also declare a lifecycle: the state it starts in, the states it
+never leaves, the read its current state is taken from, and the legal moves
+between states with the operation that causes each. `lifecycle_of`,
+`legal_moves` and `required_move` answer from the graph; `export` renders one
+mermaid state diagram per lifecycle, after the entity diagram, because a
+lifecycle is a machine of its own and putting states in the entity graph
+confuses two pictures.
+
 The graph is derived. Nothing is declared twice: the entities come from entity
 skills and the bindings from the `entity` field of each declared operation.
 
@@ -65,7 +73,17 @@ runbooks it reaches. `validator` checks each skill against the JSON schema and
 against the rest of the catalog; the rules and their codes are in
 [skill-contract.md](skill-contract.md). `resolver` derives every sentence the
 runtime says about itself: the declared scope, the phrase for one procedure,
-the actions available on an entity.
+the actions available on an entity. Where the entity declares a lifecycle,
+`suggestions_for_entity` answers from the state the object is in rather than
+from the list of procedures that touch it, and leaves out a move the author
+marked as not offered.
+
+`enrichment` is the one part of this layer that never runs during a turn. It
+paraphrases the declared triggers of a procedure into further languages and
+writes them to a file inside the skill's version directory, stamped with a hash
+of the triggers they came from. The index reads that file; a hash that no
+longer matches means the file is ignored rather than repaired. See
+[multilingual.md](multilingual.md).
 
 ### L4 Governance
 
@@ -75,8 +93,12 @@ applies the policy file a procedure carries, defaulting to deny. `approval`
 freezes a pending write on a hash of its exact payload. `verification` runs the
 read-back the integration declares and compares the values it expects. `ledger`
 keeps every write attempt in SQLite, keyed on the idempotency fields, written
-before the call goes out. `opsdeck.audit` appends one typed event per step to a
-JSONL file. See [governance.md](governance.md).
+before the call goes out. `guardrails` reads the catalog of promises this
+installation declares and builds, for each one kept by code, the check that
+keeps it; nothing in that module carries a pattern, a threshold or a word list
+of its own. `opsdeck.audit` appends one typed event per step to a JSONL file,
+and `audit.trace` opens diagnostic spans that are off by default and are never
+read back by anything. See [governance.md](governance.md).
 
 ### L5 Cognition
 
@@ -86,6 +108,13 @@ provider; `Discovery` chooses the top candidate when it clears `min_score` and
 reports a tie when the second is within `tie_margin`. Only published skills with
 triggers, of a type not excluded, are candidates — so composites are ranked out
 by configuration and entities and integrations never compete with procedures.
+A skill is indexed under several texts — its description, each of its triggers,
+the phrases derived beside it when enrichment is on, and the phrasings the
+improvement job has learned for it — and scores the best of them, so more
+phrasings can raise a score and never dilute one. Both extra files are read and
+never written here: a turn ranks the catalog from what is already on disk. The
+cap on how many texts one skill contributes never drops a declared one, and
+`matched_on` says which text won.
 
 `opsdeck.router` decides what a turn is, in three layers: `RuleRouter` matches
 the whole message against the configured approve, reject and cancel words, and
@@ -98,8 +127,12 @@ that names the declared scope and the procedures on offer.
 the prompt from the hydrated procedure — its sections, its entities, its
 ontology facts, its declared operations with input schemas — asks for a plan,
 validates it against those declarations, and on failure asks once more with the
-issues appended. A plan that still does not hold up raises `InvalidPlanError`,
-which the engine records as an outcome. `Planner.pick` resolves a discovery tie.
+issues appended. Among those declarations are the fields a procedure reserves
+to a person: a payload that carries a value for one of them which the person
+did not give is an issue, whatever else about the plan holds up, and the field
+belongs in `missing` with the question to ask instead. A plan that still does
+not hold up raises `InvalidPlanError`, which the engine records as an outcome.
+`Planner.pick` resolves a discovery tie.
 `Planner.write_reply` phrases a reply from the outcomes of the turn.
 `provider.py` is the interface: `complete_json` and `embed`.
 `openai_compatible.py` speaks the chat-completions protocol; `scripted.py`
@@ -116,6 +149,15 @@ model wrote, so a write is always accounted for by its receipt.
 `session_store.py` keeps session state in SQLite. `factory.py` wires everything
 from settings.
 
+Three wrappers sit around that loop, all built in `factory.py` from the runtime
+configuration. `BudgetedProvider` counts the completions one turn makes and
+refuses the one past the limit; embeddings are not counted, because they are
+how the index reads the catalog and cost the same whatever the turn decides.
+`GuardrailChain` runs the checks of the input point over what arrived and the
+checks of the output point over the reply. The trace sink times the stretches
+of the turn, and a traced executor and a guided planner are the two places
+spans are opened around work the engine did not write itself.
+
 `opsdeck.api` serves the runtime over HTTP; `opsdeck.cli` serves it in a
 terminal. Both call the same engine methods.
 
@@ -126,25 +168,55 @@ the quality checks, moves a proposal through its states with a named actor, and
 publishes an approved one into a catalog root the registry reads. See
 [learning.md](learning.md).
 
+`opsdeck.improvement` is the scheduled half of the same layer: it reads the
+audit trail and the ledger back as signals, keeps the phrasings people actually
+used in files it can delete again, proposes threshold changes inside declared
+bounds, routes a labelled set and reports how it went, and turns a cluster of
+unanswered requests into a proposal in `draft`. It imports neither the
+lifecycle that moves a proposal nor anything that writes a policy or a
+connector binding. See [improvement.md](improvement.md).
+
 `opsdeck.conformance` replays scenario files against a fresh runtime and reports
 the level reached. See [conformance.md](conformance.md).
 
 ## The turn algorithm
 
-`Engine.turn(session_id, text)` loads the session, runs the turn, and saves the
-state in a `finally` block, so a turn that fails halfway still leaves what it
-decided on disk.
+`Engine.turn(session_id, text)` loads the session, resets the model budget,
+opens the `turn` span, runs the turn, and saves the state in a `finally` block,
+so a turn that fails halfway still leaves what it decided on disk.
 
 1. **Open.** Increment the turn count, settle the language to the configured
-   default if the session has none, emit `turn`, append the user message to the
-   history.
+   default if the session has none, run the input guardrails over the text,
+   emit `turn` with the text as those guardrails left it, append it to the
+   history. A guardrail that refused ends the turn here: the reply is what the
+   guardrail itself says, a `guardrail` event names which one acted, the
+   outcome is `denied`, and nothing the session was already waiting for is
+   touched, because nothing was decided.
 2. **Route.** Ask the router with a context that says whether a goal is under
    way and whether a write is waiting. Adopt the language the decision reports.
    Emit `route` with the kind, the procedure named, the confidence and which
    layer answered.
-3. **Dispatch** on the kind.
-4. **Reply.** Build the text, append it to the history, emit `reply`, return the
+3. **Dispatch** on the kind. A call the budget refuses raises out of the
+   dispatch: the pending goal is dropped, a `cancelled` outcome records that
+   the turn reached the calls it is allowed to make, and the turn still
+   answers.
+4. **Reply.** Build the text, run the output guardrails over it, append it to
+   the history, emit `budget` if anything was refused, emit `reply`, return the
    reply, the outcomes, the pending item and the events of the turn.
+
+The guardrail boundaries are the two edges of the turn and nothing in between:
+what arrives before anything is decided, and what leaves before anyone reads
+it. A promise kept by a check is never also put in a prompt, because handing
+the model a rule the code already enforces invites it to argue with the code;
+the instruction guardrails a hydrated procedure declares are what reaches the
+planning and reply prompts instead.
+
+Spans nest inside the `turn` span: `route`, `plan` once per procedure planned,
+`execute` once per stretch of a plan and once per approved write, and `reply`.
+Each records how long it stayed open and what it was nested in. When tracing is
+on, the turn also emits a `trace` event naming where the spans are being
+written, so the audit trail says that a diagnostic record exists without
+becoming one.
 
 ### Dispatch
 
@@ -158,8 +230,9 @@ decided on disk.
   mismatch cancels the approval and reports it. Increment the approvals given
   and emit `approval_decided`. If a second approval is still required, hold.
   Otherwise re-read what the plan read before the write, re-evaluate the policy
-  against the state as it is now, and — if it still allows — record the intent,
-  execute, verify, then continue the rest of the plan and advance the goal.
+  against the state as it is now, and — if it still allows, and the move is
+  still a legal one for the object — record the intent, execute, verify, then
+  continue the rest of the plan and advance the goal.
 - **provide_input**, **continue_task** — with a goal under way and no approval
   pending, store the answer against the first missing field and advance the
   goal. Otherwise treated as a new request.
@@ -177,7 +250,18 @@ answer that planning is unavailable; otherwise plan and emit `plan`. A plan with
 missing inputs stops the turn with a question. Otherwise the executor runs the
 operations in order. Reads run immediately and their records are collected for
 the policy and for the suggestions. A write stops the plan: see
-[governance.md](governance.md) for the checks it passes through. When a plan
+[governance.md](governance.md) for the checks it passes through.
+
+One of those checks is worth naming here, because of where it sits. When the
+write acts on an entity that declares a lifecycle, the engine reads the current
+state — from what the plan already read, or through the entity's declared read
+when it did not — and looks for a move from that state caused by this
+operation. If there is none, the plan ends with an `invalid_plan` outcome
+naming the state the object is in and the moves that are legal from it, and no
+approval is requested at all. Asking a person to approve something the object
+cannot do is not a governance step, it is a question with one acceptable
+answer. The same check runs again when the approval comes back, because the
+state may have moved while the question was waiting. When a plan
 completes, the goal moves to the next procedure; when the list is exhausted the
 goal is cleared and the reply may suggest what can be done next with what was
 read.
@@ -190,6 +274,7 @@ answers that planning is unavailable.
 
 | Route kind | Model calls, in order |
 | --- | --- |
+| refused by an input guardrail | none: the turn ends before it is classified |
 | greeting (fast path) | none |
 | greeting, off_scope (model) | classify |
 | new_task | classify, then pick if discovery ties, then plan (plus one repair if the plan does not hold up), then write reply if the turn ends in outcomes |
@@ -206,7 +291,15 @@ missing input and the approval request with its exact payload are built from
 declarations and never pass through a model, because that text has to match the
 payload word for word. Embedding calls are separate: discovery and the fast path
 each build an index when the catalog fingerprint changes, and embed the query on
-every use.
+every use, and they are outside the budget for the same reason.
+
+The budget is the ceiling over the whole table. `turn.max_model_calls` is four
+by default: what an ordinary new task spends is classify, plan and a reply
+written from the outcomes, which leaves one for a tie break or a plan repair. A
+turn that needs more than its budget does not get more; it says so. That is also the rule any
+new feature is measured against: work that would add a call to a turn belongs
+at publish time or in a scheduled job instead, which is where enrichment and
+the improvement job are.
 
 ## The dependency rule
 
@@ -229,7 +322,11 @@ that were read and the ledger.
 parses, validates and renders skill files, and publishes into a directory that
 is a catalog root. It does not touch the engine, the ledger or the connectors.
 The runtime picks a published skill up the same way it picks up a hand-written
-one: the registry notices the fingerprint changed.
+one: the registry notices the fingerprint changed. `opsdeck.improvement` sits
+under a tighter rule again: it reads the ledger and the audit trail, writes
+only files under its own root and one report, and imports neither the proposal
+lifecycle nor anything that writes a policy or a connector binding. A test
+walks the syntax tree of every module in the package to keep it that way.
 
 The engine is the only place the layers meet, which is why it is the only place
 the order of the steps is written down.

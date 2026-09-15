@@ -1,0 +1,39 @@
+{
+  "patterns": [
+    {
+      "name": "electronic address",
+      "pattern": "\\b[\\w.+-]+@[\\w-]+\\.[\\w.-]+\\b",
+      "replacement": "<address>"
+    },
+    {
+      "name": "web address",
+      "pattern": "\\b(?:https?://|www\\.)\\S+",
+      "replacement": "<address>"
+    },
+    {
+      "name": "network address",
+      "pattern": "\\b\\d{1,3}(?:\\.\\d{1,3}){3}\\b",
+      "replacement": "<address>"
+    },
+    {
+      "name": "opaque identifier",
+      "pattern": "\\b[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\\b",
+      "replacement": "<identifier>"
+    },
+    {
+      "name": "digest",
+      "pattern": "\\b[0-9a-f]{12,}\\b",
+      "replacement": "<identifier>"
+    },
+    {
+      "name": "reference",
+      "pattern": "\\b[A-Za-z]{2,}[-_]\\d{2,}\\b",
+      "replacement": "<reference>"
+    },
+    {
+      "name": "long number",
+      "pattern": "\\b\\d{4,}\\b",
+      "replacement": "<number>"
+    }
+  ]
+}

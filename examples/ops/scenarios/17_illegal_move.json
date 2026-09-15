@@ -1,0 +1,99 @@
+{
+  "name": "17_illegal_move",
+  "description": "A rollback asked for on a deployment that has already been rolled back is refused before anything is sent.",
+  "level": 2,
+  "provider_script": [
+    {
+      "purpose": "router classification",
+      "expect_contains": "roll search back to 0.8.0",
+      "response": {
+        "kind": "new_task",
+        "runbook_id": "runbook.deployment_rollback",
+        "confidence": 0.92,
+        "language": "en"
+      }
+    },
+    {
+      "purpose": "plan",
+      "expect_contains": "roll search back to 0.8.0",
+      "response": {
+        "runbook_id": "runbook.deployment_rollback",
+        "operations": [
+          {
+            "integration_id": "integration.container_runtime",
+            "operation": "service.status",
+            "payload": {
+              "service": "search"
+            },
+            "write": false,
+            "purpose": "read the environment the service runs in"
+          },
+          {
+            "integration_id": "integration.deployment_control",
+            "operation": "deployment.get",
+            "payload": {
+              "service": "search"
+            },
+            "write": false,
+            "purpose": "read the deployment in place"
+          },
+          {
+            "integration_id": "integration.deployment_control",
+            "operation": "deployment.rollback",
+            "payload": {
+              "service": "search",
+              "target_version": "0.8.0"
+            },
+            "write": true,
+            "purpose": "put the earlier version back"
+          }
+        ],
+        "missing": [],
+        "reply_intent": "report what happened to the rollback of search"
+      }
+    },
+    {
+      "purpose": "reply writing",
+      "expect_contains": "deployment.rollback is not a legal move from there",
+      "response": {
+        "reply": "Nothing was sent. The deployment search is on has already been rolled back, and a rolled-back deployment moves no further, so the rollback to 0.8.0 was refused before the call went out. Deploy 0.8.0 forward if that is the version search should serve."
+      }
+    }
+  ],
+  "turns": [
+    {
+      "user": "roll search back to 0.8.0",
+      "connector_behaviours": {
+        "integration.deployment_control": {
+          "deployment.get": {
+            "override": {
+              "deployment": {
+                "id": "dep-1006",
+                "service": "search",
+                "version": "0.8.1",
+                "previous_version": "0.8.2",
+                "state": "rolled_back",
+                "current": true
+              }
+            }
+          }
+        }
+      },
+      "expect": {
+        "kind": "new_task",
+        "contains": [
+          "Nothing was sent",
+          "already been rolled back"
+        ],
+        "outcomes": [
+          "read",
+          "read",
+          "invalid_plan"
+        ],
+        "pending": null,
+        "receipts": 0,
+        "verification": null
+      }
+    }
+  ]
+}

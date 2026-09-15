@@ -1,0 +1,115 @@
+{
+  "name": "07_required_next_step",
+  "description": "A request read while it is open is offered the move that completes it; one already granted is offered nothing, because the move it has left is never suggested.",
+  "level": 2,
+  "provider_script": [
+    {
+      "purpose": "router classification",
+      "expect_contains": "where has request req-4001 got to",
+      "response": {
+        "kind": "new_task",
+        "runbook_id": "runbook.request_close",
+        "confidence": 0.9,
+        "language": "en"
+      }
+    },
+    {
+      "purpose": "plan",
+      "expect_contains": "where has request req-4001 got to",
+      "response": {
+        "runbook_id": "runbook.request_close",
+        "operations": [
+          {
+            "integration_id": "integration.request_tracker",
+            "operation": "request.get",
+            "payload": {
+              "id": "req-4001"
+            },
+            "write": false,
+            "purpose": "read the request and the state it is in"
+          }
+        ],
+        "missing": [],
+        "reply_intent": "report what the request holds and what it still needs"
+      }
+    },
+    {
+      "purpose": "reply writing",
+      "expect_contains": "\"suggestions\": [\"record its outcome (the next step this access_request needs)\"]",
+      "response": {
+        "reply": "Request req-4001 is open: tnovak asked for support-desk. Nothing has been recorded on it yet, so the next step it needs is to record its outcome, once the membership has actually changed."
+      }
+    },
+    {
+      "purpose": "router classification",
+      "expect_contains": "and where has req-4003 got to",
+      "response": {
+        "kind": "new_task",
+        "runbook_id": "runbook.request_close",
+        "confidence": 0.9,
+        "language": "en"
+      }
+    },
+    {
+      "purpose": "plan",
+      "expect_contains": "and where has req-4003 got to",
+      "response": {
+        "runbook_id": "runbook.request_close",
+        "operations": [
+          {
+            "integration_id": "integration.request_tracker",
+            "operation": "request.get",
+            "payload": {
+              "id": "req-4003"
+            },
+            "write": false,
+            "purpose": "read the request and the state it is in"
+          }
+        ],
+        "missing": [],
+        "reply_intent": "report what the request holds"
+      }
+    },
+    {
+      "purpose": "reply writing",
+      "expect_contains": "\"suggestions\": []",
+      "response": {
+        "reply": "Request req-4003 is granted: amoreau has finance-reports and the outcome is already recorded. There is nothing left to do on it."
+      }
+    }
+  ],
+  "turns": [
+    {
+      "user": "where has request req-4001 got to",
+      "expect": {
+        "kind": "new_task",
+        "contains": [
+          "open",
+          "record its outcome"
+        ],
+        "outcomes": [
+          "read"
+        ],
+        "pending": null,
+        "receipts": 0,
+        "verification": null
+      }
+    },
+    {
+      "user": "and where has req-4003 got to",
+      "expect": {
+        "kind": "new_task",
+        "contains": [
+          "granted",
+          "nothing left to do"
+        ],
+        "outcomes": [
+          "read"
+        ],
+        "pending": null,
+        "receipts": 0,
+        "verification": null
+      }
+    }
+  ]
+}

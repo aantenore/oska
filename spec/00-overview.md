@@ -19,11 +19,13 @@ survive a change of model.
 ## The thesis
 
 OSKA inverts the order. The ontology comes first: what exists, how it is
-identified, what states it can be in. Skills are declared on top of it: what can
-be done, and how. The model reasons only inside what is declared. Every effect
-on the world passes through governance. The catalogue, not the prompt, is the
-source of truth for what the agent says it can do. The catalogue evolves only
-through a human-controlled lifecycle.
+identified, what states it can be in, and which moves between those states are
+legal. The state of an object is read from the system of record through a
+declared read, never inferred from the conversation. Skills are declared on top
+of it: what can be done, and how. The model reasons only inside what is
+declared. Every effect on the world passes through governance. The catalogue,
+not the prompt, is the source of truth for what the agent says it can do. The
+catalogue evolves only through a human-controlled lifecycle.
 
 A system built this way is:
 
@@ -35,13 +37,21 @@ A system built this way is:
 - **Safe by construction.** A write cannot bypass approval, verification or the
   ledger, because the path that executes writes is the only path that reaches a
   connector, and it performs those steps in a fixed order.
+- **Honest about what holds it.** Every promise the system makes about its own
+  behaviour is declared once, with the point at which it acts and whether it is
+  enforced by code at that point or handed to the model as text. The catalogue
+  of promises says which; a sentence in a prompt is never presented as a
+  control.
 - **Portable.** The model, the retrieval index, the router and the reply writer
   are providers behind interfaces. Replacing one does not change the
   catalogue, the governance or the audit trail.
 
 The trade is explicit. OSKA gives up open-ended autonomy. An OSKA system cannot
 invent a new capability at run time, and this is not a limitation to be removed
-later; it is the property that makes the rest of it hold.
+later; it is the property that makes the rest of it hold. A system that learns
+from its own traffic says how far it may go without a person, as a ladder whose
+rungs are named and whose top rung — publishing a capability — is never
+reached automatically.
 
 ## Scope
 
@@ -54,7 +64,9 @@ This specification covers:
   ledger, audit.
 - The turn algorithm: how one user turn becomes routing, planning, execution
   and a reply.
-- The evolution lifecycle: how a new procedure enters the catalogue.
+- The evolution lifecycle: how a new procedure enters the catalogue, and the
+  autonomy ladder a system that learns from its own traffic has to declare
+  itself on.
 - Conformance: levels, the scenario format, and the checklist that maps every
   requirement to its proof.
 

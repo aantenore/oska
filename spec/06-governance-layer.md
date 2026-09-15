@@ -174,6 +174,75 @@ confirm — stays in the ledger and blocks a second attempt on the same key.
 `count` counts every receipt regardless of status, so a failed attempt still
 consumes a session limit.
 
+### Guardrails
+
+Responsibility: hold the rules the system promises to keep, once, where they can
+be read, and say of each one whether code keeps it or a model is merely told
+about it.
+
+A guardrail is declared in a governed catalog and referenced by a skill through
+its identifier. The promise is written once; a skill that wants it names it and
+restates nothing. An identifier no entry defines is an error, both when a skill
+is admitted to the catalogue and when the runtime resolves what a skill
+declares, because a guardrail nobody defined is a promise nobody keeps.
+
+```text
+Guardrail:
+  id: string
+  title: string
+  description: string          # the promise in prose; for an instruction, the text itself
+  enforcement:
+    point: input | planning | execution | output
+    mechanism: check | instruction | invariant
+    validator: string | null   # required for a check: a check the runtime registers
+                               # forbidden for an instruction and for an invariant
+    module: string | null      # where the promise is kept; required for an invariant
+    parameters: object         # everything the check reads: patterns, sets, thresholds
+                               # declared by a check alone; nothing else reads them
+
+GuardrailCatalogue:
+  load(path) -> GuardrailCatalogue
+  get(id) -> Guardrail | null
+  ids() -> [string]
+  for_skill(skill) -> [Guardrail]          # an undefined identifier is an error
+  instructions(skills, point?) -> [string] # the prose of the instruction guardrails
+  checks(point) -> [(Guardrail, Check)]
+
+Check:
+  (text_or_payload, context) -> (ok, reason, redacted_text | null)
+
+GuardrailChain:
+  apply_input(text) -> GuardrailOutcome    # before the turn is classified
+  apply_output(text) -> GuardrailOutcome   # before the reply is returned
+```
+
+The three mechanisms are not three ways of saying the same thing. A `check` is
+code the chain runs at the point the entry names and that can stop what it is
+looking at; a refusal ends the turn with an outcome and an audit event, in the
+words of the guardrail itself. An `invariant` is a promise kept elsewhere: a
+named module holds it, at a point the chain runs nothing, and the entry says
+which module so a reader can go and see. An `instruction` is text handed to the
+planner or the reply writer and nothing more: it may be ignored by the model,
+and the catalogue says so by declaring it an instruction. A catalogue that lets
+one of these look like another is documentation pretending to be control, which
+is worse than no catalogue, because it is believed.
+
+The chain runs at two points, `input` and `output`, so those are the only
+points at which a `check` means anything. A `check` declared at `planning` or at
+`execution` names a validator nothing calls and carries parameters nothing
+reads: its entry reads as enforcement while enforcing nothing, and editing its
+parameters changes nothing at all. Such an entry is refused when the catalogue
+is read. A promise kept at one of those points is declared an `invariant`
+instead, which names the module that keeps it and nothing else — no validator
+to suggest the chain runs it, no parameters to suggest they are read.
+
+What a check reads belongs to its entry rather than to the code that runs it.
+A pattern list, a closed set of allowed values or a threshold is part of the
+promise and has to be reviewable next to the sentence that describes it. The
+converse holds too: an entry with no validator to read them declares no
+parameters, because a value in a catalogue is a promise that something reads
+it.
+
 ### Audit
 
 Responsibility: emit one typed event per step, to one or more sinks.
@@ -182,7 +251,7 @@ Responsibility: emit one typed event per step, to one or more sinks.
 AuditEvent:
   kind: turn | route | discovery | hydrate | plan | policy
       | approval_requested | approval_decided | execute | verify
-      | ledger_hit | reply | proposal
+      | ledger_hit | reply | proposal | guardrail | trace | budget
   session_id, turn_id, at, data
 ```
 
@@ -202,6 +271,12 @@ AuditEvent:
   `verified`.
 - Receipts survive a restart of the runtime.
 - Every step emits an audit event, including the steps that refuse.
+- A promise a skill declares is enforced by the chain at a named point, kept by
+  a named module elsewhere, or handed to the model as text, and the catalogue
+  says which of the three.
+- A guardrail is declared once and referenced by identifier; an identifier no
+  entry defines is an error and never a silent skip.
+- What a check reads is part of its declaration, not of the code that runs it.
 
 ## Requirements
 
@@ -243,6 +318,37 @@ AuditEvent:
   unless the receipt's verification status is `verified`.
 - **OSKA-GOV-14** — Every governance step, including refusals, MUST emit a typed
   audit event carrying the session and turn it belongs to.
+- **OSKA-GOV-15** — A guardrail MUST be declared once in a governed catalogue
+  and referenced by identifier. A skill naming an identifier the catalogue does
+  not define MUST be refused when it is admitted to the catalogue, and the
+  runtime MUST treat such an identifier as an error rather than skipping it.
+- **OSKA-GOV-16** — Every entry MUST declare the point at which it acts —
+  `input`, `planning`, `execution` or `output` — and the mechanism that keeps
+  it: `check` for code the guardrail chain runs and that can refuse,
+  `invariant` for a promise a named module keeps where the chain runs nothing,
+  `instruction` for text handed to a model. An entry MUST NOT be silent about
+  either.
+- **OSKA-GOV-17** — A `check` MUST name a validator the runtime registers, and
+  every value it reads — pattern, set, threshold or word list — MUST be carried
+  by the entry rather than written into the code that runs it. A validator the
+  runtime does not register MUST be refused when the catalogue is read.
+- **OSKA-GOV-18** — An `instruction` MUST NOT name a validator, MUST NOT carry
+  parameters and MUST NOT be reported as enforcement. Its text MAY be handed to
+  the planner or the reply writer; nothing else MAY depend on it being
+  followed.
+- **OSKA-GOV-19** — Guardrails declared at the `input` point MUST run before the
+  turn is classified, and those declared at the `output` point before the reply
+  is returned. A refusal MUST end the turn with an outcome, MUST emit an audit
+  event of kind `guardrail` naming the guardrail that acted, and MUST answer in
+  the words of that guardrail's own declaration.
+- **OSKA-GOV-20** — A `check` MUST be declared only at a point the guardrail
+  chain runs, and a catalogue declaring one anywhere else MUST be refused when
+  it is read. A promise kept at a point the chain does not run MUST be declared
+  an `invariant`, which MUST name the module that keeps it and MUST NOT name a
+  validator or carry parameters. No entry MAY declare a validator or parameters
+  that nothing reads, because an entry that reads as enforcement while nothing
+  enforces it is the failure the catalogue exists to prevent: its parameters can
+  be edited and nothing changes.
 
 ## Rationale
 
@@ -276,7 +382,13 @@ limit at all, because the cheapest way to exceed it is to fail.
 ## In the reference implementation
 
 - `src/opsdeck/governance/` — `capabilities.py`, `policy_engine.py`,
-  `approval.py`, `verification.py`, `ledger.py`.
+  `approval.py`, `verification.py`, `ledger.py`, `guardrails.py`.
+- `configs/guardrails.json` — the declared guardrails, each naming the point it
+  acts at, the mechanism that keeps it and the module that keeps it. Three of
+  the entries are invariants: the read-back before a write is confirmed and the
+  exact-payload approval are kept at `execution`, and planning from declared
+  operations alone is kept at `planning`, all of them at points the chain does
+  not run.
 - `src/opsdeck/audit/` — `events.py`, `sink.py` (memory, file and fan-out
   sinks).
 - `src/opsdeck/contracts/receipt.py`, `contracts/policy.py`,

@@ -8,8 +8,10 @@ and no matchable word is written in code.
 ## Environment
 
 To see the values in force, including every override, run `opsdeck config`.
-It prints the settings and both configuration files as JSON; any scalar under a
-key that contains `key`, `token`, `secret` or `password` is shown as `***`.
+It prints the settings, `runtime.json` and `model.json` as JSON; any scalar
+under a key that contains `key`, `token`, `secret` or `password` is shown as
+`***`. The guardrail catalog is not among them: it is a document rather than a
+set of settings, and `guardrails.catalog` says where to read it.
 
 Every variable is prefixed `OPSDECK_`. Relative paths resolve against the
 current working directory. `.env.example` is a starting point; nothing in the
@@ -52,11 +54,19 @@ How the catalog is ranked against a request.
 | `tie_margin` | `0.05` | When the second candidate is within this of the first, and also clears `min_score`, the result is a tie and the model picks |
 | `limit` | `5` | How many candidates are ranked |
 | `exclude_types` | `["composite"]` | Skill types that never compete in the ranking |
+| `languages` | `["en", "it"]` | The languages a catalog is expected to be reached in |
 
 Only published skills that declare triggers are candidates, so entities and
 integrations are never ranked whatever this says. Composites are excluded by
 default: they are reached by their triggers on the fast path, or by the model
 naming one, rather than competing on a score with the runbooks they contain.
+
+`languages` changes nothing on its own. It is the list `opsdeck enrich run`
+derives routing examples for when no `--language` is given, so adding one is
+how a deployment says which languages it expects and then asks for a pass. The
+cost of adding one is one enrichment pass over the catalog, at publish time.
+Removing one leaves the phrases already derived on disk; deleting the derived
+files is what removes them.
 
 ### `router.rules`
 
@@ -97,10 +107,12 @@ call on phrasings an author wrote down, not to guess.
 | `sessions.path` | `state/sessions.sqlite` | Conversation state, one row per session |
 | `learning.publish_root` | `state/skills` | Where an approved proposal is published |
 
-These four are resolved through the state directory: a relative path keeps only
-its last segment and is placed under `OPSDECK_STATE_DIR`, an absolute path is
-used as it stands. So setting `OPSDECK_STATE_DIR=/var/lib/opsdeck` moves all
-four at once, and nothing in `runtime.json` needs to change.
+These are resolved through the state directory: a relative path keeps only its
+last segment and is placed under `OPSDECK_STATE_DIR`, an absolute path is used
+as it stands. Every other path in this file that names something mutable —
+`tracing.path`, `improvement.learned_root`, `improvement.report_path` — is
+resolved the same way. So setting `OPSDECK_STATE_DIR=/var/lib/opsdeck` moves
+them all at once, and nothing in `runtime.json` needs to change.
 
 ### `reply`
 
@@ -120,6 +132,114 @@ keeps it until another turn changes it.
 | `api.port` | `8000` | Port it listens on |
 
 `--host` and `--port` on `opsdeck serve` override these for one run.
+
+### `guardrails`
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `guardrails.enabled` | `true` | Whether the declared guardrails are kept at all |
+| `guardrails.catalog` | `configs/guardrails.json` | The document that defines them |
+
+A relative catalog path is looked for in the working directory first and then
+beside the runtime configuration file, so a deployment that keeps its
+configuration in one directory does not have to say where it is twice.
+
+Setting `enabled` to `false` costs more than it looks. The engine is handed an
+empty catalog: the input and output checks stop running, and the instruction
+guardrails stop being stated to the model as well, because a deployment that
+has switched its promises off should not tell a model it keeps them. Validation
+is not affected — it reads the document to learn which identifiers exist
+whatever this flag says — so a catalog that still validates is not a catalog
+whose promises are still kept. It is a switch for a diagnosis, not a way to
+run.
+
+Pointing `catalog` at another document is how a deployment changes what a
+guardrail refuses — the patterns, the sets, the wording all live there. The
+runtime refuses to load a catalog that names a validator it does not register,
+so a typo is a startup failure rather than a promise nothing keeps.
+
+### `tracing`
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `tracing.enabled` | `false` | Whether spans are recorded |
+| `tracing.path` | `state/traces.jsonl` | Where they are appended, resolved under the state directory |
+
+Off by default and safe to leave off. Traces are diagnostics: how long each
+stretch of a turn took and what it was nested in. They are not the audit
+record, nothing reads them back, and no decision is taken from one. Turning
+them on costs one appended line per span and a file that grows without bound —
+there is no rotation — so it is something to switch on while a question is open
+and off again afterwards. A turn that is being traced emits a `trace` audit
+event naming where the spans are going, so the audit trail records that a
+diagnostic file exists.
+
+### `turn`
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `turn.max_model_calls` | `4` | Completions one turn may make. Embeddings are not counted |
+
+An ordinary new task spends three — classify, plan, write the reply — which
+leaves one for a tie break or a plan repair. A turn that asks for one more than
+this does not get it: the model is not called, the pending goal is dropped, and
+the turn answers saying it reached the calls it is allowed to make.
+
+Lowering it makes turns cheaper and makes long ones fail; two is enough for a
+greeting and not enough for a governed write. Raising it buys longer turns and
+weakens the bound that keeps a feature from being paid for on every turn, which
+is the reason the key exists.
+
+### `enrichment`
+
+Routing examples derived from the declared triggers, written at publish time
+and read by the index. See [multilingual.md](multilingual.md).
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `enrichment.enabled` | `false` | Whether the runtime reads derived phrases, and whether publication produces them |
+| `enrichment.per_language` | `3` | How many phrases are asked for per language, per procedure |
+| `enrichment.cap_per_route` | `24` | How many texts one skill may contribute to the index |
+| `enrichment.filename` | `generated-examples.json` | Name of the derived file, written inside the skill's version directory |
+
+`enabled` is what the runtime consults, not what `opsdeck enrich run` consults:
+a person running the command is asking for the files whatever the flag says.
+With the flag off, the files are written and ignored; turning it on is what
+makes them count in routing, and costs nothing per turn, because the phrases
+are read from disk.
+
+`per_language` is the size of the pass, and the only thing that costs model
+calls — one call per procedure that is missing a language. `cap_per_route`
+bounds the index, never below what the author declared: a declared trigger is
+never dropped to make room for a derived phrase. Changing `filename` orphans
+the files already written under the old name.
+
+### `improvement`
+
+Bounds the scheduled improvement job works inside. See
+[improvement.md](improvement.md).
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `improvement.learned_root` | `state/learned` | Where learned phrasings are kept, one directory per procedure. The index reads them; nothing writes them during a turn |
+| `improvement.report_path` | `state/improvement.json` | Where the report of the last run is written |
+| `improvement.max_phrases_per_skill` | `24` | How many learned phrasings one procedure may hold |
+| `improvement.cluster_threshold` | `0.8` | How alike two unanswered requests must be to count as the same one |
+| `improvement.cluster_min_size` | `3` | How many requests a cluster needs before it is reported as a gap |
+| `improvement.bounds` | `min_score` 0.1 to 0.5, `tie_margin` 0.02 to 0.15 | The tunables the job may move, and the interval it may move them in |
+
+Both paths are resolved under the state directory by the rule described above.
+Everything the job writes is under them, and deleting either undoes the job
+without touching the catalog.
+
+`bounds` is the ceiling on tuning, and a tunable absent from it is not tunable
+— the job reports that it left the value alone. Widening an interval lets the
+search travel further from the number a person chose; setting it wide enough
+and the search will discover that a floor of zero answers every request
+decisively, which is what a system that has stopped declining looks like on a
+report. `cluster_min_size` is the line between noise and a missing capability:
+lowering it produces more drafts for a reviewer to read, raising it hides
+patterns until they are common.
 
 ## `configs/model.json`
 
@@ -234,14 +354,19 @@ state/
   sessions.sqlite     session state: history, pending goal, pending approval, language
   ledger.sqlite       write receipts
   audit.jsonl         one JSON event per line
+  traces.jsonl        one span per line, only when tracing is on
   proposals/          one JSON file per proposal, named by proposal id
   skills/             published proposals, as a catalog root
+  learned/            one directory per procedure, holding the phrasings learned for it
+  improvement.json    the report of the last improvement run
+  discovery-overrides.json   tuned thresholds, written only when a run is told to apply them
 ```
 
-`sessions.sqlite` always sits directly under the state directory; the other
-three are placed there by the resolution rule described above. `state/skills` is
-one of the default catalog roots, which is how a published proposal reaches the
-runtime without anything being restarted.
+`sessions.sqlite` always sits directly under the state directory; the others
+are placed there by the resolution rule described above. `state/skills` is one
+of the default catalog roots, which is how a published proposal reaches the
+runtime without anything being restarted. Nothing under `learned/` is authored:
+deleting a procedure's directory undoes everything that was learned for it.
 
 Delete the directory to start clean. Delete `ledger.sqlite` alone and the
 runtime forgets which writes it has already done, which is exactly as dangerous

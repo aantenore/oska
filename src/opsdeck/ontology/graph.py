@@ -15,8 +15,16 @@ from pydantic import BaseModel, Field
 
 from opsdeck.contracts.skill import Skill, SkillType
 
-NodeKind = Literal["entity", "integration", "operation", "procedure", "composite"]
-EdgeKind = Literal["relates_to", "acts_on", "declares", "uses", "touches", "contains"]
+NodeKind = Literal["entity", "integration", "operation", "procedure", "composite", "state"]
+EdgeKind = Literal[
+    "relates_to",
+    "acts_on",
+    "declares",
+    "uses",
+    "touches",
+    "contains",
+    "moves_to",
+]
 
 PROCESS_KINDS: tuple[NodeKind, ...] = ("procedure", "composite")
 
@@ -76,6 +84,9 @@ class OntologyGraph(BaseModel):
             if skill.type is SkillType.entity:
                 nodes.append(_entity_node(skill))
                 edges.extend(_relation_edges(skill, known))
+                states, moves = _lifecycle_parts(skill)
+                nodes.extend(states)
+                edges.extend(moves)
             elif skill.type is SkillType.integration:
                 nodes.append(_integration_node(skill))
                 operations, declares, acts_on = _operation_parts(skill, known)
@@ -139,6 +150,11 @@ def operation_node_id(integration_id: str, operation: str) -> str:
     return f"{integration_id}:{operation}"
 
 
+def state_node_id(entity_id: str, state: str) -> str:
+    """Identifier of the node standing for one state of one entity."""
+    return f"{entity_id}#{state}"
+
+
 def _entity_node(skill: Skill) -> Node:
     frontmatter = skill.frontmatter
     identifier = next((field.name for field in frontmatter.fields if field.identifier), None)
@@ -151,6 +167,9 @@ def _entity_node(skill: Skill) -> Node:
             "identifier": identifier,
             "state_field": frontmatter.state_field,
             "states": list(frontmatter.states),
+            "initial_state": frontmatter.initial_state,
+            "final_states": list(frontmatter.final_states),
+            "state_read": frontmatter.state_read,
             "fields": [
                 {
                     "name": field.name,
@@ -162,6 +181,67 @@ def _entity_node(skill: Skill) -> Node:
             ],
         },
     )
+
+
+def _lifecycle_parts(skill: Skill) -> tuple[list[Node], list[Edge]]:
+    """The states an entity declares a move through, and the moves themselves.
+
+    A state is a node of its own so that a move is an edge like any other and
+    the questions asked of a lifecycle are asked of the graph. Only the states
+    the lifecycle names take part: a value the field may hold that no move
+    leads through is declared on the entity and nothing more.
+    """
+    frontmatter = skill.frontmatter
+    if not frontmatter.lifecycle:
+        return [], []
+    names: list[str] = []
+    declared = [
+        frontmatter.initial_state,
+        *_move_states(skill),
+        *frontmatter.final_states,
+    ]
+    for state in declared:
+        if state and state not in names:
+            names.append(state)
+    nodes = [
+        Node(
+            id=state_node_id(skill.id, state),
+            kind="state",
+            label=state,
+            attributes={
+                "entity": skill.id,
+                "state": state,
+                "initial": state == frontmatter.initial_state,
+                "final": state in frontmatter.final_states,
+            },
+        )
+        for state in names
+    ]
+    edges = [
+        Edge(
+            kind="moves_to",
+            source=state_node_id(skill.id, origin),
+            target=state_node_id(skill.id, move.to),
+            attributes={
+                "entity": skill.id,
+                "operation": move.operation,
+                "required": move.required,
+                "offered": move.offered,
+            },
+        )
+        for move in frontmatter.lifecycle
+        for origin in move.from_states
+        if origin in names
+    ]
+    return nodes, edges
+
+
+def _move_states(skill: Skill) -> list[str]:
+    states: list[str] = []
+    for move in skill.frontmatter.lifecycle:
+        states.extend(move.from_states)
+        states.append(move.to)
+    return states
 
 
 def _relation_edges(skill: Skill, known: set[str]) -> list[Edge]:

@@ -49,9 +49,12 @@ payload fields that form its idempotency key. See
 [03-integration-layer.md](03-integration-layer.md).
 
 **L2 Ontology.** Entity types with fields, identifier and states; typed
-relations; the binding of operations to entity types; the graph that answers
-structural questions; the shared vocabulary. See
-[04-ontology-layer.md](04-ontology-layer.md).
+relations; the binding of operations to entity types; the lifecycle, which
+declares the legal moves between states and the read the current state is taken
+from; the graph that answers structural questions; the shared vocabulary. The
+state of an object is read from the system of record through that declared
+read, and is never inferred from the conversation or from what a write replied.
+See [04-ontology-layer.md](04-ontology-layer.md).
 
 **L3 Skill.** The skill artefact and everything that reads it: the catalogue
 with versioned roots and fingerprint reload, the validator, the capability
@@ -60,8 +63,13 @@ resolves a procedure to its dependency closure. See
 [05-skill-layer.md](05-skill-layer.md).
 
 **L4 Governance.** The write path: capability registry, policy engine, approval
-gate, verifier, write ledger and audit. See
-[06-governance-layer.md](06-governance-layer.md).
+gate, verifier, write ledger and audit. Also the guardrail catalogue: every
+promise the installation makes about its own behaviour, declared once with the
+point at which it acts and the mechanism that keeps it — code the chain runs
+and that can refuse, an invariant a named module keeps where the chain runs
+nothing, or text handed to a model. The catalogue is what says which of the
+three a promise is; neither the skill that references it nor the prompt that
+carries it may claim otherwise. See [06-governance-layer.md](06-governance-layer.md).
 
 **L5 Cognition.** Everything a model touches: semantic discovery over the
 catalogue, the turn router, the planner that emits a typed plan, the reply
@@ -73,7 +81,10 @@ channels, and the human-in-the-loop points: questions for missing inputs,
 approvals, cancellations. See [08-interaction-layer.md](08-interaction-layer.md).
 
 **L7 Evolution.** Proposals, quality gates, the lifecycle with named actors,
-and publication into a catalogue root. See
+and publication into a catalogue root. Also the autonomy ladder: a system that
+learns from its own traffic declares the rung it stands on, and every rung
+above it is closed by a code path rather than by intent. The top rung —
+publishing a capability — is never automatic. See
 [09-evolution-layer.md](09-evolution-layer.md).
 
 ## The dependency rule
@@ -117,6 +128,12 @@ layer below it before it has any effect:
 
 No other layer may call a model provider. A system that consults a model inside
 the policy engine, the verifier or the ledger does not conform.
+
+None of the four is added to by a feature. Work that needs a model but is not
+one of those four — deriving routing examples from declared triggers, say —
+runs at publish time or in a scheduled job, and a turn reads what it wrote. A
+turn spends no more model calls than the configured budget allows; see
+[10-cross-cutting.md](10-cross-cutting.md), `OSKA-XC-13`.
 
 ## Requirements
 

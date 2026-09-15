@@ -1,7 +1,7 @@
 # 01 Principles
 
-Eight principles. Every layer implements at least one; no layer contradicts
-any. Each principle is stated, then the consequence that makes it testable.
+Ten principles. Every layer implements at least one; no layer contradicts any.
+Each principle is stated, then the consequence that makes it testable.
 
 ## 1. Ontology first
 
@@ -12,6 +12,10 @@ entities it touches.
 Consequence: a procedure that mentions a record the ontology does not declare
 fails validation. There is no implicit entity, and no entity that exists only
 inside a prompt.
+
+The state an object is in is part of the declaration, and it is read from the
+system of record through a declared read. It is never inferred from the
+conversation, from an earlier turn, or from what a write replied.
 
 ## 2. Skill-driven
 
@@ -69,6 +73,11 @@ Consequence: a system can learn a procedure from a session it just ran, and
 still cannot grant itself a new capability. Learning produces a candidate; a
 person produces a capability.
 
+A system that learns from its own traffic declares how far it may go without a
+person, as a ladder: the rung it stands on is named, and every rung above it is
+unreachable by a code path rather than by intent. The top rung — publishing a
+capability — is never automatic.
+
 ## 8. Overlay, not ownership
 
 When deployed on top of enterprise systems, the agent owns no business data. It
@@ -78,12 +87,44 @@ state, receipts and audit.
 Consequence: the agent is removable. Deleting it loses the trail of what it
 did, and loses nothing else. No system of record is behind it.
 
+## 9. A turn costs what it costs
+
+A feature does not add a model call to a turn. Work that needs a model is
+performed at publish time or by a scheduled job, and a turn spends no more
+model calls than the configured budget allows.
+
+Consequence: the cost and the latency of a turn are bounded by configuration
+rather than by how many features are switched on, and a turn that reaches its
+budget answers from what it already holds instead of failing.
+
+## 10. Promises are declared, not asserted
+
+Every promise the system makes about its own behaviour is declared once, in a
+catalogue of guardrails, with the point it acts at — input, planning, execution
+or output — and the mechanism that keeps it. A promise the guardrail chain
+enforces names the check that enforces it and carries every value that check
+reads; a promise kept elsewhere names the module that keeps it and claims no
+check and no values, because a value nothing reads is a promise nothing keeps;
+a promise handed to the model is text. The declaration says which, rather than
+presenting any of them as something it is not.
+
+Consequence: a reviewer can read the list of promises and see, per line, which
+ones survive a model that ignores them. A sentence in a prompt cannot be
+counted as a safeguard, because the artefact that would have to count it says
+what it is.
+
 ## How the principles constrain each other
 
 Principles 1 and 3 together mean the model's action space is the transitive
 closure of declarations, and nothing else. Principle 5 then makes the system's
 description of itself a function of the same declarations, so what it claims
 and what it can do cannot diverge.
+
+Principle 10 sharpens principle 4 rather than adding to it: the write path is
+the enforced promise, and every other promise has to declare whether it is of
+that kind or of the other. Principle 9 constrains principles 5 and 6 in the
+same way, by making derived text a publish-time artefact rather than a turn-time
+one.
 
 Principles 4 and 7 are the two places where a human is required. Everything
 else may be automated. This is deliberate: the two irreversible acts in an

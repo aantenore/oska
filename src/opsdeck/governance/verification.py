@@ -8,20 +8,28 @@ The entity the operation is bound to takes part in that question. When it
 declares a state field and the closed set of values that field may hold, a
 declared transition becomes an expectation the read-back has to satisfy, and a
 read-back that returns a value outside the set fails verification.
+
+A state is always the state of one object. Reading it from a record therefore
+asks which object the record is about, and a record that answers a different
+question than the one asked is not an answer at all.
 """
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any, Protocol, runtime_checkable
 
 from opsdeck.contracts.common import ConnectorResult
 from opsdeck.contracts.receipt import VerificationStatus
-from opsdeck.contracts.skill import OperationSpec, SkillFrontmatter
+from opsdeck.contracts.skill import LifecycleTransition, OperationSpec, SkillFrontmatter
 from opsdeck.governance.capabilities import CapabilityRegistry
 
 _PAYLOAD_PREFIX = "$payload."
 _OUTSIDE_STATES = "state_outside_declared_set"
+_NOT_REACHED = "state_the_move_promised"
 _MISSING = object()
+
+__all__ = ["ReadBackConnector", "Verifier", "read_state"]
 
 
 @runtime_checkable
@@ -44,8 +52,15 @@ class Verifier:
         spec: OperationSpec,
         payload: dict,
         connector: ReadBackConnector,
+        *,
+        move: LifecycleTransition | None = None,
     ) -> tuple[VerificationStatus, dict]:
-        """Read the state back and say whether it matches what was asked for."""
+        """Read the state back and say whether it matches what was asked for.
+
+        When the write was a move of a declared lifecycle, the state the move
+        promised is part of the question: a read-back that finds the object in
+        any other state fails, whatever else matched.
+        """
         declared = spec.verify
         if declared is None:
             return VerificationStatus.unverified, {
@@ -85,6 +100,10 @@ class Verifier:
         outside = _state_outside_declared_set(entity, result.data)
         if outside is not None:
             evidence[_OUTSIDE_STATES] = outside
+            return VerificationStatus.failed, evidence
+        reached = read_state(entity, result.data)
+        if move is not None and reached is not None and reached != move.to:
+            evidence[_NOT_REACHED] = {"expected": move.to, "actual": reached}
             return VerificationStatus.failed, evidence
         if not result.ok or not matched:
             return VerificationStatus.failed, evidence
@@ -132,17 +151,83 @@ def _expectations(spec: OperationSpec, entity: SkillFrontmatter | None) -> dict[
     }
 
 
+def read_state(
+    entity: SkillFrontmatter | None,
+    data: dict,
+    identity: Mapping[str, Any] | None = None,
+) -> str | None:
+    """The state one object carries in a read, under either shape it comes in.
+
+    A read returns one record under the entity's own name, or a list of them
+    under its plural. Both are read here, so the state of an object is taken
+    from the system of record the same way wherever it is needed.
+
+    `identity` names the object whose state is wanted, as field names of the
+    record and the values they have to hold. A record is read only when every
+    one of those fields it carries holds the value asked for, and a record that
+    carries none of them is not an answer about that object. Without an
+    identity a list is read only when it holds a single record: the first of
+    several names no object in particular, and reading a state off it reports
+    one object's state as another's.
+    """
+    if entity is None or not entity.state_field:
+        return None
+    short = _short_name(entity.id)
+    record = _record(data, short, identity)
+    if not isinstance(record, dict):
+        return None
+    found = record.get(entity.state_field)
+    return None if found is None else str(found)
+
+
+def _record(
+    data: dict, short: str, identity: Mapping[str, Any] | None
+) -> dict | None:
+    """The record of a read that is about the object the identity names."""
+    single = data.get(short)
+    if isinstance(single, dict):
+        return single if _is_about(single, identity) else None
+    listed = data.get(f"{short}s")
+    if not isinstance(listed, list):
+        return None
+    records = [entry for entry in listed if isinstance(entry, dict)]
+    if identity:
+        for entry in records:
+            if _is_about(entry, identity):
+                return entry
+        return None
+    return records[0] if len(records) == 1 else None
+
+
+def _is_about(record: Mapping[str, Any], identity: Mapping[str, Any] | None) -> bool:
+    """Whether this record is about the object the identity names.
+
+    Every field of the identity the record carries has to agree with it. A
+    record carrying none of them says nothing about which object it is, so it
+    is not taken for the one asked about.
+    """
+    if not identity:
+        return True
+    compared = [(name, value) for name, value in identity.items() if name in record]
+    if not compared:
+        return False
+    return all(_equal(record[name], value) for name, value in compared)
+
+
 def _state_outside_declared_set(
     entity: SkillFrontmatter | None, data: dict
 ) -> dict[str, Any] | None:
     """The read-back state when it is not one the entity declares, or nothing."""
     if entity is None or not entity.state_field or not entity.states:
         return None
-    path = f"{_short_name(entity.id)}.{entity.state_field}"
-    actual = _lookup(data, path)
-    if actual is _MISSING or actual in entity.states:
+    actual = read_state(entity, data)
+    if actual is None or actual in entity.states:
         return None
-    return {"field": path, "actual": actual, "declared": list(entity.states)}
+    return {
+        "field": f"{_short_name(entity.id)}.{entity.state_field}",
+        "actual": actual,
+        "declared": list(entity.states),
+    }
 
 
 def _names_field(expectations: dict[str, str], field: str) -> bool:

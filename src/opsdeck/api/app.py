@@ -7,7 +7,10 @@ this package verifies that the caller is who it says it is.
 
 Every handler works against the runtime `opsdeck.services` assembles, the same
 one the command line uses, so the process holds one engine, one catalog and one
-proposal store for its lifetime.
+proposal store for its lifetime. The handlers are synchronous, so the framework
+runs them in a threadpool and two turns of that one engine overlap: anything
+counted for the length of a turn is counted per turn and not on the engine, as
+the model budget is.
 """
 
 from __future__ import annotations

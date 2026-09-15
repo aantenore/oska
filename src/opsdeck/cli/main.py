@@ -15,6 +15,8 @@ from opsdeck.catalog.resolver import CapabilityResolver
 from opsdeck.catalog.validator import validate_all
 from opsdeck.cli import commands_run, commands_serve
 from opsdeck.cli.commands_cassette import cassette
+from opsdeck.cli.commands_enrich import app as enrich
+from opsdeck.cli.commands_improve import app as improve
 from opsdeck.cli.commands_propose import propose
 from opsdeck.cli.options import (
     SchemasOption,
@@ -149,6 +151,8 @@ commands_run.register(app)
 commands_serve.register(app)
 app.add_typer(propose, name="propose")
 app.add_typer(cassette, name="cassette")
+app.add_typer(enrich, name="enrich")
+app.add_typer(improve, name="improve")
 
 
 if __name__ == "__main__":

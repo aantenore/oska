@@ -29,6 +29,15 @@ def test_every_published_declaration_becomes_a_node(registry: SkillRegistry) -> 
     assert len(graph.nodes_of("procedure")) == 6
     assert [node.id for node in graph.nodes_of("composite")] == ["composite.incident_triage"]
     assert len(graph.nodes_of("operation")) == 12
+    assert {node.id for node in graph.nodes_of("state")} == {
+        "entity.alert#firing",
+        "entity.alert#silenced",
+        "entity.alert#resolved",
+        "entity.deployment#in_progress",
+        "entity.deployment#succeeded",
+        "entity.deployment#failed",
+        "entity.deployment#rolled_back",
+    }
     assert graph.fingerprint == registry.fingerprint()
 
 

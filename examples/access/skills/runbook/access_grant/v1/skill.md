@@ -23,6 +23,11 @@ capabilities:
     - user.groups
   writes:
     - membership.grant
+guardrails:
+  - guardrail.declared_operations_only
+  - guardrail.identifiers_are_never_invented
+  - guardrail.exact_payload_approval
+  - guardrail.read_back_before_confirmation
 runtime:
   action: add a person to a group
   action_on_selection: add them to a group

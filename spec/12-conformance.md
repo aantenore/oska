@@ -13,13 +13,13 @@ Requires: all `OSKA-INT-*`, `OSKA-ONT-*` and `OSKA-SKL-*`; `OSKA-COG-11`;
 `OSKA-XC-1` to `OSKA-XC-4` and `OSKA-XC-9`. The validator passes over the whole
 catalogue with no issues. Every sentence the system says about its capability is
 derived. The suite runs offline against a scripted provider. Scenario
-categories C1 and C13 pass.
+categories C1, C13 and C21 pass.
 
 **Level 2 — Governed.** Every effect on the world crosses the write path.
 
 Requires: Level 1, plus all `OSKA-GOV-*`, all `OSKA-IXN-*`, all remaining
-`OSKA-COG-*` and all remaining `OSKA-XC-*`. Scenario categories C1 to C14 and
-C17 pass.
+`OSKA-COG-*` and all remaining `OSKA-XC-*`. Scenario categories C1 to C14, C17,
+C18, C20 and C22 pass.
 
 **Level 3 — Adaptive.** The catalogue grows through a human-controlled
 lifecycle.
@@ -29,6 +29,12 @@ Requires: Level 2, plus all `OSKA-EVO-*`. Scenario categories C15 and C16 pass.
 A system MUST NOT claim a level whose scenario categories it does not run. A
 system MAY claim Level 2 without Level 3; evolution is optional, governance is
 not.
+
+C19 is declared below and no level requires it yet: it is run by the access
+suite alone, and requiring it at Level 2 would state something about the
+operational suite that no scenario of that suite supports. It is listed under
+"Open items", and becomes a Level 2 category once the operational suite runs a
+scenario for it.
 
 ## Scenario format
 
@@ -77,13 +83,20 @@ Field meanings:
 | `provider_script[].expect_contains` | Substring the prompt reaching this step MUST contain |
 | `provider_script[].purpose` | Which call this step answers, for failure messages |
 | `turns[].user` | The user's text for this turn |
-| `turns[].expect.kind` | The route kind the turn MUST produce |
+| `turns[].expect.kind` | The route kind the turn MUST produce, or `guardrail` |
 | `turns[].expect.contains` | Fragments the reply MUST contain |
 | `turns[].expect.outcomes` | The outcome kinds, in order, exactly |
 | `turns[].expect.pending` | `"input"`, `"approval"` or `null` |
 | `turns[].expect.receipts` | Number of receipts in the session after the turn |
 | `turns[].expect.verification` | Verification status of the most recent receipt, or `null` |
 | `turns[].connector_behaviours` | Failures or overrides injected before the turn runs |
+
+`guardrail` is not a route kind. It is what a runner MUST report for a turn
+that a guardrail declared at the `input` point ended before the turn was
+classified: there is no classification to name, because none was made, and the
+scenario names the boundary instead. A runner MUST take `guardrail` from a
+blocking guardrail event raised before any routing event, and MUST NOT accept a
+turn that was classified and then refused as satisfying it. See `OSKA-GOV-19`.
 
 `level` is the lowest level the scenario belongs to, and a scenario carrying no
 `level` is read as level 2. A runner MUST report, per level, how many scenarios
@@ -167,27 +180,36 @@ reply calls a write verified while the receipt it names says otherwise.
 
 ## Required scenario categories
 
-| Id | Category | What it must prove | Reference scenario |
-| --- | --- | --- | --- |
-| C1 | Greeting and scope | The capability list is derived from the catalogue | `01_greeting` |
-| C2 | Governed write | Approval on the exact payload, verified read-back, receipt; the same request again replays the ledger without writing | `02_restart_staging` |
-| C3 | Second approval | `require_second_approval` needs two approvals and states how many stand | `03_restart_production` |
-| C4 | Missing input then reject | A question is asked, answered, then the write is rejected and nothing runs | `04_rollback_rejected` |
-| C5 | Goal replacement | A new request replaces a pending goal; no write happens | `05_goal_replacement` |
-| C6 | Policy denial | A write outside policy is denied, with the rule's reason | `06_silence_denied` |
-| C7 | Verification failure | An injected failed read-back yields a failed receipt, no success claim, and a blocked retry | `07_verification_failure` |
-| C8 | Invalid plan | An undeclared operation is an outcome, with no approval and no ledger entry | `10_invalid_plan` |
-| C9 | Cancellation | A pending approval cancelled by a new goal executes nothing; a new request gets a new approval id | `11_approval_cancelled` |
-| C10 | Session limit | A write beyond `max_per_session` is denied, counting failed receipts | `12_max_per_session` |
-| C11 | Approval with nothing pending | A bare approval executes nothing and answers from scope | `13_approval_with_nothing_pending` |
-| C12 | Composite | Members run in order; the write inside one still stops for approval | `14_composite_triage` |
-| C13 | Off scope | A request outside the catalogue is declined in derived words | `08_off_scope` |
-| C14 | Language | The reply is written in the language of the turn | `09_italian_reply` |
-| C15 | Proposal lifecycle | A proposal cannot reach `approved` or `published` without a named actor | `15_learning_lifecycle` |
-| C16 | Publication | A published skill validates, versions and routes without a restart | `15_learning_lifecycle` |
-| C17 | Policy re-evaluation after approval | The state read before the write carries the operation under a heavier rule; the approval that stands no longer covers it and nothing runs | `16_denied_at_approval` |
+| Id | Category | What it must prove | Reference scenario | Level |
+| --- | --- | --- | --- | --- |
+| C1 | Greeting and scope | The capability list is derived from the catalogue | `01_greeting` | 1 |
+| C2 | Governed write | Approval on the exact payload, verified read-back, receipt; the same request again replays the ledger without writing | `02_restart_staging` | 2 |
+| C3 | Second approval | `require_second_approval` needs two approvals and states how many stand | `03_restart_production` | 2 |
+| C4 | Missing input then reject | A question is asked, answered, then the write is rejected and nothing runs | `04_rollback_rejected` | 2 |
+| C5 | Goal replacement | A new request replaces a pending goal; no write happens | `05_goal_replacement` | 2 |
+| C6 | Policy denial | A write outside policy is denied, with the rule's reason | `06_silence_denied` | 2 |
+| C7 | Verification failure | An injected failed read-back yields a failed receipt, no success claim, and a blocked retry | `07_verification_failure` | 2 |
+| C8 | Invalid plan | An undeclared operation is an outcome, with no approval and no ledger entry | `10_invalid_plan` | 2 |
+| C9 | Cancellation | A pending approval cancelled by a new goal executes nothing; a new request gets a new approval id | `11_approval_cancelled` | 2 |
+| C10 | Session limit | A write beyond `max_per_session` is denied, counting failed receipts | `12_max_per_session` | 2 |
+| C11 | Approval with nothing pending | A bare approval executes nothing and answers from scope | `13_approval_with_nothing_pending` | 1 |
+| C12 | Composite | Members run in order; the write inside one still stops for approval | `14_composite_triage` | 2 |
+| C13 | Off scope | A request outside the catalogue is declined in derived words | `08_off_scope` | 1 |
+| C14 | Language | The reply is written in the language of the turn | `09_italian_reply` | 1 |
+| C15 | Proposal lifecycle | A proposal cannot reach `approved` or `published` without a named actor | `15_learning_lifecycle` | 3 |
+| C16 | Publication | A published skill validates, versions and routes without a restart | `15_learning_lifecycle` | 3 |
+| C17 | Policy re-evaluation after approval | The state read before the write carries the operation under a heavier rule; the approval that stands no longer covers it and nothing runs | `16_denied_at_approval` | 2 |
+| C18 | Illegal lifecycle move | The object is read in a state from which the planned write is not a declared move; the write is refused before the call, the reply names the state and nothing reaches the ledger | `17_illegal_move` | 2 |
+| C19 | Required next step, and a move that is never suggested | An object read in a state with a `required` move is told the step it still needs; an object whose only remaining move is `offered: false` is offered nothing | `examples/access/scenarios/07_required_next_step` | 2 |
+| C20 | Guardrail at the input boundary | A turn a guardrail declared at the `input` point refuses ends there, in the words of that guardrail, with no classification, no plan and no model call | `19_guardrail_block` | 2 |
+| C21 | A request in a second language | The router reports the language once, the session keeps it, and a later turn decided by the rules without a model call is still answered in it | `20_other_language` | 1 |
+| C22 | A human-only input is asked for | A field the procedure reserves to a person is not filled in by the model: the plan comes back with the field in `missing` and no operation, and the write carries the person's own words once they have answered | `21_human_input` | 2 |
 
-C17 belongs to level 2: it proves `OSKA-GOV-7`, which level 2 requires.
+C17 belongs to level 2: it proves `OSKA-GOV-7`, which level 2 requires. C18,
+C20 and C22 belong to level 2 for the same reason, proving `OSKA-ONT-20`,
+`OSKA-GOV-19` and `OSKA-SKL-16`. C21 belongs to level 1: `OSKA-COG-19` is a
+statement about routing that holds before any write does. C19 is required by no
+level; see "Open items".
 
 ## The reference suites
 
@@ -198,19 +220,37 @@ access management domain of accounts, groups and requests. The reference
 scenario named for each category above is the one in the operational suite.
 
 A level is attained per suite, because a level is a statement about a
-catalogue and the runtime that serves it, not about the package alone. The
-operational suite attains level 3: it runs all seventeen categories, C15 and
-C16 included. The access suite attains level 2: it runs C1, C2 twice, C3, C10
-and C12, and declares no scenario of level 3, so it claims none. A second domain
-that runs no evolution scenario does not lower the level the first attains, and
-does not inherit it either.
+catalogue and the runtime that serves it, not about the package alone, and the
+two suites attain different levels. The operational suite attains level 3: it
+runs every category a level requires — C1 to C18 and C20 to C22 — C15 and C16
+included. The access suite attains level 2: it runs C1, C2 twice, C3, C10, C12
+and C19, and declares no scenario of level 3, so it claims none. A second domain that runs no evolution scenario
+does not lower the level the first attains, and does not inherit it either.
+
+A level as a runner reports it and a level as a system claims it are two
+different statements, and a report MUST carry both. The runner reports the
+highest level whose scenarios, and those of every level below it, all pass; it
+knows nothing about categories. The claim is the stronger statement, and it
+MUST name every required category the suite did not run. The access suite runs
+five of the categories level 2 requires, and one it does not — C19 — so its
+report states level 2 as attained by the runner and names the categories it
+leaves to the operational suite. The operational suite runs them all.
+
+Both suites are run by the same runner and the same command, each against its
+own catalogue and its own connector bindings; see
+[reference-implementation.md](reference-implementation.md) for the two
+invocations.
 
 ## Checklist
 
 Every requirement, the module that satisfies it in the reference
-implementation, and the proof. Paths are relative to the repository root. Every
-row carries a proof; a row that did not would be listed again, with the reason,
-under an "Open items" section at the end of this document.
+implementation, and the proof. Paths are relative to the repository root. A row
+naming a test file names the file that carries the assertion: somewhere in it a
+test asserts the requirement, rather than merely exercising the module. A row
+whose proof reads `pending` names a requirement the
+reference implementation holds to but no test or scenario asserts; such rows are
+listed again, with the reason, under "Open items" below, which is empty as of
+this revision.
 
 ### Integration (L1)
 
@@ -246,6 +286,16 @@ under an "Open items" section at the end of this document.
 | OSKA-ONT-11 | `src/opsdeck/catalog/validator.py` | `tests/unit/test_catalog.py` |
 | OSKA-ONT-12 | `src/opsdeck/ontology/graph.py` | `tests/unit/test_ontology.py` |
 | OSKA-ONT-13 | `src/opsdeck/ontology/export.py` | `tests/unit/test_ontology.py` |
+| OSKA-ONT-14 | `src/opsdeck/contracts/skill.py`, `src/opsdeck/catalog/validator.py` | `tests/unit/test_lifecycle.py` |
+| OSKA-ONT-15 | `src/opsdeck/catalog/validator.py` | `tests/unit/test_lifecycle.py` |
+| OSKA-ONT-16 | `src/opsdeck/catalog/validator.py` | `tests/unit/test_lifecycle.py` |
+| OSKA-ONT-17 | `src/opsdeck/catalog/validator.py`, `src/opsdeck/engine/execution.py` | `tests/unit/test_lifecycle.py` |
+| OSKA-ONT-18 | `src/opsdeck/catalog/validator.py` | `tests/unit/test_lifecycle.py` |
+| OSKA-ONT-19 | `src/opsdeck/catalog/validator.py` | `tests/unit/test_lifecycle.py` |
+| OSKA-ONT-20 | `src/opsdeck/engine/execution.py`, `src/opsdeck/governance/capabilities.py` | `tests/unit/test_lifecycle.py`, `examples/ops/scenarios/17_illegal_move.json` |
+| OSKA-ONT-21 | `src/opsdeck/governance/verification.py` | `tests/unit/test_lifecycle.py` |
+| OSKA-ONT-22 | `src/opsdeck/catalog/resolver.py`, `src/opsdeck/engine/goals.py`, `src/opsdeck/ontology/queries.py` | `tests/unit/test_lifecycle.py`, `examples/access/scenarios/07_required_next_step.json` |
+| OSKA-ONT-23 | `src/opsdeck/engine/execution.py`, `src/opsdeck/governance/verification.py`, `src/opsdeck/contracts/skill.py` | `tests/unit/test_lifecycle.py`, `examples/ops/scenarios/22_state_of_another_object.json` |
 
 ### Skill (L3)
 
@@ -265,6 +315,9 @@ under an "Open items" section at the end of this document.
 | OSKA-SKL-12 | `src/opsdeck/catalog/resolver.py` | `tests/unit/test_resolver.py` |
 | OSKA-SKL-13 | `src/opsdeck/catalog/loader.py`, `registry.py` | `tests/unit/test_catalog.py` |
 | OSKA-SKL-14 | `src/opsdeck/governance/capabilities.py` | `tests/unit/test_governance.py` |
+| OSKA-SKL-15 | `src/opsdeck/contracts/skill.py` | `tests/unit/test_human_inputs.py` |
+| OSKA-SKL-16 | `src/opsdeck/planner/planner.py` | `tests/unit/test_lifecycle.py`, `examples/ops/scenarios/21_human_input.json` |
+| OSKA-SKL-17 | `src/opsdeck/planner/prompts.py`, `src/opsdeck/planner/planner.py` | `tests/unit/test_human_inputs.py`, `tests/unit/test_planner.py` |
 
 ### Governance (L4)
 
@@ -284,6 +337,12 @@ under an "Open items" section at the end of this document.
 | OSKA-GOV-12 | `src/opsdeck/governance/ledger.py` | `tests/unit/test_governance.py`, `examples/ops/scenarios/12_max_per_session.json` |
 | OSKA-GOV-13 | `src/opsdeck/engine/reply.py`, `src/opsdeck/engine/outcomes.py` | `tests/scenarios/test_scenarios.py`, `tests/unit/test_engine.py` |
 | OSKA-GOV-14 | `src/opsdeck/audit/events.py`, `src/opsdeck/engine/execution.py` | `tests/unit/test_audit.py` |
+| OSKA-GOV-15 | `src/opsdeck/governance/guardrails.py`, `configs/guardrails.json` | `tests/unit/test_guardrails.py` |
+| OSKA-GOV-16 | `src/opsdeck/governance/guardrails.py`, `configs/guardrails.json` | `tests/unit/test_guardrails.py` |
+| OSKA-GOV-17 | `src/opsdeck/governance/guardrails.py` | `tests/unit/test_guardrails.py` |
+| OSKA-GOV-18 | `src/opsdeck/governance/guardrails.py` | `tests/unit/test_guardrails.py` |
+| OSKA-GOV-19 | `src/opsdeck/engine/engine.py`, `src/opsdeck/governance/guardrails.py` | `tests/unit/test_guardrails.py`, `examples/ops/scenarios/19_guardrail_block.json` |
+| OSKA-GOV-20 | `src/opsdeck/governance/guardrails.py`, `configs/guardrails.json` | `tests/unit/test_guardrails.py` |
 
 ### Cognition (L5)
 
@@ -300,6 +359,14 @@ under an "Open items" section at the end of this document.
 | OSKA-COG-9 | `src/opsdeck/planner/planner.py` | `tests/unit/test_planner.py`, `examples/ops/scenarios/04_rollback_rejected.json` |
 | OSKA-COG-10 | `src/opsdeck/planner/planner.py`, `src/opsdeck/engine/reply.py` | `tests/unit/test_planner.py` |
 | OSKA-COG-11 | `src/opsdeck/planner/scripted.py` | `tests/scenarios/test_scenarios.py` |
+| OSKA-COG-12 | `src/opsdeck/catalog/enrichment.py`, `src/opsdeck/engine/engine.py` | `tests/unit/test_index.py`, `tests/unit/test_trace.py` |
+| OSKA-COG-13 | `src/opsdeck/catalog/enrichment.py`, `src/opsdeck/learning/lifecycle.py`, `src/opsdeck/cli/commands_enrich.py` | `tests/unit/test_enrichment.py`, `tests/unit/test_index.py` |
+| OSKA-COG-14 | `src/opsdeck/catalog/enrichment.py` | `tests/unit/test_enrichment.py` |
+| OSKA-COG-15 | `src/opsdeck/catalog/enrichment.py` | `tests/unit/test_enrichment.py` |
+| OSKA-COG-16 | `src/opsdeck/index/base.py` | `tests/unit/test_index.py` |
+| OSKA-COG-17 | `src/opsdeck/index/base.py`, `src/opsdeck/contracts/common.py` | `tests/unit/test_index.py` |
+| OSKA-COG-18 | `src/opsdeck/learning/lifecycle.py` | `tests/unit/test_enrichment.py` |
+| OSKA-COG-19 | `src/opsdeck/engine/engine.py`, `src/opsdeck/engine/state.py`, `src/opsdeck/router/base.py` | `tests/unit/test_router.py`, `examples/ops/scenarios/20_other_language.json` |
 
 ### Interaction (L6)
 
@@ -332,6 +399,18 @@ under an "Open items" section at the end of this document.
 | OSKA-EVO-7 | `src/opsdeck/learning/lifecycle.py` | `tests/unit/test_learning.py` |
 | OSKA-EVO-8 | `src/opsdeck/catalog/registry.py`, `src/opsdeck/learning/lifecycle.py` | `tests/unit/test_learning.py` |
 | OSKA-EVO-9 | `src/opsdeck/learning/lifecycle.py`, `src/opsdeck/catalog/validator.py` | `tests/unit/test_learning.py`, `examples/ops/scenarios/15_learning_lifecycle.json` |
+| OSKA-EVO-10 | `src/opsdeck/improvement/report.py`, `src/opsdeck/improvement/job.py` | `tests/unit/test_improvement.py` |
+| OSKA-EVO-11 | `src/opsdeck/improvement/signals.py` | `tests/unit/test_improvement.py` |
+| OSKA-EVO-12 | `src/opsdeck/improvement/learned.py` | `tests/unit/test_improvement.py` |
+| OSKA-EVO-13 | `src/opsdeck/improvement/learned.py`, `examples/ops/evaluation/redactions.json` | `tests/unit/test_improvement.py` |
+| OSKA-EVO-14 | `src/opsdeck/improvement/tuning.py` | `tests/unit/test_improvement.py` |
+| OSKA-EVO-15 | `src/opsdeck/improvement/tuning.py` | `tests/unit/test_improvement.py` |
+| OSKA-EVO-16 | `src/opsdeck/improvement/evaluation.py`, `examples/ops/evaluation/routing.json` | `tests/unit/test_improvement.py` |
+| OSKA-EVO-17 | `src/opsdeck/improvement/evaluation.py`, `src/opsdeck/cli/commands_improve.py` | `tests/unit/test_improvement.py` |
+| OSKA-EVO-18 | `src/opsdeck/improvement/gaps.py` | `tests/unit/test_improvement.py` |
+| OSKA-EVO-19 | `src/opsdeck/improvement/job.py` | `tests/unit/test_improvement.py` |
+| OSKA-EVO-20 | `src/opsdeck/improvement/job.py` | `tests/unit/test_improvement.py` |
+| OSKA-EVO-21 | `src/opsdeck/improvement/report.py` | `tests/unit/test_improvement.py` |
 
 ### Cross-cutting
 
@@ -347,6 +426,24 @@ under an "Open items" section at the end of this document.
 | OSKA-XC-8 | `src/opsdeck/learning/lifecycle.py` | `tests/unit/test_learning.py` |
 | OSKA-XC-9 | `src/opsdeck/planner/scripted.py` | `tests/scenarios/test_scenarios.py` |
 | OSKA-XC-10 | `tests/scenarios/test_scenarios.py` | `tests/scenarios/test_scenarios.py` |
+| OSKA-XC-11 | `src/opsdeck/audit/trace.py`, `src/opsdeck/engine/engine.py` | `tests/unit/test_trace.py` |
+| OSKA-XC-12 | `src/opsdeck/audit/trace.py`, `src/opsdeck/config.py`, `configs/runtime.json` | `tests/unit/test_trace.py` |
+| OSKA-XC-13 | `src/opsdeck/engine/engine.py` | `tests/unit/test_trace.py` |
+| OSKA-XC-14 | `src/opsdeck/engine/engine.py`, `src/opsdeck/engine/factory.py` | `tests/unit/test_trace.py` |
+
+## Open items
+
+No requirement is unproven. Every row of the checklist names a test or a
+scenario that asserts it.
+
+One further gap is recorded here because it affects a claim rather than a
+requirement. Category C19 is run by the access suite alone, because that is the
+only reference catalogue whose entities declare a `required` move and a move
+marked `offered: false`. `OSKA-ONT-22` is proven, in
+`tests/unit/test_lifecycle.py` and in the access scenario; what is missing is a
+second catalogue declaring the flags, so C19 is required by no level. An
+operational entity declaring them, and a scenario over it, would move C19 to
+level 2 without any other change to this document.
 
 ## Reporting conformance
 

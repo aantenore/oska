@@ -108,9 +108,10 @@
             "reject",
             "greeting",
             "off_scope",
-            "cancel_task"
+            "cancel_task",
+            "guardrail"
           ],
-          "description": "The route kind the turn must produce."
+          "description": "The route kind the turn must produce, or `guardrail` when a guardrail at the input boundary ended the turn before it was classified."
         },
         "contains": {
           "type": "array",

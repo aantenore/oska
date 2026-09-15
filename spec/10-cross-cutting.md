@@ -51,6 +51,38 @@ Three artefacts, each addressing a different question:
 
 Together they answer: what happened, what changed, and would it happen again.
 
+A fourth artefact answers none of those and is kept apart for that reason.
+**Diagnostic traces** record how long each stretch of a turn took and what it
+was nested inside: the turn, the routing, the discovery, the planning, the
+execution and the reply. They are for whoever has to explain a slow turn, and
+they are optional, off unless a deployment turns them on, and safe to throw
+away. Nothing in the runtime reads a trace back and no decision is taken from
+one. A question that can only be answered from a trace is a missing audit
+event, not a reason to leave tracing on.
+
+### Cost
+
+Responsibility: bound what one turn may spend.
+
+A turn has a budget of model calls, declared in the runtime configuration and
+counted in one place, so that every call the runtime makes — classification,
+planning, tie breaking and phrasing — is counted the same way. Past the budget
+the model is not called again. The turn does not fail: it records that it
+stopped, and answers deterministically from what it already has.
+
+```text
+TurnConfig:
+  max_model_calls: integer
+
+ModelBudget:
+  start_turn()
+  take() -> boolean      # false once the turn has spent its budget
+  limit, spent, refused
+```
+
+Work that genuinely needs more than one turn's budget belongs where it can be
+paid for once and read many times: at publication, or in a scheduled job.
+
 ### Identity
 
 Responsibility: carry the actor.
@@ -98,6 +130,12 @@ contracts; scenarios prove the architecture.
 - The conformance suite runs offline, with no credentials and no network.
 - Any recorded actor is recorded verbatim; the system never substitutes a
   default actor.
+- Traces are diagnostics. The account of what the system did is the audit
+  trail, and no behaviour depends on a trace being recorded.
+- Tracing is off unless configuration turns it on, and the conformance suite
+  runs with it off.
+- A turn spends no more model calls than its declared budget, and a turn that
+  reaches it still answers.
 
 ## Requirements
 
@@ -123,6 +161,20 @@ contracts; scenarios prove the architecture.
   and without network access, against a scripted provider.
 - **OSKA-XC-10** — A scenario run MUST fail when the model calls occur in a
   different order or with different prompt content than the script records.
+- **OSKA-XC-11** — Diagnostic traces MUST be distinct from the audit record. A
+  trace MUST NOT be required to answer what the system did, MUST NOT carry a
+  step that the audit trail does not also carry, and no decision MUST be taken
+  from one.
+- **OSKA-XC-12** — Tracing MUST be off unless configuration turns it on, its
+  destination MUST be configurable, and the conformance suite MUST run without
+  writing traces.
+- **OSKA-XC-13** — A turn MUST NOT make more model calls than the configured
+  per-turn budget. Once the budget is spent the runtime MUST NOT call the model
+  again in that turn, MUST emit a typed audit event recording what was spent
+  and refused, and MUST still answer from what the turn already holds.
+- **OSKA-XC-14** — The per-turn budget MUST be counted in one place, so that
+  every model call the runtime makes is counted whichever part of the turn
+  makes it.
 
 ## Rationale
 
@@ -152,6 +204,23 @@ no default is ever substituted — because a default actor turns an audit trail
 into decoration. The deployment supplies the proxy; the standard supplies the
 requirement that there must be one, stated where operators will read it.
 
+Traces are separated from the audit trail for the same reason receipts are
+separated from events: a record that answers everything answers nothing
+particularly well. The pressure on a trace is to be cheap and detailed, the
+pressure on an audit event is to be typed, durable and complete; letting the
+two merge means either an audit trail nobody keeps or a trace nobody can afford
+to write. Keeping tracing off by default is part of that separation. If a
+system needed its traces on to be accountable, the traces would have become the
+audit trail under another name.
+
+The per-turn budget is a cost bound that behaves like a correctness bound. A
+turn that may call the model as often as it likes has no worst case, and the
+worst case is what a deployment has to pay for and what a user waits through.
+Counting in one place is what makes the bound real: a count kept by each caller
+is a count that a new caller silently escapes. The turn answering anyway,
+deterministically, is the other half — a bound that turns a turn into an error
+would simply be removed the first time it fired.
+
 ## In the reference implementation
 
 - `src/opsdeck/config.py`, `configs/runtime.json`, `configs/model.json` —
@@ -159,6 +228,10 @@ requirement that there must be one, stated where operators will read it.
 - `src/opsdeck/cli/main.py` — `opsdeck config`, which prints the settings in
   force after the environment has been applied, with secrets masked.
 - `src/opsdeck/audit/sink.py` — memory, file and fan-out sinks.
+- `src/opsdeck/audit/trace.py` — the diagnostic span sinks: none, memory and
+  file, with the null sink in force whenever tracing is off.
+- `src/opsdeck/engine/engine.py` — the per-turn model budget and the provider
+  wrapper that counts every call through it.
 - `src/opsdeck/governance/ledger.py` — durable receipts.
 - `src/opsdeck/contracts/` — the shared types, owned by no layer.
 - `tests/scenarios/test_scenarios.py` — the scenario runner, including the check

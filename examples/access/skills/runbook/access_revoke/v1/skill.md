@@ -23,6 +23,11 @@ capabilities:
     - user.groups
   writes:
     - membership.revoke
+guardrails:
+  - guardrail.declared_operations_only
+  - guardrail.identifiers_are_never_invented
+  - guardrail.exact_payload_approval
+  - guardrail.read_back_before_confirmation
 runtime:
   action: remove a person from a group
   action_on_selection: remove them from a group

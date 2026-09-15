@@ -476,7 +476,15 @@ def _apply_behaviours(engine: Engine, behaviours: dict) -> None:
 
 
 def _route_kind(result: TurnResult) -> str | None:
+    """What the turn was taken to be, or `guardrail` when it never got that far.
+
+    A guardrail at the input boundary ends the turn before it is classified, so
+    there is no route kind to report and the scenario names the guardrail
+    instead.
+    """
     for event in result.events:
         if event.kind == "route":
             return str(event.data.get("kind"))
+        if event.kind == "guardrail" and event.data.get("action") == "blocked":
+            return "guardrail"
     return None

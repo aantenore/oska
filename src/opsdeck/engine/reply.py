@@ -12,6 +12,11 @@ appended after its own text, so the rule that a reply states writes only from
 receipts holds by construction rather than by instruction. That includes a turn
 that wrote and then stopped for something else: the approval it asks for next
 does not excuse it from naming what it has already done.
+
+The guardrails the skills of the turn declare at the output point reach the
+model the same way, as a system message in the conversation handed to the reply
+writer. They are instructions and nothing else: what a guardrail promises to
+enforce is enforced before the reply is returned, not asked for in a prompt.
 """
 
 from __future__ import annotations
@@ -20,14 +25,15 @@ from typing import Literal
 
 from opsdeck.catalog.resolver import CapabilityResolver, join_phrases
 from opsdeck.config import ReplyConfig
-from opsdeck.contracts.common import Outcome, PendingInfo
+from opsdeck.contracts.common import Message, Outcome, PendingInfo
 from opsdeck.engine.outcomes import outcome_summary, receipt_lines
 from opsdeck.engine.state import SessionState
+from opsdeck.governance.guardrails import instruction_block
 from opsdeck.governance.ledger import canonical_json
 from opsdeck.planner.planner import Planner
 from opsdeck.planner.provider import ModelProviderError
 
-__all__ = ["ReplyBuilder", "ReplyKind"]
+__all__ = ["ReplyBuilder", "ReplyKind", "guided"]
 
 ReplyKind = Literal[
     "greeting",
@@ -79,11 +85,15 @@ class ReplyBuilder:
         suggestions: list[str] | None = None,
         reply_intent: str = "",
         language: str = "",
+        *,
+        instructions: list[str] | None = None,
     ) -> str:
         """The text for one turn."""
         offered = list(suggestions or [])
         if kind == "outcomes" and self._planner is not None:
-            written = self._write(state, outcomes, offered, reply_intent, language)
+            written = self._write(
+                state, outcomes, offered, reply_intent, language, list(instructions or [])
+            )
             if written:
                 return "\n".join([written, *receipt_lines(outcomes)])
         text = self.template(kind, outcomes, pending, offered)
@@ -119,6 +129,7 @@ class ReplyBuilder:
         suggestions: list[str],
         reply_intent: str,
         language: str,
+        instructions: list[str],
     ) -> str | None:
         planner = self._planner
         if planner is None:
@@ -129,10 +140,21 @@ class ReplyBuilder:
                 reply_intent,
                 suggestions,
                 language or state.language or self._config.default_language,
-                state.history[-self._config.conversation_window :],
+                guided(state.history[-self._config.conversation_window :], instructions),
             )
         except ModelProviderError:
             return None
+
+
+def guided(conversation: list[Message], prose: list[str]) -> list[Message]:
+    """The conversation with the declared promises appended, when there are any.
+
+    They travel as a system message: the model reads them, and nothing that
+    inspects the last thing the user said sees anything the user did not type.
+    """
+    if not prose:
+        return list(conversation)
+    return [*conversation, Message(role="system", content=instruction_block(prose))]
 
 
 def _question(pending: PendingInfo | None) -> str:

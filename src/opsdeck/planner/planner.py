@@ -70,6 +70,9 @@ REPLY_SCHEMA: dict = {
 }
 
 
+_UNCOLLECTED = object()
+
+
 class InvalidPlanError(RuntimeError):
     """Raised when a plan still breaks its declarations after one repair."""
 
@@ -115,11 +118,11 @@ class Planner:
             messages.append(
                 Message(role="user", content=f"Inputs already collected: {known}")
             )
-        plan, issues = self._ask_for_plan(system, messages, hydrated)
+        plan, issues = self._ask_for_plan(system, messages, hydrated, collected_inputs)
         if not issues:
             return _require(plan)
         repaired = [*messages, Message(role="user", content=_repair_note(issues))]
-        plan, issues = self._ask_for_plan(system, repaired, hydrated)
+        plan, issues = self._ask_for_plan(system, repaired, hydrated, collected_inputs)
         if issues:
             raise InvalidPlanError(issues)
         return _require(plan)
@@ -185,20 +188,33 @@ class Planner:
         system: str,
         messages: list[Message],
         hydrated: Hydrated,
+        collected_inputs: dict | None = None,
     ) -> tuple[Plan | None, list[str]]:
         answer = self._provider.complete_json(system, messages, PLAN_SCHEMA)
         try:
             plan = Plan.model_validate({**answer, "runbook_id": hydrated.runbook.id})
         except ValidationError as exc:
             return None, [f"the answer is not a plan: {_first_error(exc)}"]
-        return plan, validate_plan(plan, hydrated)
+        return plan, validate_plan(plan, hydrated, collected_inputs)
 
 
-def validate_plan(plan: Plan, hydrated: Hydrated) -> list[str]:
-    """Every way this plan disagrees with what the catalog declares."""
+def validate_plan(
+    plan: Plan,
+    hydrated: Hydrated,
+    collected_inputs: dict | None = None,
+) -> list[str]:
+    """Every way this plan disagrees with what the catalog declares.
+
+    `collected_inputs` is what the person has already been asked for and has
+    answered. It is the only source a human input may come from: a field the
+    procedure reserves to a person and the model filled in anyway is reported
+    here, whatever else about the plan holds up.
+    """
     issues: list[str] = []
     declared = {skill.id: skill for skill in hydrated.integrations}
     asked = {item.field for item in plan.missing}
+    human = human_inputs(hydrated)
+    collected = dict(collected_inputs or {})
     for position, operation in enumerate(plan.operations, start=1):
         where = f"operation {position} ({operation.integration_id} {operation.operation})"
         integration = declared.get(operation.integration_id)
@@ -220,7 +236,30 @@ def validate_plan(plan: Plan, hydrated: Hydrated) -> list[str]:
                 f"but the plan marks it write={operation.write}"
             )
         issues.extend(_payload_issues(where, operation.payload, spec, asked))
+        issues.extend(_human_input_issues(where, operation.payload, human, collected))
     return issues
+
+
+def human_inputs(hydrated: Hydrated) -> set[str]:
+    """The payload fields the procedures of this goal reserve to a person."""
+    fields = set(hydrated.runbook.frontmatter.human_inputs)
+    for member in hydrated.runbooks:
+        fields.update(member.frontmatter.human_inputs)
+    return fields
+
+
+def _human_input_issues(
+    where: str,
+    payload: dict,
+    human: set[str],
+    collected: dict,
+) -> list[str]:
+    return [
+        f"{where}: {field!r} is a human input and this value was not given by the person;"
+        " leave it out of the payload and list it in `missing` with the question to ask"
+        for field in sorted(human)
+        if field in payload and payload[field] != collected.get(field, _UNCOLLECTED)
+    ]
 
 
 def _payload_issues(

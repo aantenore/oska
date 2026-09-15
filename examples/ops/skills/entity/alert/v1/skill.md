@@ -26,6 +26,14 @@ states:
   - firing
   - silenced
   - resolved
+initial_state: firing
+final_states:
+  - resolved
+state_read: alert.list
+lifecycle:
+  - from: [firing]
+    to: silenced
+    operation: alert.silence
 relations:
   - name: service
     target: entity.service
@@ -42,3 +50,18 @@ the paging, it does not change the state of the service the rule watches.
 
 A silence has an end. An alert silenced without a matching incident or a fix in
 flight will fire again the moment the silence expires.
+
+## Lifecycle
+
+An alert arrives firing. The one move anything here can make is to silence it,
+and only from `firing`: an alert already silenced is silenced, and silencing it
+again is a second promise nobody made. The way back from `silenced` to `firing`
+is not a move of this catalog at all — the silence runs out and the rule fires
+again on its own — so no operation claims it.
+
+`resolved` is where an alert stops. Nothing leaves it, and nothing here puts an
+alert there; the condition the rule watches does.
+
+The state is never taken from what was said a moment ago. It is read back
+through `alert.list` narrowed to the alert, because a silence set by someone
+else between two turns is exactly the case that matters.

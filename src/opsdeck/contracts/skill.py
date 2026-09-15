@@ -7,7 +7,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 SKILL_ID_PATTERN = r"^(runbook|entity|integration|composite)\.[a-z0-9_]+$"
 _SKILL_ID_RE = re.compile(SKILL_ID_PATTERN)
@@ -91,6 +91,24 @@ class Relation(BaseModel):
     description: str = ""
 
 
+class LifecycleTransition(BaseModel):
+    """A legal move of an entity between states, and the operation that causes it.
+
+    `required` marks the move that completes the object: until it is made, the
+    object is not yet what the person asked for. `offered` says whether the
+    runtime may suggest the move; a legal move that is not offered is still
+    planned and executed when the person asks for it.
+    """
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    from_states: list[str] = Field(alias="from", default_factory=list)
+    to: str
+    operation: str
+    required: bool = False
+    offered: bool = True
+
+
 class SkillFrontmatter(BaseModel):
     """Declarative header of a skill file."""
 
@@ -109,7 +127,13 @@ class SkillFrontmatter(BaseModel):
     fields: list[EntityField] = Field(default_factory=list)
     state_field: str | None = None
     states: list[str] = Field(default_factory=list)
+    initial_state: str | None = None
+    final_states: list[str] = Field(default_factory=list)
+    lifecycle: list[LifecycleTransition] = Field(default_factory=list)
+    state_read: str | None = None
     relations: list[Relation] = Field(default_factory=list)
+    human_inputs: list[str] = Field(default_factory=list)
+    guardrails: list[str] = Field(default_factory=list)
     policy: str | None = None
 
     @field_validator("id")
@@ -139,10 +163,16 @@ class SkillFrontmatter(BaseModel):
             for name, value in (
                 ("a state field", self.state_field),
                 ("states", self.states),
+                ("an initial state", self.initial_state),
+                ("final states", self.final_states),
+                ("a lifecycle", self.lifecycle),
+                ("a state read", self.state_read),
                 ("relations", self.relations),
             ):
                 if value:
                     raise ValueError(f"{self.id}: only an entity declares {name}")
+        if self.human_inputs and self.type not in (SkillType.runbook, SkillType.composite):
+            raise ValueError(f"{self.id}: only a procedure declares human inputs")
         if self.runbooks and self.type is not SkillType.composite:
             raise ValueError(f"{self.id}: only a composite declares runbooks")
         if self.type is SkillType.composite and not self.runbooks:
@@ -155,6 +185,17 @@ class SkillFrontmatter(BaseModel):
             if entry.name == name:
                 return entry
         return None
+
+    def moves_from(self, state: str | None) -> list[LifecycleTransition]:
+        """Lifecycle moves that are legal from this state.
+
+        A state nobody reported is not a state every move is legal from. When
+        the state is unknown no move is legal, because a move is legal only out
+        of a state the system of record was found holding the object in.
+        """
+        if state is None:
+            return []
+        return [move for move in self.lifecycle if state in move.from_states]
 
     def operation(self, name: str) -> OperationSpec | None:
         """Return the declared operation with this name, if any."""

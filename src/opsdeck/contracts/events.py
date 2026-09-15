@@ -21,6 +21,9 @@ EventKind = Literal[
     "ledger_hit",
     "reply",
     "proposal",
+    "guardrail",
+    "trace",
+    "budget",
 ]
 
 

@@ -5,7 +5,7 @@ layer and keeps only conversation state, receipts, audit and proposals. Putting
 it on top of something you already run is a matter of declaring what is
 there, not of moving anything.
 
-Work through five steps, in order. Each is testable on its own and useful
+Work through seven steps, in order. Each is testable on its own and useful
 before the next is done. The fragments below are drawn from the reference
 domain under `examples/ops/`: services, deployments, incidents and alerts. The
 second domain under `examples/access/` is the smaller template to copy from —
@@ -93,7 +93,20 @@ before anything touches a real system; move to `http` or `shell` later by
 editing the binding alone, since the operation names and payload fields are
 declared by the skill.
 
-## 3. Write the first procedure, read-only
+## 3. Declare the lifecycle, when the entity has one
+
+Come back to the entity once its operations exist. If the record's states are a
+machine rather than a label — a request opened and then settled, a deployment
+that can be rolled back once — declare `initial_state`, `final_states`, the
+`state_read` the current state is taken from, and one `lifecycle` entry per
+legal move, each naming the write that causes it and optionally marked
+`required` or `offered: false`. The payoff is that a write the object cannot
+make is refused before anybody is asked to approve it, and that what the
+runtime offers on a record is what is legal from the state it is in. Declare
+one only where the system of record really enforces it: a half-true machine is
+worse than none.
+
+## 4. Write the first procedure, read-only
 
 Pick the question people ask most often and answer it without changing
 anything. A read-only runbook needs no policy, so this step exercises the
@@ -135,7 +148,7 @@ Run `opsdeck capabilities`, then `opsdeck run --text "..."`. The scope
 sentence you get back is computed from the `runtime` block; if it reads
 badly, fix the wording there, not a prompt.
 
-## 4. Add the first governed write, with a policy
+## 5. Add the first governed write, with a policy
 
 Add a runbook that reads first and then writes, list the write under
 `capabilities.writes`, and put a `policy.json` next to it.
@@ -174,7 +187,19 @@ runs. Answer `yes`, and the engine re-reads the state, re-evaluates the
 policy, records the intent, calls the connector, reads the service back, and
 only then calls the receipt verified.
 
-## 5. Write the scenarios
+## 6. Declare the promises the procedure keeps
+
+List under `guardrails` the identifiers of the rules this procedure is held to.
+The wording of each lives in the guardrail catalog the runtime configuration
+names, so several procedures claiming the same promise cannot claim it
+differently, and an identifier the catalog does not define fails validation.
+Read that catalog before adding an entry to it: each one says whether code
+enforces the promise at a named point or whether it is a sentence handed to the
+model, and a promise that is only ever text should be readable as such. Name
+under `human_inputs` any payload field whose value has to come from the person
+rather than the model.
+
+## 7. Write the scenarios
 
 Turn what you just did by hand into files under a scenario directory and run
 `opsdeck conform --scenarios <dir>`. At minimum: the read-only procedure,
@@ -186,6 +211,12 @@ disagree; and a rejected or cancelled approval.
 The format, and the rules for keeping a script honest, are in
 [conformance.md](conformance.md). From here the suite says whether a change
 broke something, and it runs offline in seconds.
+
+Two documents sit beside this walk rather than in it, and are worth reading
+once the catalog is real: [multilingual.md](multilingual.md), on reaching a
+catalog in more languages than it was written in, and
+[improvement.md](improvement.md), on what a scheduled job may change on its own
+once there is traffic, and where it stops.
 
 ## The standalone variant
 

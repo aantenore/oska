@@ -3,21 +3,62 @@
     "min_score": 0.2,
     "tie_margin": 0.05,
     "limit": 5,
-    "exclude_types": ["composite"]
+    "exclude_types": [
+      "composite"
+    ],
+    "languages": [
+      "en",
+      "it"
+    ]
   },
   "router": {
     "rules": {
       "approve_tokens": [
-        "yes", "y", "approve", "approved", "confirm", "confirmed", "ok", "okay", "go ahead",
-        "si", "sì", "conferma", "confermo", "approva", "procedi", "va bene"
+        "yes",
+        "y",
+        "approve",
+        "approved",
+        "confirm",
+        "confirmed",
+        "ok",
+        "okay",
+        "go ahead",
+        "si",
+        "s\u00ec",
+        "conferma",
+        "confermo",
+        "approva",
+        "procedi",
+        "va bene"
       ],
       "reject_tokens": [
-        "no", "reject", "rejected", "cancel", "stop", "abort", "do not", "don't",
-        "annulla", "rifiuta", "ferma", "interrompi", "no grazie"
+        "no",
+        "reject",
+        "rejected",
+        "cancel",
+        "stop",
+        "abort",
+        "do not",
+        "don't",
+        "annulla",
+        "rifiuta",
+        "ferma",
+        "interrompi",
+        "no grazie"
       ],
       "cancel_tokens": [
-        "cancel", "stop", "abort", "never mind", "nevermind", "forget it", "drop it",
-        "annulla", "lascia stare", "lascia perdere", "non importa", "fermati"
+        "cancel",
+        "stop",
+        "abort",
+        "never mind",
+        "nevermind",
+        "forget it",
+        "drop it",
+        "annulla",
+        "lascia stare",
+        "lascia perdere",
+        "non importa",
+        "fermati"
       ]
     },
     "fast_path": {
@@ -58,5 +99,39 @@
   "api": {
     "host": "127.0.0.1",
     "port": 8000
+  },
+  "guardrails": {
+    "enabled": true,
+    "catalog": "configs/guardrails.json"
+  },
+  "tracing": {
+    "enabled": false,
+    "path": "state/traces.jsonl"
+  },
+  "turn": {
+    "max_model_calls": 4
+  },
+  "enrichment": {
+    "enabled": false,
+    "per_language": 3,
+    "cap_per_route": 24,
+    "filename": "generated-examples.json"
+  },
+  "improvement": {
+    "learned_root": "state/learned",
+    "report_path": "state/improvement.json",
+    "max_phrases_per_skill": 24,
+    "cluster_threshold": 0.8,
+    "cluster_min_size": 3,
+    "bounds": {
+      "min_score": [
+        0.1,
+        0.5
+      ],
+      "tie_margin": [
+        0.02,
+        0.15
+      ]
+    }
   }
 }

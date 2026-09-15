@@ -1,0 +1,227 @@
+{
+  "name": "21_human_input",
+  "description": "The text of a note is the person's own words: the runtime asks for it, writes only what was given, and the same request again returns the receipt it already holds.",
+  "level": 2,
+  "provider_script": [
+    {
+      "purpose": "router classification",
+      "expect_contains": "I need to write down on incident inc-501 what we have just found",
+      "response": {
+        "kind": "new_task",
+        "runbook_id": "runbook.incident_note",
+        "confidence": 0.9,
+        "language": "en"
+      }
+    },
+    {
+      "purpose": "plan, which asks for the words of the note",
+      "expect_contains": "write down on incident inc-501",
+      "response": {
+        "runbook_id": "runbook.incident_note",
+        "operations": [],
+        "missing": [
+          {
+            "field": "note",
+            "question": "What should the note on inc-501 say?"
+          }
+        ],
+        "reply_intent": "ask what the note on inc-501 should say"
+      }
+    },
+    {
+      "purpose": "router classification of the answer",
+      "expect_contains": "settlement batch 4471",
+      "response": {
+        "kind": "provide_input",
+        "runbook_id": "runbook.incident_note",
+        "confidence": 0.9,
+        "language": "en"
+      }
+    },
+    {
+      "purpose": "plan with the words the person gave",
+      "expect_contains": "Inputs already collected",
+      "response": {
+        "runbook_id": "runbook.incident_note",
+        "operations": [
+          {
+            "integration_id": "integration.incident_tracker",
+            "operation": "incident.get",
+            "payload": {
+              "incident_id": "inc-501"
+            },
+            "write": false,
+            "purpose": "read the incident before writing to it"
+          },
+          {
+            "integration_id": "integration.incident_tracker",
+            "operation": "incident.note",
+            "payload": {
+              "incident_id": "inc-501",
+              "note": "settlement batch 4471 was abandoned at 08:16 and the payments on-call has been paged"
+            },
+            "write": true,
+            "purpose": "record the words the person dictated"
+          }
+        ],
+        "missing": [],
+        "reply_intent": "report the note written on inc-501"
+      }
+    },
+    {
+      "purpose": "reply writing",
+      "expect_contains": "\"kind\": \"receipt\"",
+      "response": {
+        "reply": "The note is on inc-501 and reading the incident back shows it as the most recent entry."
+      }
+    },
+    {
+      "purpose": "router classification of the same request again",
+      "expect_contains": "I need to write down on incident inc-501 what we have just found",
+      "response": {
+        "kind": "new_task",
+        "runbook_id": "runbook.incident_note",
+        "confidence": 0.9,
+        "language": "en"
+      }
+    },
+    {
+      "purpose": "plan, which asks for the words of the note again",
+      "expect_contains": "write down on incident inc-501",
+      "response": {
+        "runbook_id": "runbook.incident_note",
+        "operations": [],
+        "missing": [
+          {
+            "field": "note",
+            "question": "What should the note on inc-501 say?"
+          }
+        ],
+        "reply_intent": "ask what the note on inc-501 should say"
+      }
+    },
+    {
+      "purpose": "router classification of the answer, repeated word for word",
+      "expect_contains": "settlement batch 4471",
+      "response": {
+        "kind": "provide_input",
+        "runbook_id": "runbook.incident_note",
+        "confidence": 0.9,
+        "language": "en"
+      }
+    },
+    {
+      "purpose": "plan with the same words, which the ledger already holds",
+      "expect_contains": "Inputs already collected",
+      "response": {
+        "runbook_id": "runbook.incident_note",
+        "operations": [
+          {
+            "integration_id": "integration.incident_tracker",
+            "operation": "incident.get",
+            "payload": {
+              "incident_id": "inc-501"
+            },
+            "write": false,
+            "purpose": "read the incident before writing to it"
+          },
+          {
+            "integration_id": "integration.incident_tracker",
+            "operation": "incident.note",
+            "payload": {
+              "incident_id": "inc-501",
+              "note": "settlement batch 4471 was abandoned at 08:16 and the payments on-call has been paged"
+            },
+            "write": true,
+            "purpose": "record the words the person dictated"
+          }
+        ],
+        "missing": [],
+        "reply_intent": "report what was already written on inc-501"
+      }
+    },
+    {
+      "purpose": "reply writing",
+      "expect_contains": "\"kind\": \"ledger_hit\"",
+      "response": {
+        "reply": "That note was already written on inc-501 earlier in this session, so nothing was written again."
+      }
+    }
+  ],
+  "turns": [
+    {
+      "user": "I need to write down on incident inc-501 what we have just found",
+      "expect": {
+        "kind": "new_task",
+        "contains": [
+          "What should the note on inc-501 say?"
+        ],
+        "outcomes": [],
+        "pending": "input",
+        "receipts": 0,
+        "verification": null
+      }
+    },
+    {
+      "user": "settlement batch 4471 was abandoned at 08:16 and the payments on-call has been paged",
+      "expect": {
+        "kind": "provide_input",
+        "contains": [
+          "incident.note",
+          "settlement batch 4471 was abandoned at 08:16 and the payments on-call has been paged"
+        ],
+        "outcomes": [
+          "read",
+          "approval_pending"
+        ],
+        "pending": "approval",
+        "receipts": 0,
+        "verification": null
+      }
+    },
+    {
+      "user": "yes",
+      "expect": {
+        "kind": "approve",
+        "contains": [
+          "inc-501"
+        ],
+        "outcomes": [
+          "receipt"
+        ],
+        "pending": null,
+        "receipts": 1,
+        "verification": "verified"
+      }
+    },
+    {
+      "user": "I need to write down on incident inc-501 what we have just found",
+      "expect": {
+        "kind": "new_task",
+        "contains": [
+          "What should the note on inc-501 say?"
+        ],
+        "outcomes": [],
+        "pending": "input",
+        "receipts": 1,
+        "verification": "verified"
+      }
+    },
+    {
+      "user": "settlement batch 4471 was abandoned at 08:16 and the payments on-call has been paged",
+      "expect": {
+        "kind": "provide_input",
+        "contains": [
+          "already"
+        ],
+        "outcomes": [
+          "read",
+          "ledger_hit"
+        ],
+        "pending": null,
+        "receipts": 1,
+        "verification": "verified"
+      }
+    }
+  ]
+}

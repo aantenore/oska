@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 
 from opsdeck.ontology.graph import EdgeKind, NodeKind, OntologyGraph
+from opsdeck.ontology.queries import Lifecycle, lifecycle_of
 
 SUBGRAPH_TITLES: tuple[tuple[NodeKind, str], ...] = (
     ("entity", "Entities"),
@@ -37,8 +38,15 @@ def from_json(payload: dict) -> OntologyGraph:
 
 
 def to_mermaid(graph: OntologyGraph, *, include_operations: bool = True) -> str:
-    """The graph as a mermaid diagram, one subgraph per kind of node."""
-    hidden = {node.id for node in graph.nodes_of("operation")} if not include_operations else set()
+    """The graph as a mermaid diagram, then one state diagram per lifecycle.
+
+    States are left out of the first diagram: a lifecycle is a machine of its
+    own and reads as one, so each entity that declares moves gets a
+    `stateDiagram-v2` block of its own underneath.
+    """
+    hidden = {node.id for node in graph.nodes_of("state")}
+    if not include_operations:
+        hidden |= {node.id for node in graph.nodes_of("operation")}
     lines = ["graph LR"]
     for kind, title in SUBGRAPH_TITLES:
         if kind == "operation" and not include_operations:
@@ -57,7 +65,35 @@ def to_mermaid(graph: OntologyGraph, *, include_operations: bool = True) -> str:
             f"  {_ref(edge.source)} -->|{_text(_edge_label(edge.kind, edge.attributes))}| "
             f"{_ref(edge.target)}"
         )
+    for node in graph.nodes_of("entity"):
+        lifecycle = lifecycle_of(graph, node.id)
+        if lifecycle is not None:
+            lines.extend(_state_diagram(node.id, lifecycle))
     return "\n".join(lines)
+
+
+def _state_diagram(entity_id: str, lifecycle: Lifecycle) -> list[str]:
+    """One `stateDiagram-v2` block for the moves an entity declares."""
+    lines = ["", f"%% lifecycle of {entity_id}", "stateDiagram-v2"]
+    if lifecycle.initial:
+        lines.append(f"  [*] --> {_ref(lifecycle.initial)}")
+    for move in lifecycle.moves:
+        lines.append(
+            f"  {_ref(move.from_state)} --> {_ref(move.to)}: "
+            f"{_text(_move_label(move.operation, move.required, move.offered))}"
+        )
+    for state in lifecycle.final_states:
+        lines.append(f"  {_ref(state)} --> [*]")
+    return lines
+
+
+def _move_label(operation: str, required: bool, offered: bool) -> str:
+    notes = []
+    if required:
+        notes.append("required")
+    if not offered:
+        notes.append("not offered")
+    return f"{operation} ({', '.join(notes)})" if notes else operation
 
 
 def _edge_label(kind: EdgeKind, attributes: dict) -> str:

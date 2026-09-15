@@ -15,8 +15,10 @@ from typing import Annotated
 import typer
 
 from opsdeck.cli.options import SkillsOption, fail, services_for, settings_for
+from opsdeck.config import RuntimeConfig, load_runtime_config
 from opsdeck.contracts.proposal import SkillProposal
 from opsdeck.learning import LifecycleError, draft_from_session, transition
+from opsdeck.planner.provider import ModelProvider
 from opsdeck.services import Services
 
 __all__ = ["propose"]
@@ -105,6 +107,9 @@ def move(
             registry=services.engine.registry,
             publish_root=services.publish_root,
             schema_dir=services.settings.schemas_dir,
+            provider=_provider_of(services),
+            enrichment=_runtime_of(services).enrichment,
+            languages=_runtime_of(services).discovery.languages,
         )
     except (KeyError, LifecycleError, ValueError) as exc:
         fail(str(exc))
@@ -124,3 +129,14 @@ def _line(proposal: SkillProposal) -> str:
             f"{len(proposal.quality.issues)} issue(s)",
         )
     )
+
+
+def _runtime_of(services: Services) -> RuntimeConfig:
+    """Runtime configuration behind an assembled service set."""
+    return load_runtime_config(settings=services.settings)
+
+
+def _provider_of(services: Services) -> ModelProvider | None:
+    """The model provider in force, when one is configured."""
+    planner = services.engine.planner
+    return planner.provider if planner is not None else None

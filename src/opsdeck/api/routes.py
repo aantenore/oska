@@ -12,6 +12,7 @@ from typing import Any
 from fastapi import APIRouter, Request
 from pydantic import BaseModel, Field
 
+from opsdeck.config import load_runtime_config
 from opsdeck.contracts.common import TurnResult
 from opsdeck.contracts.proposal import SkillProposal
 from opsdeck.contracts.receipt import WriteReceipt
@@ -194,6 +195,11 @@ def transition_proposal(
             body.note,
             registry=services.engine.registry,
             publish_root=services.publish_root,
+            provider=(
+                services.engine.planner.provider if services.engine.planner is not None else None
+            ),
+            enrichment=load_runtime_config(settings=services.settings).enrichment,
+            languages=load_runtime_config(settings=services.settings).discovery.languages,
             schema_dir=services.settings.schemas_dir,
         )
     except KeyError as exc:

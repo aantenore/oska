@@ -22,7 +22,10 @@
         "verify",
         "ledger_hit",
         "reply",
-        "proposal"
+        "proposal",
+        "guardrail",
+        "trace",
+        "budget"
       ],
       "description": "Which step of the turn this event records."
     },
@@ -75,12 +78,31 @@
           "enum": ["allow", "deny", "require_second_approval"],
           "description": "policy: the effect applied."
         },
-        "reason": { "type": "string", "description": "policy, approval_decided: why." },
+        "reason": { "type": "string", "description": "policy, approval_decided, guardrail: why." },
+        "point": {
+          "type": "string",
+          "enum": ["input", "planning", "execution", "output"],
+          "description": "guardrail: where the guardrail acted."
+        },
+        "guardrail_id": { "type": ["string", "null"], "description": "guardrail: which one acted." },
+        "action": {
+          "type": "string",
+          "enum": ["passed", "blocked", "redacted"],
+          "description": "guardrail: what it did."
+        },
+        "recording": { "type": "boolean", "description": "trace: whether a diagnostic trace is being recorded for this turn." },
+        "where": { "type": "string", "description": "trace: where that trace goes." },
+        "limit": { "type": "integer", "description": "budget: model calls one turn may make." },
+        "spent": { "type": "integer", "description": "budget: model calls this turn made." },
+        "refused": { "type": "integer", "description": "budget: model calls this turn asked for past its budget." },
         "stage": {
           "type": "string",
-          "enum": ["plan", "approval", "intent"],
-          "description": "policy, execute: when in the write path this event was raised."
+          "enum": ["plan", "approval", "intent", "call"],
+          "description": "policy, execute: when in the write path this event was raised. `intent` is the ledger entry taken before the call, `call` the call itself."
         },
+        "ok": { "type": "boolean", "description": "execute: whether the connector reported success for the call." },
+        "error": { "type": ["string", "null"], "description": "execute: what the connector reported when it did not." },
+        "latency_ms": { "type": "integer", "description": "execute: how long the call took." },
         "approval_id": { "type": "string", "description": "approval_requested, approval_decided: the approval." },
         "payload_hash": { "type": "string", "description": "approval_requested: the frozen payload hash." },
         "decision": {

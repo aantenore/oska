@@ -7,9 +7,17 @@ from collections.abc import Sequence
 from opsdeck.catalog.registry import SkillRegistry
 from opsdeck.contracts.skill import Skill, SkillType
 from opsdeck.ontology.graph import OntologyCache, OntologyGraph
-from opsdeck.ontology.queries import procedures_for, related, vocabulary
+from opsdeck.ontology.queries import (
+    Move,
+    legal_moves,
+    lifecycle_of,
+    procedures_for,
+    related,
+    vocabulary,
+)
 
 PROCESS_TYPES = (SkillType.runbook, SkillType.composite)
+REQUIRED_NOTE = "the next step this {name} needs"
 
 
 class CapabilityResolver:
@@ -34,6 +42,51 @@ class CapabilityResolver:
         nodes = procedures_for(self.ontology(), entity_id, writes_only=True)
         found = [self._registry.get(node.id) for node in nodes]
         return sorted([skill for skill in found if skill is not None], key=_sort_key)
+
+    def moves_for_entity(self, entity_id: str, state: str) -> list[tuple[Move, Skill]]:
+        """The moves an object in this state may make, each with the procedure that makes it.
+
+        A move is named by the procedure that declares the write behind it. A
+        move no published procedure performs is not a thing the runtime can
+        offer, so it is left out.
+        """
+        graph = self.ontology()
+        procedures = [
+            skill
+            for node in procedures_for(graph, entity_id, writes_only=True)
+            if (skill := self._registry.get(node.id)) is not None
+        ]
+        found = []
+        for move in legal_moves(graph, entity_id, state):
+            for skill in procedures:
+                if move.operation in skill.frontmatter.capabilities.writes:
+                    found.append((move, skill))
+                    break
+        return found
+
+    def suggestions_for_entity(self, entity_id: str, state: str | None) -> list[str] | None:
+        """What to offer for an object of this entity, or None when it has no lifecycle.
+
+        A lifecycle answers the question on its own: only what is legal from the
+        state the object is actually in, and only what the author allowed to be
+        offered. `None` says the entity declares no lifecycle, and the caller
+        falls back to the procedures that act on it.
+        """
+        if lifecycle_of(self.ontology(), entity_id) is None:
+            return None
+        if state is None:
+            return []
+        name = entity_id.split(".", 1)[-1]
+        phrases: list[str] = []
+        for move, skill in self.moves_for_entity(entity_id, state):
+            if not move.offered:
+                continue
+            phrase = self.action_phrase(skill, on_selection=True)
+            if move.required:
+                phrase = f"{phrase} ({REQUIRED_NOTE.format(name=name)})"
+            if phrase not in phrases:
+                phrases.append(phrase)
+        return phrases
 
     def entity_summary(self, entity_id: str) -> str:
         """One sentence naming how an entity is identified, its states and its relations."""

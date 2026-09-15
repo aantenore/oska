@@ -3,7 +3,12 @@
   "$id": "https://opsdeck.local/schemas/skill.schema.json",
   "title": "Skill frontmatter",
   "type": "object",
-  "required": ["id", "type", "version", "description"],
+  "required": [
+    "id",
+    "type",
+    "version",
+    "description"
+  ],
   "additionalProperties": false,
   "properties": {
     "id": {
@@ -12,34 +17,99 @@
     },
     "type": {
       "type": "string",
-      "enum": ["runbook", "entity", "integration", "composite"]
+      "enum": [
+        "runbook",
+        "entity",
+        "integration",
+        "composite"
+      ]
     },
-    "version": { "type": "integer", "minimum": 1 },
-    "status": { "type": "string", "enum": ["draft", "published", "retired"] },
-    "description": { "type": "string", "minLength": 20, "maxLength": 200 },
+    "version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "draft",
+        "published",
+        "retired"
+      ]
+    },
+    "description": {
+      "type": "string",
+      "minLength": 20,
+      "maxLength": 200
+    },
     "triggers": {
       "type": "array",
-      "items": { "type": "string", "minLength": 1 }
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
     },
-    "entities": { "type": "array", "items": { "type": "string" } },
-    "integrations": { "type": "array", "items": { "type": "string" } },
-    "runbooks": { "type": "array", "items": { "type": "string" } },
+    "entities": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "integrations": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "runbooks": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
     "capabilities": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "reads": { "type": "array", "items": { "type": "string" } },
-        "writes": { "type": "array", "items": { "type": "string" } }
+        "reads": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "writes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
       }
     },
     "runtime": {
-      "type": ["object", "null"],
+      "type": [
+        "object",
+        "null"
+      ],
       "additionalProperties": false,
-      "required": ["action"],
+      "required": [
+        "action"
+      ],
       "properties": {
-        "action": { "type": "string", "minLength": 1 },
-        "action_on_selection": { "type": ["string", "null"] },
-        "order": { "type": ["integer", "null"] }
+        "action": {
+          "type": "string",
+          "minLength": 1
+        },
+        "action_on_selection": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "order": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
       }
     },
     "operations": {
@@ -47,35 +117,69 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["name", "write", "input_schema", "output_schema"],
+        "required": [
+          "name",
+          "write",
+          "input_schema",
+          "output_schema"
+        ],
         "properties": {
-          "name": { "type": "string", "minLength": 1 },
-          "write": { "type": "boolean" },
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "write": {
+            "type": "boolean"
+          },
           "entity": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "description": "Identifier of the entity this operation acts on."
           },
           "transitions": {
             "type": "object",
             "description": "State the entity is expected to be left in, keyed by its state field.",
-            "additionalProperties": { "type": "string" }
+            "additionalProperties": {
+              "type": "string"
+            }
           },
-          "input_schema": { "type": "object" },
-          "output_schema": { "type": "object" },
+          "input_schema": {
+            "type": "object"
+          },
+          "output_schema": {
+            "type": "object"
+          },
           "verify": {
-            "type": ["object", "null"],
+            "type": [
+              "object",
+              "null"
+            ],
             "additionalProperties": false,
-            "required": ["operation"],
+            "required": [
+              "operation"
+            ],
             "properties": {
-              "operation": { "type": "string", "minLength": 1 },
+              "operation": {
+                "type": "string",
+                "minLength": 1
+              },
               "expect": {
                 "type": "object",
                 "description": "Dotted path into the read-back data mapped to a literal or $payload.<field>.",
-                "additionalProperties": { "type": "string" }
+                "additionalProperties": {
+                  "type": "string"
+                }
               }
             }
           },
-          "idempotency_fields": { "type": "array", "items": { "type": "string" } }
+          "idempotency_fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
         }
       }
     },
@@ -84,38 +188,147 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["name", "type"],
+        "required": [
+          "name",
+          "type"
+        ],
         "properties": {
-          "name": { "type": "string", "minLength": 1 },
-          "type": { "type": "string", "minLength": 1 },
-          "identifier": { "type": "boolean" },
-          "description": { "type": "string" }
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "type": {
+            "type": "string",
+            "minLength": 1
+          },
+          "identifier": {
+            "type": "boolean"
+          },
+          "description": {
+            "type": "string"
+          }
         }
       }
     },
     "state_field": {
-      "type": ["string", "null"],
+      "type": [
+        "string",
+        "null"
+      ],
       "description": "Name of the field that carries the lifecycle state of the entity."
     },
     "states": {
       "type": "array",
       "description": "Allowed values of the state field.",
-      "items": { "type": "string", "minLength": 1 }
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
     },
     "relations": {
       "type": "array",
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["name", "target", "cardinality"],
+        "required": [
+          "name",
+          "target",
+          "cardinality"
+        ],
         "properties": {
-          "name": { "type": "string", "minLength": 1 },
-          "target": { "type": "string", "minLength": 1 },
-          "cardinality": { "type": "string", "enum": ["one", "many"] },
-          "description": { "type": "string" }
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "target": {
+            "type": "string",
+            "minLength": 1
+          },
+          "cardinality": {
+            "type": "string",
+            "enum": [
+              "one",
+              "many"
+            ]
+          },
+          "description": {
+            "type": "string"
+          }
         }
       }
     },
-    "policy": { "type": ["string", "null"] }
+    "policy": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "initial_state": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "State an entity holds when it is created."
+    },
+    "final_states": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "States from which the entity moves no further."
+    },
+    "state_read": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Operation that reads the entity's state back from the system of record."
+    },
+    "lifecycle": {
+      "type": "array",
+      "description": "Legal moves between states, each naming the operation that causes it.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "to",
+          "operation"
+        ],
+        "properties": {
+          "from": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "to": {
+            "type": "string"
+          },
+          "operation": {
+            "type": "string"
+          },
+          "required": {
+            "type": "boolean"
+          },
+          "offered": {
+            "type": "boolean"
+          }
+        }
+      }
+    },
+    "human_inputs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Payload fields only a person can supply; the planner asks and never derives them."
+    },
+    "guardrails": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Identifiers of guardrails declared in the governed catalog."
+    }
   }
 }

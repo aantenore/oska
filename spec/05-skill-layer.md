@@ -43,6 +43,7 @@ SkillFrontmatter:
   runtime: {action, action_on_selection, order}   # procedure and composite
   operations: [OperationSpec]   # integration only
   fields: [EntityField]         # entity only
+  human_inputs: [string]        # procedure and composite; payload fields only a person supplies
   policy: string | null         # path to the policy document
 
 SkillBody:
@@ -51,6 +52,27 @@ SkillBody:
 
 The body is prose for a human. The frontmatter is the contract. Nothing in the
 body grants a capability.
+
+#### Human-only inputs
+
+`human_inputs` names payload fields a procedure reserves to the person. They
+are not fields the model may derive, infer from context, reword from an earlier
+turn, or supply a sensible default for: a duration somebody has to decide, a
+sentence that goes on a permanent record, a reason an auditor will read back.
+The model's judgement is good enough for most of a payload and is the wrong
+authority for these.
+
+The rule is enforced where a plan is checked, not asked for in prose. A plan
+whose operation payload carries a human input is rejected unless the value is
+exactly what the person gave when they were asked for it; the field belongs in
+the plan's `missing` list instead, with the question to put to them. The
+planning prompt states the rule and lists the fields, so the usual case is a
+plan that asks rather than a plan that is repaired — but the prompt is the
+courtesy and the check is the contract.
+
+A reserved field is unlike a capability in one respect worth stating: it does
+not restrict what may eventually be sent. It restricts where the value may come
+from. Once the person has answered, the write proceeds like any other.
 
 ### Catalogue
 
@@ -139,6 +161,9 @@ the catalogue.
 - The resolver names only published skills. A retired procedure disappears from
   what the system offers in the same reload.
 - A skill body cannot widen a capability. Only frontmatter grants anything.
+- A field a procedure reserves to a person is either absent from the plan and
+  listed among what is still missing, or carries exactly the value that person
+  gave. There is no third case.
 
 ## Requirements
 
@@ -175,6 +200,17 @@ the catalogue.
   validation issue and MUST NOT be silently skipped.
 - **OSKA-SKL-14** — The skill body MUST NOT be able to grant, widen or
   otherwise affect any capability; only frontmatter is binding.
+- **OSKA-SKL-15** — A procedure or composite MAY declare `human_inputs`, naming
+  payload fields that only the person the runtime is speaking to may supply. An
+  entity or an integration MUST NOT declare them.
+- **OSKA-SKL-16** — Plan validation MUST reject a plan whose operation payload
+  carries a field named by `human_inputs` of the procedure being planned or of
+  any procedure in its closure, unless the value is exactly the one collected
+  from the person. The field MUST instead appear in the plan's `missing` list
+  with the question to ask.
+- **OSKA-SKL-17** — The planning prompt MUST state that human inputs are never
+  filled in by the model and MUST list the fields the procedure reserves. The
+  prompt MUST NOT be the only enforcement.
 
 ## Rationale
 
@@ -212,5 +248,10 @@ an unbounded one.
 - `src/opsdeck/contracts/skill.py` — the frontmatter, sections and skill models.
 - `schemas/skill.schema.json`, `schemas/policy.schema.json` — the normative
   machine-readable contracts.
+- `src/opsdeck/planner/planner.py` — `validate_plan`, which takes the inputs
+  already collected from the person and reports every field a procedure
+  reserves to them that the model filled in anyway.
+- `src/opsdeck/planner/prompts.py` — the planning prompt, which lists the
+  reserved fields and states the rule before the check has to.
 - `examples/ops/skills/` — the reference domain: four entity skills, four
   integration skills, six procedures and one composite.

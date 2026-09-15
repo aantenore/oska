@@ -8,7 +8,13 @@ no state of its own beyond the registry it reads.
 from __future__ import annotations
 
 from opsdeck.catalog.registry import SkillRegistry
-from opsdeck.contracts.skill import OperationSpec, Skill, SkillFrontmatter, SkillType
+from opsdeck.contracts.skill import (
+    LifecycleTransition,
+    OperationSpec,
+    Skill,
+    SkillFrontmatter,
+    SkillType,
+)
 
 
 class CapabilityRegistry:
@@ -45,6 +51,41 @@ class CapabilityRegistry:
         if skill is None or skill.type is not SkillType.entity:
             return None
         return skill.frontmatter
+
+    def lifecycle_entity(self, spec: OperationSpec) -> SkillFrontmatter | None:
+        """The entity whose lifecycle names this operation, when one does.
+
+        An operation outside every lifecycle is governed by the declarations it
+        already had; only a write a lifecycle names is judged against the state
+        of the object it is about to change.
+        """
+        entity = self.entity_spec(spec.entity)
+        if entity is None or not entity.lifecycle:
+            return None
+        if not any(move.operation == spec.name for move in entity.lifecycle):
+            return None
+        return entity
+
+    @staticmethod
+    def move_for(
+        entity: SkillFrontmatter,
+        operation: str,
+        state: str,
+    ) -> LifecycleTransition | None:
+        """The move this operation makes from this state, or nothing when it is illegal."""
+        for move in entity.moves_from(state):
+            if move.operation == operation:
+                return move
+        return None
+
+    @staticmethod
+    def legal_operations(entity: SkillFrontmatter, state: str) -> list[str]:
+        """The operations that may run against an object held in this state."""
+        names: list[str] = []
+        for move in entity.moves_from(state):
+            if move.operation not in names:
+                names.append(move.operation)
+        return names
 
     def integration_for(self, operation: str) -> str | None:
         """The published integration declaring this operation name, if exactly one does."""

@@ -61,6 +61,65 @@ A relation has no `source` field: the source is the entity type that declares
 it. Relations are declared in one direction; the inverse, when it is wanted, is
 declared on the other entity.
 
+### Entity Lifecycle
+
+Responsibility: declare, as a state machine, the moves an entity type may make
+between its states, and the operation that causes each one.
+
+The states of an entity say what its state field may hold. They do not say how
+it gets from one to another, which of them means the object is finished, or
+which of them it never leaves. A lifecycle says exactly that, and it is part of
+the ontology rather than of a procedure because it is a fact about the record,
+true whichever procedure is running.
+
+```text
+Lifecycle:                     # declared on the entity type
+  initial_state: string        # the state an instance starts in
+  final_states: [string]       # states the entity never leaves
+  state_read: string           # the read the current state is taken from
+  lifecycle: [LifecycleMove]
+
+LifecycleMove:
+  from: [string]               # states this move is legal from
+  to: string                   # state the move lands in
+  operation: string            # the write that causes it
+  required: boolean            # this move completes the object
+  offered: boolean             # the runtime may suggest this move
+```
+
+Two flags qualify a move, and they are independent of each other.
+
+`required` marks the move that completes the object: until it is made, the
+object is not yet what the person asked for. An access request recorded as
+`open` is unfinished work even though nothing is wrong with it, and a runtime
+that has just read one says so. At most one move out of any given state may be
+required, because "the next step" is singular.
+
+`offered: false` marks a move that is legal and is planned and executed when a
+person asks for it, but that the runtime MUST NOT suggest. Legality and advice
+are not the same judgement: revoking an access that was granted a moment ago is
+a move somebody may have good reason to make, and it is not a move a machine
+has any business proposing.
+
+The state a move is judged against is never inferred from the conversation. It
+is read back through the operation named by `state_read`, which is a declared
+read bound to the same entity type. Between one turn and the next the world
+moves: a colleague silences the alert, another rollback lands, a request is
+settled by the person who owns it. A state taken from what was said earlier is
+a guess, and a write is not a place to guess.
+
+A state is always the state of one object, so a state read carries a second
+question beside the first: which object the record that came back is about. One
+turn commonly reads several objects of the same type, and a record of the right
+type is not therefore a record of the right object. The write names the object —
+by the entity's identifier field, or by the field the state read is narrowed by
+— and a record answers for it only when every one of those fields the record
+carries agrees with the write. A record that disagrees, and a record carrying
+nothing to compare, are equally no answer: the declared read runs again for the
+object the write names. The failure this forbids is quiet and complete. An
+illegal move is judged legal against another object's state, it executes, and
+the read-back — which looks at the target's own state — reports it verified.
+
 ### Operation Binding
 
 Responsibility: record which operations act on which entity type, and which
@@ -96,12 +155,12 @@ dropped rather than invented.
 ```text
 Node:
   id: string
-  kind: entity | integration | operation | procedure | composite
+  kind: entity | integration | operation | procedure | composite | state
   label: string
   attributes: object          # what the declaration carries, by kind
 
 Edge:
-  kind: relates_to | acts_on | declares | uses | touches | contains
+  kind: relates_to | acts_on | declares | uses | touches | contains | moves_to
   source: string
   target: string
   attributes: object
@@ -119,7 +178,13 @@ One edge kind per declared link: `relates_to` for a relation between two entity
 types, `declares` from an integration to each operation it exposes, `acts_on`
 from an operation to the entity type it is bound to, `uses` from a procedure to
 an integration, `touches` from a procedure to an entity type, and `contains`
-from a composite to each member procedure, in declared order.
+from a composite to each member procedure, in declared order, and `moves_to`
+from one state of an entity type to another. A state is a node of its own,
+identified as `<entity id>#<state>`, so that a move is an edge like any other
+and a lifecycle is asked of the graph rather than read out of an attribute.
+Only the states a lifecycle names become nodes: a value the state field may
+hold that no declared move leads through is declared on the entity type and
+nothing more.
 
 The queries read the graph and reach back to nothing:
 
@@ -130,6 +195,9 @@ procedures_for(graph, entity_id, writes_only?) -> [Node]  # procedures, not comp
 related(graph, entity_id) -> [(relation, target, cardinality)]
 path(graph, from_entity, to_entity) -> [entity_id] | null # shortest relation chain
 vocabulary(graph) -> {entity_id: {identifier, state_field, states, fields, description}}
+lifecycle_of(graph, entity_id) -> Lifecycle | null         # null when none is declared
+legal_moves(graph, entity_id, state) -> [Move]             # offered or not
+required_move(graph, entity_id, state) -> Move | null
 ```
 
 These queries serve four consumers: the validator (does everything referenced
@@ -162,7 +230,10 @@ to_mermaid(graph, include_operations?) -> string
 The JSON rendering is the graph itself as plain data, so a reader outside the
 runtime sees exactly the nodes and edges the queries see. The diagram rendering
 groups nodes into one subgraph per kind and labels each edge with its kind, or
-with the relation name and cardinality where it has one.
+with the relation name and cardinality where it has one. States are left out of
+that diagram and rendered underneath it instead: one state diagram per entity
+type that declares a lifecycle, naming the operation behind each move and
+marking the moves that are required or not offered.
 
 ### Vocabulary
 
@@ -194,6 +265,15 @@ with a reason rather than with a schema error.
 | `ontology_transition_without_entity` | an operation declares transitions without an entity in the catalogue |
 | `ontology_unknown_transition_field` | a transition is not keyed by the state field of its entity |
 | `ontology_unknown_transition_state` | a transition names a value that is not a declared state |
+| `ontology_lifecycle_without_states` | a lifecycle is declared without a state field or without states |
+| `ontology_lifecycle_without_initial_state` | a lifecycle is declared without the state an instance starts in |
+| `ontology_unknown_lifecycle_state` | the initial state, a final state or an endpoint of a move is not a declared state |
+| `ontology_unknown_lifecycle_operation` | a move names an operation that is not a write bound to this entity type |
+| `ontology_missing_state_read` | a lifecycle names no operation to read the current state from |
+| `ontology_unknown_state_read` | `state_read` is not a declared read bound to this entity type |
+| `ontology_move_from_final_state` | a move leaves a state declared final |
+| `ontology_unreachable_state` | a move leads to a state nothing can reach from the initial state |
+| `ontology_conflicting_required_move` | more than one required move leaves the same state |
 
 ## Invariants
 
@@ -206,6 +286,18 @@ with a reason rather than with a schema error.
 - When an entity declares a state field, the declared states are the closed set
   of values that field may hold; a read-back that returns a state outside the
   set is a verification failure, not a new state.
+- A declared lifecycle names only declared states, starts at one of them, and
+  moves only through operations that are writes bound to that entity type.
+- A final state has no outgoing move, and every state a move leads to can be
+  reached from the initial state. A state that only ever appears as a source is
+  an entry the system of record supplies, not an unreachable one.
+- The current state of an object is read back through `state_read` before a
+  move is judged; it is never inferred from the conversation.
+- A state is the state of one object. A record already read answers for the
+  object a write names only when it is that same object; otherwise the read
+  runs again.
+- A move that is legal is not therefore suggested: `offered: false` withholds
+  it from the runtime's own mouth without withholding it from the person.
 - The graph holds nothing that no skill declares: it is built from published
   declarations, it carries the identity of the catalogue state it was built
   from, and a reference the catalogue does not hold is dropped, never invented.
@@ -246,6 +338,51 @@ with a reason rather than with a schema error.
 - **OSKA-ONT-13** — The ontology MUST be exportable as data that reads back as
   the same graph, so a reader outside the runtime sees the nodes and edges the
   queries answer from.
+- **OSKA-ONT-14** — An entity type MAY declare a lifecycle. A declared lifecycle
+  MUST declare the state field, the closed set of states, the initial state and
+  the legal moves between states, and each move MUST name the operation that
+  causes it; anything else MUST fail validation.
+- **OSKA-ONT-15** — Every state named by a lifecycle — the initial state, a
+  final state, or either endpoint of a move — MUST be one of the entity type's
+  declared states.
+- **OSKA-ONT-16** — The operation of every lifecycle move MUST be a write
+  declared by an integration and bound to that entity type.
+- **OSKA-ONT-17** — A declared lifecycle MUST name, in `state_read`, a read
+  operation bound to that entity type, and the runtime MUST take the current
+  state of an object from that read. The runtime MUST NOT infer the state from
+  the conversation, from an earlier turn, or from the response to the write.
+- **OSKA-ONT-18** — A state declared final MUST have no outgoing move, and every
+  state a move leads to MUST be reachable from the initial state; a destination
+  that is not reachable MUST fail validation and MUST be reported.
+- **OSKA-ONT-19** — At most one move out of any given state MUST be marked
+  `required`.
+- **OSKA-ONT-20** — Before executing a write whose operation is named by the
+  lifecycle of an entity the operation is bound to, the runtime MUST read the
+  object's current state through `state_read` and MUST refuse the write when no
+  declared move leads from that state through that operation. A refusal MUST
+  record nothing in the write ledger and MUST state the current state and the
+  moves that are legal from it. A move out of a final state MUST always be
+  refused.
+- **OSKA-ONT-21** — When a write was a declared move, verification MUST fail
+  unless the state read back is the state the move declares it lands in.
+- **OSKA-ONT-22** — The runtime MUST NOT suggest a move that is not legal from
+  the state the object was read in, and MUST NOT suggest a move declared
+  `offered: false`. A move declared `required` MUST be named as the step the
+  object still needs. Neither flag restricts what may be planned and executed
+  when a person asks for it.
+- **OSKA-ONT-23** — The state a move is judged against MUST be the state of the
+  object the write names. A record an earlier read of the turn returned MAY be
+  used only when it is a record of that same object: every field of the write's
+  payload that names the object — a field the entity declares its identifier,
+  and the field the `state_read` was narrowed by — and that the record carries
+  MUST hold the value the payload holds. On any difference, and when the record
+  carries no such field at all, the runtime MUST execute `state_read` for the
+  object the write names and MUST judge the move against what that read
+  reports. Where a read returns a list, the record its state is taken from MUST
+  be identified: a list of several records with nothing naming which one MUST
+  NOT be read as the state of any of them. A state that could not be read MUST
+  NOT be treated as a state every move is legal from; no move is legal from an
+  unknown state.
 
 ## Rationale
 
@@ -266,6 +403,24 @@ that name, on a declared type, populated by a read the plan already performed.
 Without the ontology each of those becomes a string convention, and string
 conventions decay silently.
 
+The lifecycle raises the same question one level up: why declare the moves at
+all, rather than let the policy refuse what should not happen? Because a policy
+is written about an operation and a payload, and the thing being refused here
+is about the object. "Do not roll back a deployment that has already been rolled
+back" is not a rule about rollbacks, it is a fact about deployments, and every
+procedure that touches one should be held to it without its author remembering
+to write it down. Declaring it once on the entity type also makes it available
+to the resolver, which is how the runtime can offer the next step without
+anybody writing a sentence about what to offer.
+
+The `required` and `offered` flags exist because two different questions were
+being answered by one list. What is legal is a question about the system of
+record. What to suggest is a question about judgement, and the two diverge in
+both directions: a move can be legal and a bad thing to propose, and a move can
+be the only thing left to do and still need a person to ask for it. Keeping
+them apart lets an author say "yes, but do not offer it" without inventing a
+second catalogue of advice.
+
 The second alternative is a heavier one: a full knowledge graph with
 inference, subsumption and reasoning. OSKA deliberately stops short. The graph
 here answers four structural queries and holds a vocabulary. It infers nothing.
@@ -281,11 +436,13 @@ they are small enough that a reviewer can read them all.
   `OntologyCache`, built over the published catalogue and keyed on its
   fingerprint.
 - `src/opsdeck/ontology/queries.py` — `operations_on`, `writers_of`,
-  `procedures_for`, `related`, `path` and `vocabulary`.
+  `procedures_for`, `related`, `path` and `vocabulary`, and the lifecycle
+  queries `lifecycle_of`, `legal_moves` and `required_move`.
 - `src/opsdeck/ontology/export.py` — `to_json`, `from_json` and `to_mermaid`.
-- `src/opsdeck/contracts/skill.py` — `EntityField`, `Relation`, the entity
-  frontmatter fields `state_field` and `states`, and the `entity` and
-  `transitions` fields of `OperationSpec`.
+- `src/opsdeck/contracts/skill.py` — `EntityField`, `Relation`,
+  `LifecycleTransition`, the entity frontmatter fields `state_field`, `states`,
+  `initial_state`, `final_states`, `lifecycle` and `state_read`, and the
+  `entity` and `transitions` fields of `OperationSpec`.
 - `examples/ops/skills/entity/` — the reference domain's entity declarations.
 - `src/opsdeck/catalog/validator.py` — the cross-reference checks that enforce
   `OSKA-ONT-3`, `OSKA-ONT-5` and `OSKA-ONT-11`, reported under the
@@ -296,5 +453,20 @@ they are small enough that a reviewer can read them all.
   value for the state field when the `expect` block does not already name that
   field, and fails the read-back with `state_outside_declared_set` when the
   value it returns is not one the entity declares.
+- `src/opsdeck/engine/execution.py` — where a write named by a lifecycle is
+  judged before it runs: the current state is taken from the reads the plan
+  already performed when one of them was about the object the write names, and
+  from `state_read` for that object when none was, an illegal move produces an
+  `invalid_plan` outcome naming the state and the legal moves, and nothing
+  reaches the ledger. `_identity` is where the payload is turned into the
+  fields that name the object, and `read_state` in
+  `src/opsdeck/governance/verification.py` is where a record is matched against
+  them.
+- `src/opsdeck/governance/capabilities.py` — `lifecycle_entity`, `move_for` and
+  `legal_operations`, which answer which move a write is making.
+- `src/opsdeck/catalog/resolver.py` and `src/opsdeck/engine/goals.py` — where
+  the suggestions after a read come from the lifecycle: the moves legal from
+  the state just read, minus the ones that are not offered, with the required
+  one named as the step the object still needs.
 - `src/opsdeck/cli/main.py` — `opsdeck ontology`, which prints the graph as a
   summary, as JSON or as a diagram.

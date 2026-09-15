@@ -17,6 +17,7 @@ from opsdeck.contracts.plan import Plan
 from opsdeck.engine import outcomes as build
 from opsdeck.engine.execution import PlanExecutor, StopReason, TurnContext
 from opsdeck.engine.reply import ReplyKind
+from opsdeck.governance.verification import read_state
 from opsdeck.planner.planner import InvalidPlanError, Planner
 
 __all__ = ["Answer", "GoalRunner"]
@@ -105,16 +106,39 @@ class GoalRunner:
         return Answer("outcomes", reply_intent=reply_intent)
 
     def suggestions(self, ctx: TurnContext) -> list[str]:
-        """What can be done next with what was just read, in the catalog's own words."""
+        """What can be done next with what was just read, in the catalog's own words.
+
+        An entity that declares a lifecycle answers this itself: the moves that
+        are legal from the state the object was just read in, minus the ones its
+        author kept out of the runtime's mouth. Everything else is offered the
+        procedures that act on it.
+        """
         if not ctx.outcomes or any(outcome.kind != "read" for outcome in ctx.outcomes):
             return []
         phrases: list[str] = []
         for entity_id in ctx.state.last_entities:
-            for skill in self._resolver.actions_for_entity(entity_id):
-                phrase = self._resolver.action_phrase(skill, on_selection=True)
+            offered = self._resolver.suggestions_for_entity(
+                entity_id, self._state_read_in_turn(ctx, entity_id)
+            )
+            if offered is None:
+                offered = [
+                    self._resolver.action_phrase(skill, on_selection=True)
+                    for skill in self._resolver.actions_for_entity(entity_id)
+                ]
+            for phrase in offered:
                 if phrase not in phrases:
                     phrases.append(phrase)
         return phrases
+
+    def _state_read_in_turn(self, ctx: TurnContext, entity_id: str) -> str | None:
+        """The state this turn read the object in, or nothing when it read none."""
+        skill = self._registry.get(entity_id)
+        if skill is None:
+            return None
+        record = ctx.entities.get(entity_id.split(".", 1)[-1])
+        if not isinstance(record, dict):
+            return None
+        return read_state(skill.frontmatter, {entity_id.split(".", 1)[-1]: record})
 
     def _plan(self, ctx: TurnContext, hydrated: Hydrated, collected: dict) -> Plan | None:
         planner = self._planner

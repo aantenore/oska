@@ -1,6 +1,6 @@
 {
   "name": "14_composite_triage",
-  "description": "A composite runs its procedures in order; the write in the last one still stops for its own approval.",
+  "description": "A composite runs its procedures in order; the last one asks the person for the words of the note, and the write still stops for its own approval.",
   "level": 2,
   "provider_script": [
     {
@@ -66,8 +66,33 @@
       }
     },
     {
-      "purpose": "plan step 3, incident note",
+      "purpose": "plan step 3, incident note, which asks for the words of the note",
       "expect_contains": "run triage on incident",
+      "response": {
+        "runbook_id": "runbook.incident_note",
+        "operations": [],
+        "missing": [
+          {
+            "field": "note",
+            "question": "What should the note on inc-501 say?"
+          }
+        ],
+        "reply_intent": "ask what the note on inc-501 should say"
+      }
+    },
+    {
+      "purpose": "router classification of the answer",
+      "expect_contains": "repeated connection pool timeouts",
+      "response": {
+        "kind": "provide_input",
+        "runbook_id": "composite.incident_triage",
+        "confidence": 0.9,
+        "language": "en"
+      }
+    },
+    {
+      "purpose": "plan step 3 again, with the words the person gave",
+      "expect_contains": "Inputs already collected",
       "response": {
         "runbook_id": "runbook.incident_note",
         "operations": [
@@ -85,10 +110,10 @@
             "operation": "incident.note",
             "payload": {
               "incident_id": "inc-501",
-              "note": "status degraded on 3.2.0, log shows repeated connection pool timeouts, triage started"
+              "note": "payments is degraded on 3.2.0, the log shows repeated connection pool timeouts, triage started"
             },
             "write": true,
-            "purpose": "record what the first two steps found"
+            "purpose": "record the words the person dictated"
           }
         ],
         "missing": [],
@@ -109,13 +134,28 @@
       "expect": {
         "kind": "new_task",
         "contains": [
-          "incident.note",
-          "inc-501"
+          "What should the note on inc-501 say?"
         ],
         "outcomes": [
           "read",
           "read",
-          "read",
+          "read"
+        ],
+        "pending": "input",
+        "receipts": 0,
+        "verification": null
+      }
+    },
+    {
+      "user": "payments is degraded on 3.2.0, the log shows repeated connection pool timeouts, triage started",
+      "expect": {
+        "kind": "provide_input",
+        "contains": [
+          "incident.note",
+          "inc-501",
+          "repeated connection pool timeouts"
+        ],
+        "outcomes": [
           "read",
           "approval_pending"
         ],

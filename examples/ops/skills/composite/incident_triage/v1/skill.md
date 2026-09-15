@@ -15,6 +15,11 @@ runbooks:
   - runbook.service_health
   - runbook.log_search
   - runbook.incident_note
+guardrails:
+  - guardrail.declared_operations_only
+  - guardrail.identifiers_are_never_invented
+  - guardrail.exact_payload_approval
+  - guardrail.read_back_before_confirmation
 runtime:
   action: triage an incident on a service
   action_on_selection: triage it

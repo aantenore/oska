@@ -20,6 +20,13 @@ capabilities:
     - incident.get
   writes:
     - incident.note
+human_inputs:
+  - note
+guardrails:
+  - guardrail.declared_operations_only
+  - guardrail.identifiers_are_never_invented
+  - guardrail.exact_payload_approval
+  - guardrail.read_back_before_confirmation
 runtime:
   action: add a note to an incident
   action_on_selection: add a note to it

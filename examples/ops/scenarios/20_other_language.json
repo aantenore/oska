@@ -1,0 +1,88 @@
+{
+  "name": "20_other_language",
+  "description": "A request written in Italian is routed and answered in Italian. The router reports the language once, the session keeps it, and the turn that approves the write is decided by the rules without a model call and is still answered in the language the session settled on.",
+  "level": 1,
+  "provider_script": [
+    {
+      "purpose": "router classification",
+      "expect_contains": "il servizio di ricerca in staging si è bloccato, puoi riavviarlo",
+      "response": {
+        "kind": "new_task",
+        "runbook_id": "runbook.service_restart",
+        "confidence": 0.9,
+        "language": "it"
+      }
+    },
+    {
+      "purpose": "plan",
+      "expect_contains": "puoi riavviarlo",
+      "response": {
+        "runbook_id": "runbook.service_restart",
+        "operations": [
+          {
+            "integration_id": "integration.container_runtime",
+            "operation": "service.status",
+            "payload": {
+              "service": "search"
+            },
+            "write": false,
+            "purpose": "read the current state"
+          },
+          {
+            "integration_id": "integration.container_runtime",
+            "operation": "service.restart",
+            "payload": {
+              "service": "search"
+            },
+            "write": true,
+            "purpose": "restart the wedged service"
+          }
+        ],
+        "missing": [],
+        "reply_intent": "report the restart of search and whether the read-back confirmed it"
+      }
+    },
+    {
+      "purpose": "reply writing",
+      "expect_contains": "\"kind\": \"receipt\"",
+      "response": {
+        "reply": "Il servizio search è stato riavviato e la rilettura lo mostra di nuovo in esecuzione, quindi la ricevuta è confermata."
+      }
+    }
+  ],
+  "turns": [
+    {
+      "user": "il servizio di ricerca in staging si è bloccato, puoi riavviarlo",
+      "expect": {
+        "kind": "new_task",
+        "contains": [
+          "service.restart",
+          "{\"service\":\"search\"}"
+        ],
+        "outcomes": [
+          "read",
+          "approval_pending"
+        ],
+        "pending": "approval",
+        "receipts": 0,
+        "verification": null
+      }
+    },
+    {
+      "user": "confermo",
+      "expect": {
+        "kind": "approve",
+        "contains": [
+          "riavviato",
+          "confermata"
+        ],
+        "outcomes": [
+          "receipt"
+        ],
+        "pending": null,
+        "receipts": 1,
+        "verification": "verified"
+      }
+    }
+  ]
+}

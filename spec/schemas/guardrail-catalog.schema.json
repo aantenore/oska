@@ -1,0 +1,104 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://oska.spec/schemas/guardrail-catalog.schema.json",
+  "title": "OSKA guardrail catalog",
+  "description": "The governed catalog of guardrails of one installation: every rule the installation promises to keep, declared once and referenced from a skill by identifier. Each entry says where the promise acts and which of the three mechanisms keeps it — a check the guardrail chain runs, an invariant a named module keeps, or an instruction handed to a model — so neither a sentence handed to a model nor a rule kept elsewhere can be read as a control at the point it is declared.",
+  "type": "object",
+  "required": ["guardrails"],
+  "properties": {
+    "$comment": {
+      "type": "string",
+      "description": "Prose for a reader of the file. Nothing reads it."
+    },
+    "guardrails": {
+      "type": "object",
+      "description": "The declared guardrails, keyed by identifier. An identifier a skill names and this object does not define is an error.",
+      "minProperties": 1,
+      "propertyNames": {
+        "pattern": "^guardrail\\.[a-z0-9_]+$"
+      },
+      "additionalProperties": { "$ref": "#/$defs/guardrail" }
+    }
+  },
+  "$defs": {
+    "guardrail": {
+      "type": "object",
+      "required": ["title", "description", "enforcement"],
+      "additionalProperties": false,
+      "properties": {
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The promise in one line, as a reviewer would state it."
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The promise in full. For an entry acting at the input or the output point this is also the wording the runtime answers in when the guardrail refuses a turn, so it is written to be read by the person who typed the request."
+        },
+        "enforcement": { "$ref": "#/$defs/enforcement" }
+      }
+    },
+    "enforcement": {
+      "type": "object",
+      "required": ["point", "mechanism", "module"],
+      "additionalProperties": false,
+      "description": "Where the promise acts and what keeps it. A `check` runs in the guardrail chain at its point, names a validator the runtime registers, and carries every value that validator reads. An `invariant` is kept by the module it names, at a point the chain runs nothing, and carries neither a validator nor parameters. An `instruction` carries neither either, and is never reported as enforcement.",
+      "properties": {
+        "point": {
+          "type": "string",
+          "enum": ["input", "planning", "execution", "output"],
+          "description": "The point of the turn at which this entry acts. `input` runs before the turn is classified and `output` before the reply is returned; those two are the points the guardrail chain runs. `planning` and `execution` are points it does not run, so a promise acting there is kept by a module and declared as an invariant."
+        },
+        "mechanism": {
+          "type": "string",
+          "enum": ["check", "instruction", "invariant"],
+          "description": "`check` is code the guardrail chain runs at this point and that can refuse or redact; `invariant` is a promise the named module keeps at a point the chain runs nothing; `instruction` is text handed to a model, which nothing enforces."
+        },
+        "validator": {
+          "type": "string",
+          "description": "The registered check that keeps this promise. Required for `check`, forbidden for `invariant` and for `instruction`. A validator the runtime does not register is an error when this file is read."
+        },
+        "module": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Where the promise is kept, so a reader can go and see. For an `invariant` this is the whole of what the entry says about how it is kept."
+        },
+        "parameters": {
+          "type": "object",
+          "description": "Everything the validator reads — pattern, set, threshold or word list — carried by the entry rather than written into the code that runs it. Only a `check` has a validator to read them, so only a `check` declares them.",
+          "properties": {
+            "reason": {
+              "type": "string",
+              "description": "What the refusal says, in the words of this entry."
+            }
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "mechanism": { "const": "check" } },
+            "required": ["mechanism"]
+          },
+          "then": {
+            "required": ["validator"],
+            "properties": { "point": { "enum": ["input", "output"] } }
+          }
+        },
+        {
+          "if": {
+            "properties": { "mechanism": { "enum": ["instruction", "invariant"] } },
+            "required": ["mechanism"]
+          },
+          "then": {
+            "allOf": [
+              { "not": { "required": ["validator"] } },
+              { "not": { "required": ["parameters"] } }
+            ]
+          }
+        }
+      ]
+    }
+  }
+}

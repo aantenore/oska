@@ -26,34 +26,42 @@ follows happens in `engine/execution.py` and `governance/`.
    and applies the first matching rule to the payload merged with the entity
    records the plan has read so far. The effect is emitted as a `policy` event.
    `deny` ends the plan with a `denied` outcome carrying the reason.
-5. **Approval.** `ApprovalGate.request` freezes the operation on the exact
+5. **A legal move.** When the operation acts on an entity that declares a
+   lifecycle, the current state of the object is read and the operation has to
+   name a move that is legal from it. A move that is not there ends the plan
+   with an `invalid_plan` outcome, before any approval is asked for. This is
+   the section below.
+6. **Approval.** `ApprovalGate.request` freezes the operation on the exact
    payload, hashes it, and stores a `PendingApproval` on the session, with
    `approvals_required` set to 2 when the policy said
    `require_second_approval` and 1 otherwise. An `approval_requested` event
    carries the approval id, the operation, the payload and the number required.
    The turn ends with an `approval_pending` outcome and a reply that shows the
    payload verbatim. Nothing has run.
-6. **Intent recorded.** When the approval arrives and the hash still matches,
+7. **Intent recorded.** When the approval arrives and the hash still matches,
    steps 1 and 2 are run again over the catalog as it stands now, because the
    catalog is files on disk and the approval was given in an earlier turn. An
    operation that has since been withdrawn, turned into a read, or dropped from
    the procedure's writes ends the turn with an `invalid_plan` outcome and
-   nothing in the ledger. The policy is then evaluated again — against the
-   entities as they are now, rather than as they were when the question was
-   asked — and a receipt is written to the ledger with status `pending`, before
-   the call goes out. An `execute` event with `"stage": "intent"` carries the
-   receipt id and the ledger key.
-7. **Execute.** The connector is called with the operation name and the payload.
+   nothing in the ledger. What the plan read before the write is read again;
+   the policy is evaluated against the entities as they are now, rather than as
+   they were when the question was asked; and step 5 is made again against the
+   state the object is in now, so a move that stopped being legal while the
+   approval waited ends the turn the same way, with nothing in the ledger. Only
+   then is a receipt written with status `pending`, before the call goes out.
+   An `execute` event with `"stage": "intent"` carries the receipt id and the
+   ledger key.
+8. **Execute.** The connector is called with the operation name and the payload.
    A connector that raises is caught, and the failure becomes an outcome. An
    `execute` event with `"stage": "call"` records whether it succeeded and how
    long it took. The receipt is updated to `executed` or `error` with whatever
    the call returned.
-8. **Verify.** The read-back the integration declares is run and its result
+9. **Verify.** The read-back the integration declares is run and its result
    compared against `verify.expect`. A `verify` event carries the status and the
    evidence.
-9. **Ledger update.** The verification status and its evidence are written to
-   the receipt. The receipt is now the record of what happened.
-10. **Reply.** The reply is built from the outcomes of the turn. When a model
+10. **Ledger update.** The verification status and its evidence are written to
+    the receipt. The receipt is now the record of what happened.
+11. **Reply.** The reply is built from the outcomes of the turn. When a model
     phrases it, the deterministic line of every receipt and every ledger hit is
     appended to what the model wrote, so the account of the write comes from
     the receipt even when the prose around it does not. A write that was not
@@ -64,6 +72,149 @@ follows happens in `engine/execution.py` and `governance/`.
 If a composite still has steps after the approved write, the plan continues from
 the operation after it and the goal advances, so one approval unblocks the rest
 of the sequence without unblocking any other write.
+
+## The lifecycle of an object
+
+Step 5 is the whole of what a declared lifecycle adds to the write path. An
+entity declares the state it starts in, the states it never leaves, the read
+its current state is taken from, and the moves between states with the
+operation that causes each. [skill-contract.md](skill-contract.md) has the
+fields; this is what the write path does with them.
+
+**Where the current state comes from.** From the system of record, and from
+nowhere else. The executor looks first at the entity records the plan has
+already read this turn — a procedure that reads before it writes has usually
+read exactly this — and otherwise calls the read the entity names in
+`state_read`, with the write payload narrowed to the properties that read
+declares. It is never taken from the conversation, and never from what the
+model said the state was. A state that cannot be read at all is not a reason to
+proceed: the plan ends with an `invalid_plan` outcome saying the state could
+not be read through that operation, so the move could not be judged.
+
+**What makes a move illegal.** The entity declares no move whose `from` holds
+the state the object is in and whose `operation` is the one about to run. That
+covers the two cases worth separating in the reply: a state the catalog can
+move out of by some other operation, and a final state the catalog moves out of
+by none. Either way the refusal names the state the object is in and lists the
+moves that are legal from it, and no approval is requested. A procedure may
+still plan the operation; what is refused is running it from here.
+
+`required` and `offered` do not decide legality. `required` marks the move that
+completes the object, and the resolver appends a note to it when it offers it.
+`offered: false` marks a move that is legal and must never be suggested: the
+runtime plans and runs it when a person asks, and never proposes it. Both are
+about what is said, not about what is allowed.
+
+**What verification checks that it would not otherwise.** The move carries the
+state it promises. After the write, the read-back is compared against
+`verify.expect` as always, and two further things are recorded on the evidence.
+A state outside the entity's declared set fails the verification whatever the
+other comparisons said, under `state_outside_declared_set`. And a read-back
+that lands on a state other than the one the move promised is recorded under
+`state_the_move_promised`, with the state expected and the state read. A write
+that ran and left the object somewhere else is not a verified write.
+
+## Guardrails
+
+A guardrail is a rule this installation promises to keep. The promise is
+written once, in a catalog document, and a skill references it by identifier —
+so the wording cannot drift between the procedures that claim it, and a reader
+can count the promises without reading the procedures.
+
+### The catalog contract
+
+`guardrails.catalog` in `configs/runtime.json` names the document, read from
+the working directory and then from beside the runtime configuration.
+The normative schema is `spec/schemas/guardrail-catalog.schema.json`. Each
+entry is one identifier mapped to a title, a description and an enforcement
+block:
+
+```json
+"guardrail.exact_payload_approval": {
+  "title": "What was approved is what is sent",
+  "description": "A write runs only with the payload a person was shown and approved ...",
+  "enforcement": {
+    "point": "execution",
+    "mechanism": "check",
+    "validator": "member_of_declared",
+    "module": "opsdeck.governance.approval",
+    "parameters": {
+      "field": "payload_hash",
+      "declared": "approved_hashes",
+      "reason": "the payload is not the one that was approved"
+    }
+  }
+}
+```
+
+`point` is where the promise acts: `input`, `planning`, `execution` or
+`output`. `module` names where in the package the promise is kept, so a reader
+can go and see. `parameters` holds everything the check reads — no pattern, no
+threshold and no word list is written into the code, which is why changing what
+a guardrail refuses is an edit to this document.
+
+### Checks and instructions
+
+`mechanism` is the distinction the document exists for.
+
+**`check`** means code runs at that point and can refuse or redact. The entry
+names a validator the runtime registers, and a validator the runtime does not
+register makes the catalog fail to load rather than fail quietly. Three are
+registered: `forbidden_pattern`, which refuses text matching any declared
+expression and hands back a redacted copy; `value_in_set`, which refuses a
+payload whose declared field is outside a closed set; and `member_of_declared`,
+which refuses a field that is not among the values the turn itself declares.
+
+**`instruction`** means the description is handed to the model as text and
+nothing enforces it. An instruction declares no validator, and declaring one is
+an error.
+
+A guardrail kept by a check is never also put in a prompt. The model is given
+the instruction guardrails and only those, because handing it a rule the code
+already enforces invites it to argue with the code.
+
+The chain the engine runs covers the two points that are about the text of a
+turn: the input checks run over what arrived before anything is decided, and
+the output checks run over the reply before anyone reads it. The first
+guardrail that refuses ends the chain, and what it says is what the turn
+answers with; one that only redacts hands its copy to the next. The planning
+and execution entries are declarations about code that was already there — the
+plan validator, the approval gate, the verifier — and `module` is how a reader
+finds it.
+
+### What the shipped catalog declares
+
+| Identifier | Point | Kept by |
+| --- | --- | --- |
+| `guardrail.no_secret_material_in_a_turn` | input | A check: declared expressions, refused and redacted in `governance/guardrails.py` |
+| `guardrail.declared_operations_only` | planning | A check: the plan validator in `planner/planner.py` |
+| `guardrail.identifiers_are_never_invented` | planning | An instruction, in the planning prompt |
+| `guardrail.exact_payload_approval` | execution | A check: the payload hash in `governance/approval.py` |
+| `guardrail.read_back_before_confirmation` | execution | A check: the read-back in `governance/verification.py` |
+| `guardrail.reply_states_verified_outcomes_only` | output | An instruction, in the reply prompt |
+
+Three of the six — the plan validator, the approval gate, the verifier — are
+code that exists whether or not the catalog names it, and naming it is what
+makes the promise countable. The fourth, the input check, is built from the
+expressions the catalog declares and exists because of it. The remaining two
+are only ever a sentence, and the document says so rather than letting them sit
+unmarked among the others.
+
+### The publish-time gate
+
+The validator checks every identifier a skill declares against the identifiers
+the configured catalog defines, and an identifier the catalog does not define
+is `guardrail_unknown_id`. A deployment that configures no catalog, or names
+one that is not on disk, defines none — so declaring any is then an error,
+while a catalog that defines none still validates. The same rule runs over a
+proposed procedure, so a promise nothing keeps cannot be published.
+
+`guardrails.enabled: false` hands the engine an empty catalog. Nothing is
+checked, and nothing is stated either: a deployment that has switched its
+guardrails off does not tell a model it keeps promises it is not keeping.
+Validation is a separate question and reads the document whatever that flag
+says, so a catalog that still validates is not a catalog whose promises are
+still kept.
 
 ## Policy files
 
@@ -185,7 +336,10 @@ the operation supplies the expected value for that field, unless `expect`
 already names the field, in which case the author's expectation stands. And a
 read-back that returns a value outside the declared states fails verification
 whatever the other comparisons said, with `state_outside_declared_set` on the
-evidence naming the field, the value read and the set it left.
+evidence naming the field, the value read and the set it left. When the write
+was a move of a declared lifecycle, a read-back that lands on a state other
+than the one the move promised is recorded as `state_the_move_promised`, with
+what was expected and what was read.
 
 Three statuses:
 
@@ -247,10 +401,20 @@ events, which is what the conformance runner inspects.
 | `verify` | A read-back ran. Operation, receipt, status, evidence |
 | `ledger_hit` | A write was already done in this session. Operation, receipt, key, verification |
 | `reply` | The turn answered. The reply kind and what is pending |
+| `guardrail` | A guardrail acted. The point, the identifier, whether it blocked or redacted, and why |
+| `budget` | A turn asked for a model call past its budget. The limit, what was spent, how many were refused |
+| `trace` | Tracing is on for this turn. Where the spans are being written |
 | `proposal` | Reserved for the evolution layer |
 
 Nothing downstream of a sink can change what the runtime does: `emit` returns
 nothing and the runtime never reads back what it wrote.
+
+Traces are a separate thing and are not a substitute for any of this. A span
+says how long a stretch of a turn took and what it was nested in; it is
+optional, off by default, and a deployment may throw its traces away without
+losing anything it has to keep. Nothing in the runtime reads a trace back and
+no decision is taken from one. When a question can only be answered from a
+trace, the answer is to raise an audit event, not to leave tracing on.
 
 ## Identity
 

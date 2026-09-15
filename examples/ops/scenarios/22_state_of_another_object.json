@@ -1,0 +1,172 @@
+{
+  "name": "22_state_of_another_object",
+  "description": "A deployment read for one service does not answer for another: the rollback of a service that has already been rolled back is refused even though the deployment the turn read is one a rollback is legal from.",
+  "level": 2,
+  "provider_script": [
+    {
+      "purpose": "router classification",
+      "expect_contains": "put notifications back on 1.0.9",
+      "response": {
+        "kind": "new_task",
+        "runbook_id": "runbook.deployment_rollback",
+        "confidence": 0.92,
+        "language": "en"
+      }
+    },
+    {
+      "purpose": "plan",
+      "expect_contains": "put notifications back on 1.0.9",
+      "response": {
+        "runbook_id": "runbook.deployment_rollback",
+        "operations": [
+          {
+            "integration_id": "integration.container_runtime",
+            "operation": "service.status",
+            "payload": {
+              "service": "notifications"
+            },
+            "write": false,
+            "purpose": "read the environment the service runs in"
+          },
+          {
+            "integration_id": "integration.deployment_control",
+            "operation": "deployment.get",
+            "payload": {
+              "service": "notifications"
+            },
+            "write": false,
+            "purpose": "read the deployment in place"
+          },
+          {
+            "integration_id": "integration.deployment_control",
+            "operation": "deployment.rollback",
+            "payload": {
+              "service": "notifications",
+              "target_version": "1.0.9"
+            },
+            "write": true,
+            "purpose": "put the earlier version back"
+          }
+        ],
+        "missing": [],
+        "reply_intent": "report what happened to the rollback of notifications"
+      }
+    },
+    {
+      "purpose": "reply writing",
+      "expect_contains": "\"kind\": \"receipt\"",
+      "response": {
+        "reply": "notifications is back on 1.0.9 and the read-back shows the deployment rolled back."
+      }
+    },
+    {
+      "purpose": "router classification",
+      "expect_contains": "what is search on, and take notifications back to 1.0.8",
+      "response": {
+        "kind": "new_task",
+        "runbook_id": "runbook.deployment_rollback",
+        "confidence": 0.9,
+        "language": "en"
+      }
+    },
+    {
+      "purpose": "plan",
+      "expect_contains": "take notifications back to 1.0.8",
+      "response": {
+        "runbook_id": "runbook.deployment_rollback",
+        "operations": [
+          {
+            "integration_id": "integration.container_runtime",
+            "operation": "service.status",
+            "payload": {
+              "service": "notifications"
+            },
+            "write": false,
+            "purpose": "read the environment the service runs in"
+          },
+          {
+            "integration_id": "integration.deployment_control",
+            "operation": "deployment.get",
+            "payload": {
+              "service": "search"
+            },
+            "write": false,
+            "purpose": "read the deployment search is on"
+          },
+          {
+            "integration_id": "integration.deployment_control",
+            "operation": "deployment.rollback",
+            "payload": {
+              "service": "notifications",
+              "target_version": "1.0.8"
+            },
+            "write": true,
+            "purpose": "put the earlier version back"
+          }
+        ],
+        "missing": [],
+        "reply_intent": "report what happened to the second rollback of notifications"
+      }
+    },
+    {
+      "purpose": "reply writing",
+      "expect_contains": "deployment.rollback is not a legal move from there",
+      "response": {
+        "reply": "Nothing was sent. search is on the version it was on, and notifications has already been rolled back in this session, so a second rollback of it was refused before the call went out. Deploy 1.0.8 forward if that is the version notifications should serve."
+      }
+    }
+  ],
+  "turns": [
+    {
+      "user": "put notifications back on 1.0.9",
+      "expect": {
+        "kind": "new_task",
+        "contains": [
+          "approval",
+          "deployment.rollback"
+        ],
+        "outcomes": [
+          "read",
+          "read",
+          "approval_pending"
+        ],
+        "pending": "approval",
+        "receipts": 0,
+        "verification": null
+      }
+    },
+    {
+      "user": "yes",
+      "expect": {
+        "kind": "approve",
+        "contains": [
+          "1.0.9"
+        ],
+        "outcomes": [
+          "receipt"
+        ],
+        "pending": null,
+        "receipts": 1,
+        "verification": "verified"
+      }
+    },
+    {
+      "user": "what is search on, and take notifications back to 1.0.8",
+      "expect": {
+        "kind": "new_task",
+        "contains": [
+          "Nothing was sent",
+          "already been rolled back"
+        ],
+        "outcomes": [
+          "read",
+          "read",
+          "invalid_plan"
+        ],
+        "pending": null,
+        "receipts": 1,
+        "verification": "verified"
+      }
+    }
+  ]
+}

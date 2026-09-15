@@ -556,3 +556,31 @@ def test_publication_is_refused_when_the_checks_fail(
     assert held.state is ProposalState.approved
     assert held.quality.issues
     assert not publish_root.exists()
+
+
+def test_a_proposal_naming_a_guardrail_nothing_defines_does_not_pass(
+    crafted: Callable[..., str],
+    learning_registry: SkillRegistry,
+    schemas_dir: Path,
+    repo_root: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The gate the catalog runs is the gate a proposal goes through.
+
+    A promise is a rule of the installation, so a proposal may claim one only
+    where the configured guardrail catalog defines it. The identifier that is
+    defined is left alone; the invented one is what stops the publication.
+    """
+    monkeypatch.setenv("OPSDECK_RUNTIME_CONFIG", str(repo_root / "configs" / "runtime.json"))
+
+    report = quality.check(
+        crafted(guardrails=["guardrail.identifiers_are_never_invented", "guardrail.invented"]),
+        learning_registry,
+        policy=build_policy("runbook.recorded", ["service.restart"]),
+        schema_dir=schemas_dir,
+    )
+
+    named = [issue for issue in report.issues if "guardrail_unknown_id" in issue]
+    assert len(named) == 1
+    assert "guardrail.invented" in named[0]
+    assert quality.passed(report) is False

@@ -19,6 +19,9 @@ capabilities:
   reads:
     - service.status
     - service.logs
+guardrails:
+  - guardrail.declared_operations_only
+  - guardrail.identifiers_are_never_invented
 runtime:
   action: check the health of a service
   action_on_selection: check its health

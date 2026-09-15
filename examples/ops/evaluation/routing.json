@@ -1,0 +1,84 @@
+{
+  "cases": [
+    {
+      "text": "restart payments now",
+      "expected": "runbook.service_restart",
+      "language": "en"
+    },
+    {
+      "text": "the api needs a bounce",
+      "expected": "runbook.service_restart",
+      "language": "en"
+    },
+    {
+      "text": "is the checkout service healthy right now",
+      "expected": "runbook.service_health",
+      "language": "en"
+    },
+    {
+      "text": "find the timeout lines in the log of the api",
+      "expected": "runbook.log_search",
+      "language": "en"
+    },
+    {
+      "text": "undo the deployment we just made",
+      "expected": "runbook.deployment_rollback",
+      "language": "en"
+    },
+    {
+      "text": "put the checkout service back",
+      "expected": "runbook.deployment_rollback",
+      "language": "en"
+    },
+    {
+      "text": "mute the alert while we investigate",
+      "expected": "runbook.alert_silence",
+      "language": "en"
+    },
+    {
+      "text": "put a note on the incident timeline",
+      "expected": "runbook.incident_note",
+      "language": "en"
+    },
+    {
+      "text": "il servizio di pagamento sta rispondendo",
+      "expected": "runbook.service_health",
+      "language": "it"
+    },
+    {
+      "text": "puoi far ripartire il servizio checkout",
+      "expected": "runbook.service_restart",
+      "language": "it"
+    },
+    {
+      "text": "cerca timeout nei log del servizio",
+      "expected": "runbook.log_search",
+      "language": "it"
+    },
+    {
+      "text": "annulla il rilascio di ieri",
+      "expected": "runbook.deployment_rollback",
+      "language": "it"
+    },
+    {
+      "text": "metti in pausa l allarme per mezz ora",
+      "expected": "runbook.alert_silence",
+      "language": "it"
+    },
+    {
+      "text": "aggiungi una riga alla cronologia dell incidente",
+      "expected": "runbook.incident_note",
+      "language": "it"
+    },
+    {
+      "text": "check the service logs",
+      "expected": "tie",
+      "language": "en"
+    },
+    {
+      "text": "il servizio checkout e bloccato",
+      "expected": "tie",
+      "language": "it"
+    }
+  ]
+}

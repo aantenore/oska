@@ -15,6 +15,11 @@ runbooks:
   - runbook.access_check
   - runbook.access_grant
   - runbook.request_close
+guardrails:
+  - guardrail.declared_operations_only
+  - guardrail.identifiers_are_never_invented
+  - guardrail.exact_payload_approval
+  - guardrail.read_back_before_confirmation
 runtime:
   action: settle an open access request end to end
   action_on_selection: settle it

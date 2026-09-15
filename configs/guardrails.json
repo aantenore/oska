@@ -1,0 +1,69 @@
+{
+  "$comment": "The governed catalog of guardrails. A guardrail is a rule this installation promises to keep; the promise is written once here and a skill references it by identifier, so the wording cannot drift between the skills that claim it. Each entry declares where it acts (`point`: input, planning, execution or output) and what keeps it (`mechanism`). `check` means the guardrail chain runs code at that point and can block or redact there; it names in `validator` a check registered in the runtime and in `parameters` everything that check reads. The chain runs at `input` and at `output` only, so a `check` declared at any other point is refused when this file is read: a validator and parameters nothing reads would look like a control while changing nothing. `invariant` means the promise is kept by the module named in `module`, at a point the chain runs nothing; it carries no validator and no parameters, because there is nothing here to configure, and the module is where a reader goes to see the promise kept. `instruction` means the description is handed to the model as text and nothing enforces it; it too names neither a validator nor parameters. The three apart are the point of this file: a catalog that lets a sentence handed to a model, or a rule kept somewhere else entirely, look like a control at this point is documentation pretending to be governance. `module` names where the promise is kept, so a reader can go and see. An identifier a skill declares and this file does not define is an error, and a `check` naming a validator the runtime does not register is an error when this file is read.",
+  "guardrails": {
+    "guardrail.read_back_before_confirmation": {
+      "title": "A write is confirmed only by a read-back",
+      "description": "A write is reported as done only when the operation the integration declares for verification has been read back and agrees with it. The response of the write itself is never the evidence.",
+      "enforcement": {
+        "point": "execution",
+        "mechanism": "invariant",
+        "module": "opsdeck.governance.verification"
+      }
+    },
+    "guardrail.exact_payload_approval": {
+      "title": "What was approved is what is sent",
+      "description": "A write runs only with the payload a person was shown and approved, compared by a hash taken over a canonical serialisation. A payload that has moved since the approval needs a new approval.",
+      "enforcement": {
+        "point": "execution",
+        "mechanism": "invariant",
+        "module": "opsdeck.governance.approval"
+      }
+    },
+    "guardrail.declared_operations_only": {
+      "title": "Only declared operations are planned",
+      "description": "A plan may use only the operations the integrations of the procedure declare. An operation that is not declared is not planned, not offered and not run.",
+      "enforcement": {
+        "point": "planning",
+        "mechanism": "invariant",
+        "module": "opsdeck.planner.planner"
+      }
+    },
+    "guardrail.no_secret_material_in_a_turn": {
+      "title": "A turn carrying secret material is refused",
+      "description": "A request that appears to carry a credential is refused before anything is planned, and the wording that looked like one is not kept. Send the request again without it; this installation never needs a secret typed into a conversation.",
+      "enforcement": {
+        "point": "input",
+        "mechanism": "check",
+        "validator": "forbidden_pattern",
+        "module": "opsdeck.governance.guardrails",
+        "parameters": {
+          "patterns": [
+            "(?i)\\b(?:api[ _-]?key|secret|password|passphrase|credential|access[ _-]?token|auth[ _-]?token|private[ _-]?key)s?\\b\\s*(?:is|=|:)\\s*\\S+",
+            "(?i)\\bbearer\\s+[A-Za-z0-9._~+/-]{20,}={0,2}",
+            "(?i)-{3,}\\s*begin(?:\\s+[a-z]+)*\\s+private key\\s*-{3,}"
+          ],
+          "replacement": "[redacted]",
+          "reason": "the request appears to carry a credential"
+        }
+      }
+    },
+    "guardrail.reply_states_verified_outcomes_only": {
+      "title": "A reply states only what the turn's outcomes hold",
+      "description": "State only facts that the outcomes of this turn carry. Do not say that anything ran, changed or was verified unless an outcome says so, and do not offer anything the suggestion list does not hold.",
+      "enforcement": {
+        "point": "output",
+        "mechanism": "instruction",
+        "module": "opsdeck.engine.reply"
+      }
+    },
+    "guardrail.identifiers_are_never_invented": {
+      "title": "Identifiers are never invented",
+      "description": "Never invent an identifier, a name or a value. Take each one from the conversation or from a declared record, and when one is unknown ask for it instead of supplying it.",
+      "enforcement": {
+        "point": "planning",
+        "mechanism": "instruction",
+        "module": "opsdeck.planner.prompts"
+      }
+    }
+  }
+}

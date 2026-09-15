@@ -1,4 +1,11 @@
-"""Schema and cross-reference checks over the catalog."""
+"""Schema and cross-reference checks over the catalog.
+
+A skill is checked against the schema, against the rest of the catalog, and
+against the configuration the deployment runs under. The last of those is what
+the guardrail rule reads: the identifiers a skill declares have to be defined by
+the guardrail catalog this installation configures, so a promise nothing keeps
+is refused where a catalog is published rather than in the middle of a turn.
+"""
 
 from __future__ import annotations
 
@@ -12,9 +19,11 @@ from jsonschema import Draft202012Validator
 from pydantic import BaseModel, ValidationError
 
 from opsdeck.catalog.loader import composite_capabilities
-from opsdeck.config import load_settings
+from opsdeck.config import Settings, guardrail_catalog_path, load_runtime_config, load_settings
 from opsdeck.contracts.policy import Policy
-from opsdeck.contracts.skill import Skill, SkillType
+from opsdeck.contracts.skill import OperationSpec, Skill, SkillType
+
+GUARDRAIL_CATALOG_KEY = "guardrails"
 
 SKILL_SCHEMA = "skill.schema.json"
 POLICY_SCHEMA = "policy.schema.json"
@@ -51,9 +60,18 @@ def validate(
     all_skills: Sequence[Skill],
     *,
     schema_dir: Path | None = None,
+    settings: Settings | None = None,
+    guardrail_ids: frozenset[str] | None = None,
 ) -> list[ValidationIssue]:
-    """Check one skill against the schema and against the rest of the catalog."""
+    """Check one skill against the schema and against the rest of the catalog.
+
+    `guardrail_ids` is what the guardrail catalog defines; without it the
+    configuration this installation runs under is read to find out.
+    """
     directory = schema_dir or load_settings().schemas_dir
+    declared = (
+        declared_guardrail_ids(settings) if guardrail_ids is None else frozenset(guardrail_ids)
+    )
     issues: list[ValidationIssue] = []
     issues.extend(_schema_issues(skill, directory))
     by_id = _current_by_id(all_skills)
@@ -63,6 +81,7 @@ def validate(
     issues.extend(_ontology_issues(skill, by_id))
     issues.extend(_runtime_issues(skill))
     issues.extend(_policy_issues(skill, directory))
+    issues.extend(_guardrail_issues(skill, declared))
     return issues
 
 
@@ -70,13 +89,37 @@ def validate_all(
     all_skills: Sequence[Skill],
     *,
     schema_dir: Path | None = None,
+    settings: Settings | None = None,
 ) -> list[ValidationIssue]:
     """Check every skill in the catalog."""
+    declared = declared_guardrail_ids(settings)
     return [
         issue
         for skill in all_skills
-        for issue in validate(skill, all_skills, schema_dir=schema_dir)
+        for issue in validate(
+            skill, all_skills, schema_dir=schema_dir, guardrail_ids=declared
+        )
     ]
+
+
+def declared_guardrail_ids(settings: Settings | None = None) -> frozenset[str]:
+    """The identifiers the configured guardrail catalog defines.
+
+    A deployment that configures no catalog, or names one that is not on disk,
+    defines none, and a skill that declares an identifier there is declaring
+    something nothing can keep. Reading this file is all the catalog layer does
+    with it; what each entry means, and what enforces it, belongs above.
+    """
+    try:
+        resolved = settings or load_settings()
+        path = guardrail_catalog_path(
+            load_runtime_config(settings=resolved).guardrails, resolved
+        )
+        document = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return frozenset()
+    entries = document.get(GUARDRAIL_CATALOG_KEY) if isinstance(document, dict) else None
+    return frozenset(entries) if isinstance(entries, dict) else frozenset()
 
 
 def schema_validator(schema_dir: Path, name: str) -> Draft202012Validator:
@@ -85,7 +128,7 @@ def schema_validator(schema_dir: Path, name: str) -> Draft202012Validator:
 
 
 def _schema_issues(skill: Skill, schema_dir: Path) -> list[ValidationIssue]:
-    payload = skill.frontmatter.model_dump(mode="json", exclude_none=True)
+    payload = skill.frontmatter.model_dump(mode="json", exclude_none=True, by_alias=True)
     validator = schema_validator(schema_dir, SKILL_SCHEMA)
     return [
         _issue(skill, "schema", f"{_pointer(error.absolute_path)}{error.message}")
@@ -227,6 +270,7 @@ def _entity_ontology_issues(skill: Skill, by_id: dict[str, Skill]) -> list[Valid
         issues.append(
             _issue(skill, "ontology_missing_states", "states are declared without a state field")
         )
+    issues.extend(_lifecycle_issues(skill, by_id))
     for relation in frontmatter.relations:
         target = by_id.get(relation.target)
         if target is None or target.type is not SkillType.entity:
@@ -246,6 +290,189 @@ def _entity_ontology_issues(skill: Skill, by_id: dict[str, Skill]) -> list[Valid
                 )
             )
     return issues
+
+
+def _lifecycle_issues(skill: Skill, by_id: dict[str, Skill]) -> list[ValidationIssue]:
+    """Everything a declared lifecycle has to hold for the runtime to enforce it."""
+    frontmatter = skill.frontmatter
+    if not frontmatter.lifecycle:
+        return []
+    issues: list[ValidationIssue] = []
+    states = list(frontmatter.states)
+    if not frontmatter.state_field or not states:
+        issues.append(
+            _issue(
+                skill,
+                "ontology_lifecycle_without_states",
+                "a lifecycle needs a state field and the states it may hold",
+            )
+        )
+    issues.extend(_named_state_issues(skill, states))
+    if frontmatter.initial_state is None:
+        issues.append(
+            _issue(
+                skill,
+                "ontology_lifecycle_without_initial_state",
+                "a lifecycle needs the state an entity starts in",
+            )
+        )
+    issues.extend(_move_operation_issues(skill, by_id))
+    issues.extend(_state_read_issues(skill, by_id))
+    issues.extend(_final_state_issues(skill))
+    issues.extend(_reachability_issues(skill))
+    issues.extend(_required_move_issues(skill))
+    return issues
+
+
+def _named_state_issues(skill: Skill, states: list[str]) -> list[ValidationIssue]:
+    """Every state a lifecycle names is one the entity declares."""
+    frontmatter = skill.frontmatter
+    named: list[tuple[str, str]] = []
+    if frontmatter.initial_state is not None:
+        named.append(("the initial state", frontmatter.initial_state))
+    named.extend(("a final state", state) for state in frontmatter.final_states)
+    for move in frontmatter.lifecycle:
+        named.extend((f"a move to {move.to}", origin) for origin in move.from_states)
+        named.append((f"the move caused by {move.operation}", move.to))
+    return [
+        _issue(
+            skill,
+            "ontology_unknown_lifecycle_state",
+            f"{where}: {state} is not one of the declared states",
+        )
+        for where, state in named
+        if state not in states
+    ]
+
+
+def _move_operation_issues(skill: Skill, by_id: dict[str, Skill]) -> list[ValidationIssue]:
+    """Every move names a write an integration declares against this entity."""
+    bound = _bound_operations(skill.id, by_id)
+    issues: list[ValidationIssue] = []
+    for move in skill.frontmatter.lifecycle:
+        spec = bound.get(move.operation)
+        if spec is None:
+            issues.append(
+                _issue(
+                    skill,
+                    "ontology_unknown_lifecycle_operation",
+                    f"{move.operation} is not an operation bound to {skill.id}",
+                )
+            )
+        elif not spec.write:
+            issues.append(
+                _issue(
+                    skill,
+                    "ontology_unknown_lifecycle_operation",
+                    f"{move.operation} does not write, so it moves nothing",
+                )
+            )
+    return issues
+
+
+def _state_read_issues(skill: Skill, by_id: dict[str, Skill]) -> list[ValidationIssue]:
+    """The state is read back, so a lifecycle names the read that does it."""
+    frontmatter = skill.frontmatter
+    if frontmatter.state_read is None:
+        return [
+            _issue(
+                skill,
+                "ontology_missing_state_read",
+                "a lifecycle names the read the current state is taken from",
+            )
+        ]
+    spec = _bound_operations(skill.id, by_id).get(frontmatter.state_read)
+    if spec is None:
+        return [
+            _issue(
+                skill,
+                "ontology_unknown_state_read",
+                f"{frontmatter.state_read} is not an operation bound to {skill.id}",
+            )
+        ]
+    if spec.write:
+        return [
+            _issue(
+                skill,
+                "ontology_unknown_state_read",
+                f"{frontmatter.state_read} is a write, so it cannot report the state",
+            )
+        ]
+    return []
+
+
+def _final_state_issues(skill: Skill) -> list[ValidationIssue]:
+    """A final state is one the entity never leaves."""
+    final = set(skill.frontmatter.final_states)
+    return [
+        _issue(
+            skill,
+            "ontology_move_from_final_state",
+            f"{origin} is a final state, so {move.operation} cannot move out of it",
+        )
+        for move in skill.frontmatter.lifecycle
+        for origin in move.from_states
+        if origin in final
+    ]
+
+
+def _reachability_issues(skill: Skill) -> list[ValidationIssue]:
+    """Every state a move leads to can be arrived at from the initial state.
+
+    A state that only ever appears as a source is an entry the system of record
+    supplies, and is not reported: what is reported is a destination nothing
+    leads to, because nothing in the catalog could ever put the entity there.
+    """
+    frontmatter = skill.frontmatter
+    initial = frontmatter.initial_state
+    if initial is None:
+        return []
+    reached = {initial}
+    changed = True
+    while changed:
+        changed = False
+        for move in frontmatter.lifecycle:
+            if move.to not in reached and reached.intersection(move.from_states):
+                reached.add(move.to)
+                changed = True
+    return [
+        _issue(
+            skill,
+            "ontology_unreachable_state",
+            f"{state} cannot be reached from {initial}",
+        )
+        for state in sorted({move.to for move in frontmatter.lifecycle} - reached)
+    ]
+
+
+def _required_move_issues(skill: Skill) -> list[ValidationIssue]:
+    """One state, one move that completes the object."""
+    counted: dict[str, int] = {}
+    for move in skill.frontmatter.lifecycle:
+        if not move.required:
+            continue
+        for origin in move.from_states:
+            counted[origin] = counted.get(origin, 0) + 1
+    return [
+        _issue(
+            skill,
+            "ontology_conflicting_required_move",
+            f"{state} declares {count} required moves, and an entity needs at most one",
+        )
+        for state, count in sorted(counted.items())
+        if count > 1
+    ]
+
+
+def _bound_operations(entity_id: str, by_id: dict[str, Skill]) -> dict[str, OperationSpec]:
+    """Every operation an integration declares against one entity, by name."""
+    return {
+        spec.name: spec
+        for skill in by_id.values()
+        if skill.type is SkillType.integration
+        for spec in skill.frontmatter.operations
+        if spec.entity == entity_id
+    }
 
 
 def _binding_issues(skill: Skill, by_id: dict[str, Skill]) -> list[ValidationIssue]:
@@ -367,6 +594,19 @@ def _policy_issues(skill: Skill, schema_dir: Path) -> list[ValidationIssue]:
                 )
             )
     return issues
+
+
+def _guardrail_issues(skill: Skill, declared: frozenset[str]) -> list[ValidationIssue]:
+    """Every guardrail a skill declares is one the configured catalog defines."""
+    return [
+        _issue(
+            skill,
+            "guardrail_unknown_id",
+            f"{name} is not declared by the guardrail catalog",
+        )
+        for name in skill.frontmatter.guardrails
+        if name not in declared
+    ]
 
 
 def _operations_of(skill: Skill | None) -> list:

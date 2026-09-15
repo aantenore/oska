@@ -20,6 +20,11 @@ capabilities:
     - request.get
   writes:
     - request.close
+guardrails:
+  - guardrail.declared_operations_only
+  - guardrail.identifiers_are_never_invented
+  - guardrail.exact_payload_approval
+  - guardrail.read_back_before_confirmation
 runtime:
   action: record the outcome of an access request
   action_on_selection: record its outcome
@@ -44,7 +49,9 @@ has changed and never before it.
 ## Steps
 
 1. Read `request.get` and check the request is open, and that the account and
-   group it names are the ones that were changed.
+   group it names are the ones that were changed. The state comes from that
+   read: closing a request a colleague settled in the meantime is refused on
+   what the tracker holds, not on what was said here.
 2. Call `request.close` with the identifier and the outcome: granted when the
    membership was added, revoked when it was taken away.
 3. Read the request back and confirm it carries that outcome.

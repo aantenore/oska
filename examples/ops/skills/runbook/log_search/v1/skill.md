@@ -18,6 +18,9 @@ integrations:
 capabilities:
   reads:
     - service.logs
+guardrails:
+  - guardrail.declared_operations_only
+  - guardrail.identifiers_are_never_invented
 runtime:
   action: search a service's logs
   action_on_selection: search its logs

@@ -45,7 +45,8 @@ Read in order on a first pass:
 
 Implementers who already know the model can go straight to
 [12-conformance.md](12-conformance.md): it lists every requirement, the module
-that satisfies it in the reference implementation, and the test that proves it.
+that satisfies it in the reference implementation, and the test that proves it,
+with the requirements nothing yet proves gathered under "Open items".
 
 Each layer document has the same shape: purpose, modules, invariants, a
 numbered requirement list, a rationale, and a pointer into the reference
@@ -63,13 +64,16 @@ scenario suite, not by inspection.
 
 ## Reference implementation
 
-`opsdeck` is the reference implementation and `examples/ops` is the reference
-conformance domain. The reference implementation is normative only where this
-specification points at it; where the two disagree, this specification wins.
+`opsdeck` is the reference implementation, and there are two reference
+conformance domains over two catalogues that share no vocabulary. The reference
+implementation is normative only where this specification points at it; where
+the two disagree, this specification wins.
 
-Run against `examples/ops/scenarios`, the reference suite attains Level 3
-(Adaptive): every scenario of every level passes, as `opsdeck conform`
-reports.
+There are two reference suites, and a level is attained per suite. Run against
+`examples/ops/scenarios`, the operational suite attains Level 3 (Adaptive).
+Run against `examples/access/scenarios`, the access suite attains Level 2
+(Governed): it declares no scenario of level 3, so it claims none. Every
+scenario of both suites passes, as `opsdeck conform` reports for each.
 
 ## How to cite
 

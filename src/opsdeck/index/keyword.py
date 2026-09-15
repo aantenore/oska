@@ -4,7 +4,14 @@ from __future__ import annotations
 
 from opsdeck.contracts.common import RankedSkill
 from opsdeck.contracts.skill import Skill
-from opsdeck.index.base import IndexedText, indexed_texts, overlap_score, tokenise, top_ranked
+from opsdeck.index.base import (
+    IndexedText,
+    TextSource,
+    indexed_texts,
+    overlap_score,
+    tokenise,
+    top_ranked,
+)
 
 __all__ = ["KeywordIndex"]
 
@@ -20,9 +27,9 @@ class KeywordIndex:
     def __init__(self) -> None:
         self._entries: list[tuple[IndexedText, set[str]]] = []
 
-    def build(self, skills: list[Skill]) -> None:
-        """Tokenise the description and the triggers of every skill."""
-        self._entries = [(entry, tokenise(entry.text)) for entry in indexed_texts(skills)]
+    def build(self, skills: list[Skill], texts: TextSource | None = None) -> None:
+        """Tokenise every text the given source indexes each skill under."""
+        self._entries = [(entry, tokenise(entry.text)) for entry in indexed_texts(skills, texts)]
 
     def rank(self, query: str, limit: int) -> list[RankedSkill]:
         """Return the skills sharing the most words with the request."""
@@ -35,6 +42,6 @@ class KeywordIndex:
             held = best.get(entry.skill_id)
             if held is None or score > held.score:
                 best[entry.skill_id] = RankedSkill(
-                    skill_id=entry.skill_id, score=score, matched_on=entry.text
+                    skill_id=entry.skill_id, score=score, matched_on=entry.label
                 )
         return top_ranked(best.values(), limit)

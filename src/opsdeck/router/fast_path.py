@@ -4,11 +4,19 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
+from opsdeck.catalog.enrichment import examples_fingerprint
 from opsdeck.catalog.registry import SkillRegistry
-from opsdeck.config import FastPathConfig
+from opsdeck.config import EnrichmentConfig, FastPathConfig
 from opsdeck.contracts.common import RouteDecision, TurnKind
 from opsdeck.contracts.skill import Skill
-from opsdeck.index.base import SkillIndex, overlap_score, tokenise
+from opsdeck.index.base import (
+    LearnedPhrases,
+    SkillIndex,
+    TextSource,
+    overlap_score,
+    routing_source,
+    tokenise,
+)
 from opsdeck.router.base import RoutingContext
 
 __all__ = ["FastPath"]
@@ -23,6 +31,13 @@ class FastPath:
     exists to save a model call on the phrasings an author wrote down, not to
     guess. It runs only when the session is waiting for nothing, and any
     failure hands the turn to the layer behind instead of ending it.
+
+    With enrichment in force the phrasings it matches include the ones derived
+    from those triggers at publish time, so the saving extends to the languages
+    the author did not write in; with a learned store it also matches the
+    phrasings a scheduled job kept from traffic that reached a procedure. Both
+    are read from disk; this layer never calls a model, whatever is beside the
+    catalog.
     """
 
     def __init__(
@@ -30,10 +45,20 @@ class FastPath:
         index_factory: Callable[[], SkillIndex],
         registry: SkillRegistry,
         config: FastPathConfig,
+        enrichment: EnrichmentConfig | None = None,
+        learned: LearnedPhrases | None = None,
     ) -> None:
         self._index_factory = index_factory
         self._registry = registry
         self._config = config
+        self._derived = enrichment if enrichment is not None and enrichment.enabled else None
+        self._learned = learned
+        cap = enrichment.cap_per_route if enrichment is not None else 0
+        self._texts: TextSource | None = (
+            routing_source(self._derived, learned, cap)
+            if self._derived is not None or learned is not None
+            else None
+        )
         self._index: SkillIndex | None = None
         self._fingerprint: str | None = None
         self._greetings = [tokenise(route) for route in config.routes.greeting]
@@ -81,10 +106,18 @@ class FastPath:
         return max(overlap_score(tokens, greeting) for greeting in self._greetings)
 
     def _refresh(self) -> None:
+        routes = self.routes()
         fingerprint = self._registry.fingerprint()
+        # The registry fingerprints the skill files alone, so a derived file
+        # written beside one of them, or a learned file written under the state
+        # directory, would otherwise go unnoticed.
+        if self._derived is not None:
+            fingerprint = f"{fingerprint}:{examples_fingerprint(routes, self._derived)}"
+        if self._learned is not None:
+            fingerprint = f"{fingerprint}:{self._learned.fingerprint(routes)}"
         if self._index is not None and fingerprint == self._fingerprint:
             return
         index = self._index_factory()
-        index.build(self.routes())
+        index.build(routes, self._texts)
         self._index = index
         self._fingerprint = fingerprint

@@ -18,14 +18,33 @@ Without `--scenarios` the directory comes from `OPSDECK_SCENARIOS_DIR`, which
 defaults to `examples/ops/scenarios`. The command exits non-zero when any
 scenario fails, so it drops into a build without further ceremony.
 
+### The two reference catalogs
+
+A suite belongs to the catalog it was written for, so there are two runs, not
+one. The operational catalog is the default: `opsdeck conform` runs its
+twenty-one scenarios and reports conformance level 3. The access catalog needs
+its own roots, its own scenarios and its own connector bindings, and `--skills`
+replaces the catalog roots rather than adding to them, which is what keeps
+either suite from seeing the other's procedures:
+
+```sh
+opsdeck conform --skills examples/access/skills \
+  --scenarios examples/access/scenarios \
+  --connectors examples/access/configs/connectors.json
+```
+
+Seven scenarios, conformance level 2. That is every level it declares a
+scenario for: the evolution lifecycle of level 3 is a property of the runtime
+rather than of a domain, and is exercised once, by the operational suite.
+
 The text report is one line per scenario, then the failures underneath, then the
 totals:
 
 ```
 pass  02_restart_staging  level 2  3 turn(s)
 ...
-level 1: 4/4 scenarios pass
-level 2: 10/10 scenarios pass
+level 1: 5/5 scenarios pass
+level 2: 15/15 scenarios pass
 level 3: 1/1 scenarios pass
 conformance level 3
 ```
@@ -100,7 +119,7 @@ order of the model calls in the turn — see
 
 | Key | Checked against |
 | --- | --- |
-| `kind` | The `kind` of the `route` event of the turn. Always checked |
+| `kind` | The `kind` of the `route` event of the turn, or `guardrail` when there was none. Always checked |
 | `contains` | Substrings the reply must hold. Each missing one is a separate failure |
 | `outcomes` | The outcome kinds of the turn, in order, exactly. Omit to skip |
 | `pending` | `"approval"`, `"input"` or `null`. Always checked, including the null case |
@@ -109,6 +128,15 @@ order of the model calls in the turn — see
 
 Outcome kinds are `read`, `receipt`, `ledger_hit`, `denied`, `rejected`,
 `invalid_plan`, `approval_pending` and `cancelled`.
+
+`kind` has one value that is not a route kind. A guardrail at the input
+boundary ends the turn before it is classified, so there is no `route` event to
+read; the runner reports `guardrail` instead, taken from the `guardrail` event
+whose action was `blocked`. A scenario asserting on it is asserting that the
+turn never reached classification at all. The outcome of such a turn is
+`denied`, and the reply is the guardrail's own description, so `contains` is
+written against the catalog document rather than against anything a script
+said.
 
 Note the two that are always checked even when you leave them out: `pending` and
 `verification` default to `null`, so a turn that unexpectedly leaves an approval
@@ -129,7 +157,7 @@ They are how a scenario makes a system misbehave.
 }
 ```
 
-| Behaviour | Effect |
+| Behavior | Effect |
 | --- | --- |
 | `{"fail": true, "error": "..."}` | The operation returns a failure |
 | `{"fail_after": 1, "error": "..."}` | It succeeds that many times, then fails |
@@ -189,12 +217,39 @@ whose lower levels all pass too. One failing level 1 scenario caps the report at
 0, however many level 3 scenarios pass, because a system that cannot say what it
 does correctly has nothing to govern.
 
-The sixteen scenarios in `examples/ops/scenarios/` cover greeting, off scope,
+The twenty-one scenarios in `examples/ops/scenarios/` cover greeting, off scope,
 language, a governed write with approval and verification and a ledger replay, a
 production write needing a second approval, a rejection, goal replacement, a
 policy denial, a verification failure, an invalid plan, a cancelled approval, a
 session limit, an approval with nothing pending, a composite, a refusal at the
 second policy evaluation, and the learning lifecycle.
+
+Five of them are newer categories and are worth naming separately, because each
+asserts something the others cannot:
+
+- **An illegal lifecycle move.** A rollback asked for on a deployment that has
+  already been rolled back. The reads run, the plan is built, and the write
+  ends as `invalid_plan` with no approval requested and no receipt — which is
+  what distinguishes a lifecycle refusal from a policy denial.
+- **The state of another object.** The same refusal, with a deployment for a
+  second service read earlier in the same session. A state read for one object
+  does not answer for another, which is the thing a lifecycle check is easiest
+  to get wrong.
+- **A guardrail at the input boundary.** A request carrying what looks like a
+  credential. `kind` is `guardrail`, the script is empty, and the reply is the
+  guardrail's own wording: the turn never reached classification, so there was
+  nothing for a model to answer.
+- **A reply in another language.** The router reports the language once, the
+  session keeps it, and the turn that approves the write is decided by the rule
+  layer without a model call and is still answered in the language the session
+  settled on.
+- **A human input.** The text of an incident note is asked for, stored against
+  the field, and written exactly as it was given; the same request again
+  returns the receipt the ledger already holds.
+
+The access suite adds one more: a request read while it is open is offered the
+move that completes it, and one already granted is offered nothing, because the
+move it has left is declared as never suggested.
 
 ## Writing a scenario for a new domain
 

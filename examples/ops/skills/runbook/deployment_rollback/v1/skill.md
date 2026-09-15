@@ -24,6 +24,11 @@ capabilities:
     - deployment.list
   writes:
     - deployment.rollback
+guardrails:
+  - guardrail.declared_operations_only
+  - guardrail.identifiers_are_never_invented
+  - guardrail.exact_payload_approval
+  - guardrail.read_back_before_confirmation
 runtime:
   action: roll a service back to an earlier version
   action_on_selection: roll it back
@@ -70,3 +75,8 @@ can be in place and still be down.
 
 Roll forward. Deploy the version that was removed once the fault in it is
 understood and fixed; do not roll back the rollback.
+
+The deployment lifecycle says the same thing and enforces it: `rolled_back` is
+final, so a rollback asked for on a deployment that has already been rolled
+back is refused on the state read back from `deployment.get`, before anything
+is sent and before anyone is asked to approve it.
