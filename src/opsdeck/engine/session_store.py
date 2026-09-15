@@ -9,11 +9,13 @@ the file in between.
 from __future__ import annotations
 
 import sqlite3
+import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 
+from opsdeck.config import DEFAULT_BUSY_TIMEOUT_SECONDS
 from opsdeck.engine.state import SessionState
 
 __all__ = ["SessionStore"]
@@ -27,12 +29,15 @@ CREATE TABLE IF NOT EXISTS sessions (
 """
 
 
+
 class SessionStore:
     """Reads and writes session state."""
 
-    def __init__(self, path: Path | str) -> None:
+    def __init__(self, path: Path | str, *, busy_timeout: float | None = None) -> None:
         self._path = Path(path)
         self._ready = False
+        self._opening = threading.Lock()
+        self._busy_timeout = DEFAULT_BUSY_TIMEOUT_SECONDS if busy_timeout is None else busy_timeout
 
     @property
     def path(self) -> Path:
@@ -71,16 +76,47 @@ class SessionStore:
             ).fetchall()
         return [row["session_id"] for row in rows]
 
+    def updated_at(self, session_id: str) -> datetime | None:
+        """When this session was last written, or nothing when it was never written."""
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT updated_at FROM sessions WHERE session_id = ?", (session_id,)
+            ).fetchone()
+        return None if row is None else datetime.fromisoformat(row["updated_at"])
+
+    def expired(self, before: datetime) -> list[str]:
+        """The sessions last written before this moment, oldest first."""
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT session_id FROM sessions WHERE updated_at < ? ORDER BY updated_at",
+                (before.isoformat(),),
+            ).fetchall()
+        return [row["session_id"] for row in rows]
+
+    def delete(self, session_id: str) -> int:
+        """Remove the stored state of one session and report whether there was any."""
+        with self._connect() as connection:
+            cursor = connection.execute(
+                "DELETE FROM sessions WHERE session_id = ?", (session_id,)
+            )
+            return int(cursor.rowcount)
+
     @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:
-        if not self._ready:
-            self._path.parent.mkdir(parents=True, exist_ok=True)
-        connection = sqlite3.connect(self._path)
+        with self._opening:
+            if not self._ready:
+                self._path.parent.mkdir(parents=True, exist_ok=True)
+                starting = sqlite3.connect(self._path, timeout=self._busy_timeout)
+                try:
+                    starting.execute("PRAGMA journal_mode=WAL")
+                    starting.executescript(_SCHEMA)
+                    starting.commit()
+                finally:
+                    starting.close()
+                self._ready = True
+        connection = sqlite3.connect(self._path, timeout=self._busy_timeout)
         connection.row_factory = sqlite3.Row
         try:
-            if not self._ready:
-                connection.executescript(_SCHEMA)
-                self._ready = True
             yield connection
             connection.commit()
         finally:

@@ -14,7 +14,12 @@ file is ignored rather than repaired, so a stale paraphrase is never used and
 the fix is always to regenerate. Nothing here is edited by hand.
 
 The file is kept inside the skill's version directory so that it travels with
-the version it describes, is copied with it and is removed with it. Reading
+the version it describes, is copied with it and is removed with it. That is
+also why a pass over a catalog served as a built revision is refused rather
+than performed: a revision is immutable and its identifier hashes the skills
+alone, so writing a derived file into one would leave two replicas serving the
+same identifier and routing requests differently. Enrichment belongs before a
+revision is built, over the directory the build reads. Reading
 `catalog/registry.py` shows what that does not buy: the registry fingerprints
 only the `skill.md` files `discover_all` finds, by path, size and modification
 time, so writing this file beside one of them leaves the registry fingerprint
@@ -40,6 +45,7 @@ from opsdeck.contracts.skill import Skill
 
 __all__ = [
     "EnrichedExamples",
+    "EnrichmentError",
     "EnrichmentReport",
     "PhraseProvider",
     "enrich",
@@ -56,6 +62,17 @@ EnrichedExamples = dict[str, list[str]]
 
 SOURCE_HASH_KEY = "source_hash"
 LANGUAGES_KEY = "languages"
+
+SERVED_REVISION = (
+    "this catalog is served as revision {revision}, which is immutable: enrichment "
+    "writes beside the skills it derives from and belongs before a revision is built, "
+    "over the directory the build reads"
+)
+
+
+class EnrichmentError(Exception):
+    """A pass that may not be run at all, as opposed to one that failed a skill."""
+
 
 _SYSTEM = (
     "You write alternative wordings for one procedure of a catalog.\n\n"
@@ -201,7 +218,14 @@ def enrich_catalog(
 
     One skill that fails is recorded and the pass continues, because a catalog
     half enriched is still better routed than one not enriched at all.
+
+    A registry serving a built revision is refused before anything is written.
+    The derived file would land inside the revision directory, and a revision is
+    promised to be the same bytes wherever it is served.
     """
+    revision = registry.revision
+    if revision:
+        raise EnrichmentError(SERVED_REVISION.format(revision=revision))
     report = EnrichmentReport()
     for skill in registry.published():
         if not skill.frontmatter.triggers:

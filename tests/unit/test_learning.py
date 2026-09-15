@@ -15,6 +15,7 @@ from opsdeck.contracts.common import Message
 from opsdeck.contracts.proposal import ProposalState, QualityReport, SkillProposal
 from opsdeck.contracts.receipt import WriteReceipt
 from opsdeck.learning import quality
+from opsdeck.learning.changes import ChangeRequestState, ChangeRequestStore
 from opsdeck.learning.lifecycle import ALLOWED, LifecycleError, transition
 from opsdeck.learning.proposals import ProposalStore, build_policy, draft_from_session
 from opsdeck.planner.scripted import ScriptedModelProvider
@@ -48,15 +49,26 @@ SCRIPTED_ANSWER = {
 
 
 @pytest.fixture
-def publish_root(tmp_path: Path) -> Path:
-    """Where a published proposal is written."""
-    return tmp_path / "published"
+def catalog_root(tmp_path: Path) -> Path:
+    """The catalog root a person may apply a change request into.
+
+    It is a separate directory from the change request root on purpose: a
+    composed package must not be picked up by the registry until somebody
+    copies it here.
+    """
+    return tmp_path / "catalog"
 
 
 @pytest.fixture
-def learning_registry(skills_root: Path, tmp_path: Path) -> SkillRegistry:
-    """Registry over the example catalog and over what this test publishes."""
-    return SkillRegistry([skills_root, tmp_path])
+def changes(tmp_path: Path) -> ChangeRequestStore:
+    """Where publication writes the package it proposes."""
+    return ChangeRequestStore(tmp_path / "changes")
+
+
+@pytest.fixture
+def learning_registry(skills_root: Path, catalog_root: Path) -> SkillRegistry:
+    """Registry over the example catalog and over the root a change lands in."""
+    return SkillRegistry([skills_root, catalog_root])
 
 
 @pytest.fixture
@@ -359,14 +371,21 @@ def test_the_store_keeps_one_file_per_proposal(
         store.delete(proposal.proposal_id)
 
 
-def test_the_legal_path_publishes_a_new_runbook(
+def test_the_legal_path_composes_a_change_request(
     store: ProposalStore,
     learning_registry: SkillRegistry,
     receipts: list[WriteReceipt],
     conversation: list[Message],
     schemas_dir: Path,
-    publish_root: Path,
+    changes: ChangeRequestStore,
+    catalog_root: Path,
 ) -> None:
+    """The lifecycle still ends at `published`; what it produces is a request.
+
+    Every state and every actor is what it was. The difference is at the end:
+    nothing is in the catalog, and the package that would go there is a
+    directory a person can read.
+    """
     proposal = _draft(learning_registry, receipts, conversation, schemas_dir, hint="service_bounce")
     store.save(proposal)
     for target in (ProposalState.submitted, ProposalState.approved, ProposalState.published):
@@ -377,7 +396,7 @@ def test_the_legal_path_publishes_a_new_runbook(
             ACTOR,
             f"moved to {target.value}",
             registry=learning_registry,
-            publish_root=publish_root,
+            changes=changes,
             schema_dir=schemas_dir,
         )
     assert held.state is ProposalState.published
@@ -388,16 +407,70 @@ def test_the_legal_path_publishes_a_new_runbook(
         ProposalState.published,
     ]
     assert {entry.by for entry in held.history[1:]} == {ACTOR}
-    directory = publish_root / "runbook" / "service_bounce" / "v1"
+    assert store.get(proposal.proposal_id).state is ProposalState.published
+
+    assert not catalog_root.exists()
+    assert learning_registry.get("runbook.service_bounce") is None
+
+    requests = changes.list()
+    assert len(requests) == 1
+    request = requests[0]
+    assert request.proposal_id == proposal.proposal_id
+    assert request.skill_id == "runbook.service_bounce"
+    assert request.version == 1
+    assert request.actor == ACTOR
+    assert request.state is ChangeRequestState.open
+    assert request.quality.issues == []
+    assert request.request_id in held.history[-1].note
+
+    package = changes.package(request.request_id)
+    assert package == changes.directory(request.request_id) / "runbook/service_bounce/v1"
+    assert (package / "skill.md").is_file()
+    assert json.loads((package / "policy.json").read_text(encoding="utf-8")) == proposal.policy
+    summary = (changes.directory(request.request_id) / "summary.md").read_text(encoding="utf-8")
+    assert ACTOR in summary
+    assert "runbook.service_bounce" in summary
+
+
+def test_applying_a_request_is_what_puts_it_in_the_catalog(
+    store: ProposalStore,
+    learning_registry: SkillRegistry,
+    receipts: list[WriteReceipt],
+    conversation: list[Message],
+    schemas_dir: Path,
+    changes: ChangeRequestStore,
+    catalog_root: Path,
+) -> None:
+    proposal = _draft(learning_registry, receipts, conversation, schemas_dir, hint="service_bounce")
+    store.save(proposal)
+    for target in (ProposalState.submitted, ProposalState.approved, ProposalState.published):
+        transition(
+            store,
+            proposal.proposal_id,
+            target,
+            ACTOR,
+            "",
+            registry=learning_registry,
+            changes=changes,
+            schema_dir=schemas_dir,
+        )
+    request_id = changes.list()[0].request_id
+
+    copied = changes.apply(request_id, catalog_root, by="an operator")
+
+    assert sorted(path.name for path in copied) == ["policy.json", "skill.md"]
+    directory = catalog_root / "runbook" / "service_bounce" / "v1"
     assert (directory / "skill.md").is_file()
-    assert json.loads((directory / "policy.json").read_text(encoding="utf-8")) == proposal.policy
     published = learning_registry.get("runbook.service_bounce")
     assert published is not None
     assert published.is_published
     assert published.version == 1
     assert published.frontmatter.capabilities.writes == ["service.restart"]
     assert "runbook.service_bounce" in {skill.id for skill in learning_registry.published()}
-    assert store.get(proposal.proposal_id).state is ProposalState.published
+    applied = changes.get(request_id)
+    assert applied.state is ChangeRequestState.applied
+    assert applied.decided_by == "an operator"
+    assert applied.applied_to == str(catalog_root)
 
 
 def test_publishing_over_an_existing_id_bumps_the_version(
@@ -406,7 +479,7 @@ def test_publishing_over_an_existing_id_bumps_the_version(
     receipts: list[WriteReceipt],
     conversation: list[Message],
     schemas_dir: Path,
-    publish_root: Path,
+    changes: ChangeRequestStore,
 ) -> None:
     proposal = _draft(
         learning_registry, receipts, conversation, schemas_dir, hint="runbook.service_restart"
@@ -420,13 +493,15 @@ def test_publishing_over_an_existing_id_bumps_the_version(
             ACTOR,
             "",
             registry=learning_registry,
-            publish_root=publish_root,
+            changes=changes,
             schema_dir=schemas_dir,
         )
-    assert (publish_root / "runbook" / "service_restart" / "v2" / "skill.md").is_file()
-    published = learning_registry.get("runbook.service_restart")
-    assert published is not None
-    assert published.version == 2
+    request = changes.list()[0]
+    assert request.version == 2
+    assert (changes.package(request.request_id) / "skill.md").is_file()
+    assert changes.package(request.request_id).parent.name == "service_restart"
+    # The catalog still holds the version it held: a request is not an install.
+    assert learning_registry.require("runbook.service_restart").version == 1
 
 
 def test_an_illegal_edge_is_refused(
@@ -435,7 +510,7 @@ def test_an_illegal_edge_is_refused(
     receipts: list[WriteReceipt],
     conversation: list[Message],
     schemas_dir: Path,
-    publish_root: Path,
+    changes: ChangeRequestStore,
 ) -> None:
     proposal = _draft(learning_registry, receipts, conversation, schemas_dir, hint="service_bounce")
     store.save(proposal)
@@ -448,11 +523,11 @@ def test_an_illegal_edge_is_refused(
                 ACTOR,
                 "",
                 registry=learning_registry,
-                publish_root=publish_root,
+                changes=changes,
                 schema_dir=schemas_dir,
             )
     assert store.get(proposal.proposal_id).state is ProposalState.draft
-    assert not publish_root.exists()
+    assert changes.list() == []
 
 
 def test_a_rejected_proposal_moves_nowhere(
@@ -461,7 +536,7 @@ def test_a_rejected_proposal_moves_nowhere(
     receipts: list[WriteReceipt],
     conversation: list[Message],
     schemas_dir: Path,
-    publish_root: Path,
+    changes: ChangeRequestStore,
 ) -> None:
     proposal = _draft(learning_registry, receipts, conversation, schemas_dir, hint="service_bounce")
     store.save(proposal)
@@ -472,7 +547,7 @@ def test_a_rejected_proposal_moves_nowhere(
         ACTOR,
         "not wanted",
         registry=learning_registry,
-        publish_root=publish_root,
+        changes=changes,
         schema_dir=schemas_dir,
     )
     assert ALLOWED.get(ProposalState.rejected) is None
@@ -484,7 +559,7 @@ def test_a_rejected_proposal_moves_nowhere(
             ACTOR,
             "",
             registry=learning_registry,
-            publish_root=publish_root,
+            changes=changes,
             schema_dir=schemas_dir,
         )
 
@@ -495,7 +570,7 @@ def test_an_empty_actor_is_refused(
     receipts: list[WriteReceipt],
     conversation: list[Message],
     schemas_dir: Path,
-    publish_root: Path,
+    changes: ChangeRequestStore,
 ) -> None:
     proposal = _draft(learning_registry, receipts, conversation, schemas_dir, hint="service_bounce")
     store.save(proposal)
@@ -507,7 +582,7 @@ def test_an_empty_actor_is_refused(
             "   ",
             "",
             registry=learning_registry,
-            publish_root=publish_root,
+            changes=changes,
             schema_dir=schemas_dir,
         )
     assert store.get(proposal.proposal_id).state is ProposalState.draft
@@ -518,7 +593,7 @@ def test_publication_is_refused_when_the_checks_fail(
     crafted: Callable[..., str],
     learning_registry: SkillRegistry,
     schemas_dir: Path,
-    publish_root: Path,
+    changes: ChangeRequestStore,
 ) -> None:
     body = "## Purpose\n\nWhy.\n\n## Steps\n\n1. Call `service.restart`.\n"
     proposal = SkillProposal(
@@ -537,7 +612,7 @@ def test_publication_is_refused_when_the_checks_fail(
             ACTOR,
             "",
             registry=learning_registry,
-            publish_root=publish_root,
+            changes=changes,
             schema_dir=schemas_dir,
         )
     with pytest.raises(LifecycleError) as raised:
@@ -548,14 +623,14 @@ def test_publication_is_refused_when_the_checks_fail(
             ACTOR,
             "",
             registry=learning_registry,
-            publish_root=publish_root,
+            changes=changes,
             schema_dir=schemas_dir,
         )
     assert "verification" in str(raised.value)
     held = store.get(proposal.proposal_id)
     assert held.state is ProposalState.approved
     assert held.quality.issues
-    assert not publish_root.exists()
+    assert changes.list() == []
 
 
 def test_a_proposal_naming_a_guardrail_nothing_defines_does_not_pass(

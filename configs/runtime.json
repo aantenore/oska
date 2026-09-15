@@ -133,5 +133,25 @@
         0.15
       ]
     }
+  },
+  "catalog": {
+    "revisions_root": "state/revisions",
+    "revision": "",
+    "tenant": "default",
+    "pin_sessions": true
+  },
+  "changes": {
+    "root": "state/changes"
+  },
+  "resilience": {
+    "timeout_seconds": 30.0,
+    "failures_before_open": 3,
+    "recovery_seconds": 30.0
+  },
+  "retention": {
+    "days": 0
+  },
+  "storage": {
+    "busy_timeout_seconds": 10.0
   }
 }

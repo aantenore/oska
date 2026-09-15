@@ -12,6 +12,7 @@ from typer.testing import CliRunner
 
 from opsdeck.audit.sink import MemorySink
 from opsdeck.catalog.enrichment import (
+    EnrichmentError,
     enrich,
     enrich_catalog,
     examples_path,
@@ -28,6 +29,7 @@ from opsdeck.contracts.proposal import ProposalState
 from opsdeck.contracts.receipt import WriteReceipt
 from opsdeck.contracts.skill import Skill
 from opsdeck.engine.factory import build_engine
+from opsdeck.learning.changes import ChangeRequestState, ChangeRequestStore
 from opsdeck.learning.lifecycle import transition
 from opsdeck.learning.proposals import ProposalStore, draft_from_session
 from opsdeck.planner.provider import ModelProviderError
@@ -184,6 +186,32 @@ def test_a_pass_reports_what_it_wrote_skipped_and_could_not_do(
     assert "ModelProviderError" in exhausted.failed["runbook.queue_drain"]
 
 
+def test_a_catalog_served_as_a_revision_is_never_enriched(
+    catalog: Path, queue_drain: Skill, config: EnrichmentConfig
+) -> None:
+    """A revision is immutable, and the derived file would be written inside it.
+
+    The identifier of a revision hashes the skills it holds and nothing else,
+    so a file written beside one of them would leave two replicas answering to
+    the same identifier and routing the same request differently. The pass is
+    refused before a provider is asked for anything.
+    """
+    served = SkillRegistry([catalog], revision="7f3c1d2e4b5a6c8d")
+    provider = ScriptedModelProvider(ANSWER)
+
+    with pytest.raises(EnrichmentError) as raised:
+        enrich_catalog(served, provider, config, LANGUAGES)
+
+    assert "7f3c1d2e4b5a6c8d" in str(raised.value)
+    assert "before a revision is built" in str(raised.value)
+    assert provider.consumed() == 0
+    assert not examples_path(queue_drain, config).exists()
+    # The same catalog read as a directory is enriched as usual.
+    assert enrich_catalog(
+        SkillRegistry([catalog]), provider, config, LANGUAGES
+    ).written == ["runbook.queue_drain"]
+
+
 def _published(
     store: ProposalStore,
     registry: SkillRegistry,
@@ -191,7 +219,12 @@ def _published(
     schemas_dir: Path,
     **extra: object,
 ):
-    """Draft one procedure from a session and move it all the way to published."""
+    """Draft one procedure, publish it, and apply the change request as a reviewer would.
+
+    Publication composes a change request and stops; putting the package into a
+    catalog is a person's act, so the helper performs it explicitly.
+    """
+    changes = ChangeRequestStore(publish_root.parent / "changes")
     proposal = draft_from_session(
         "session-enrich",
         [
@@ -223,20 +256,24 @@ def _published(
             state,
             "reviewer",
             registry=registry,
-            publish_root=publish_root,
+            changes=changes,
             schema_dir=schemas_dir,
         )
-    return transition(
+    published = transition(
         store,
         proposal.proposal_id,
         ProposalState.published,
         "reviewer",
         "shipped",
         registry=registry,
-        publish_root=publish_root,
+        changes=changes,
         schema_dir=schemas_dir,
         **extra,
     )
+    publish_root.mkdir(parents=True, exist_ok=True)
+    for request in changes.list(ChangeRequestState.open):
+        changes.apply(request.request_id, publish_root, by="reviewer")
+    return published
 
 
 def test_publication_writes_the_derived_phrases(
@@ -299,7 +336,9 @@ def test_publication_without_a_provider_writes_nothing(
     registry = SkillRegistry([skills_root, publish_root])
     store = ProposalStore(tmp_path / "proposals")
     proposal = _published(store, registry, publish_root, schemas_dir, enrichment=config)
-    assert proposal.history[-1].note == "shipped"
+    note = proposal.history[-1].note
+    assert note.startswith("shipped")
+    assert "the routing examples were not written" not in note
     assert not examples_path(registry.require("runbook.service_bounce"), config).exists()
 
 
@@ -391,7 +430,7 @@ def test_an_exhausted_script_raises_rather_than_answering(queue_drain: Skill) ->
 
 NEARLY_A_DERIVED_PHRASE = "per favore svuota la coda dei lavori che sono rimasti bloccati oggi"
 
-ENGLISH_NEIGHBOUR = (
+ENGLISH_NEIGHBOR = (
     "runbook.service_restart",
     "Restarts a service that is wedged, after reading what it is doing right now.",
     [
@@ -441,7 +480,7 @@ def test_an_engine_built_from_the_configuration_ranks_by_the_derived_phrases(
     model call; discovery answers a phrasing near it, and answers it clearly
     enough to choose between the two procedures on offer.
     """
-    skill_id, description, triggers = ENGLISH_NEIGHBOUR
+    skill_id, description, triggers = ENGLISH_NEIGHBOR
     write_skill(
         runbook_frontmatter(id=skill_id, description=description, triggers=list(triggers))
     )
@@ -498,7 +537,7 @@ def test_without_the_derived_file_the_same_request_reaches_neither_layer(
     runbook_frontmatter: Callable[..., dict],
 ) -> None:
     """Nothing is derived at turn time: with no file written, the request ranks nowhere."""
-    skill_id, description, triggers = ENGLISH_NEIGHBOUR
+    skill_id, description, triggers = ENGLISH_NEIGHBOR
     write_skill(
         runbook_frontmatter(id=skill_id, description=description, triggers=list(triggers))
     )

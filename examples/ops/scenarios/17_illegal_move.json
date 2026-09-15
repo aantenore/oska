@@ -63,7 +63,7 @@
   "turns": [
     {
       "user": "roll search back to 0.8.0",
-      "connector_behaviours": {
+      "connector_behaviors": {
         "integration.deployment_control": {
           "deployment.get": {
             "override": {

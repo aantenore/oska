@@ -1,11 +1,17 @@
 {
   "name": "02_grant_standard",
-  "description": "A membership in a standard group: exact-payload approval, verified read-back, and a second identical request that the ledger stops.",
+  "description": "A membership in a standard group, granted to the account the session is signed in as: the plan never names it, the runtime fills it, and a second identical request is stopped by the ledger.",
   "level": 2,
+  "principal": {
+    "subject": "tnovak",
+    "attributes": {
+      "department": "support"
+    }
+  },
   "provider_script": [
     {
       "purpose": "router classification",
-      "expect_contains": "tnovak started on the support rota this week",
+      "expect_contains": "started on the support rota this week",
       "response": {
         "kind": "new_task",
         "runbook_id": "runbook.access_grant",
@@ -31,25 +37,22 @@
           {
             "integration_id": "integration.directory",
             "operation": "user.groups",
-            "payload": {
-              "username": "tnovak"
-            },
+            "payload": {},
             "write": false,
-            "purpose": "read what the account already belongs to"
+            "purpose": "read what the signed-in account already belongs to"
           },
           {
             "integration_id": "integration.access_control",
             "operation": "membership.grant",
             "payload": {
-              "username": "tnovak",
               "group": "support-desk"
             },
             "write": true,
-            "purpose": "put the account into the group"
+            "purpose": "put the signed-in account into the group"
           }
         ],
         "missing": [],
-        "reply_intent": "report whether tnovak is now in support-desk and whether the read-back confirmed it"
+        "reply_intent": "report whether the signed-in account is now in support-desk and whether the read-back confirmed it"
       }
     },
     {
@@ -61,7 +64,7 @@
     },
     {
       "purpose": "router classification",
-      "expect_contains": "add tnovak to the support desk group as well",
+      "expect_contains": "add me to the support desk group as well",
       "response": {
         "kind": "new_task",
         "runbook_id": "runbook.access_grant",
@@ -71,7 +74,7 @@
     },
     {
       "purpose": "plan",
-      "expect_contains": "as well, I am not sure the first one went through",
+      "expect_contains": "I am not sure the first one went through",
       "response": {
         "runbook_id": "runbook.access_grant",
         "operations": [
@@ -87,17 +90,14 @@
           {
             "integration_id": "integration.directory",
             "operation": "user.groups",
-            "payload": {
-              "username": "tnovak"
-            },
+            "payload": {},
             "write": false,
-            "purpose": "read what the account belongs to now"
+            "purpose": "read what the signed-in account belongs to now"
           },
           {
             "integration_id": "integration.access_control",
             "operation": "membership.grant",
             "payload": {
-              "username": "tnovak",
               "group": "support-desk"
             },
             "write": true,
@@ -118,7 +118,7 @@
   ],
   "turns": [
     {
-      "user": "tnovak started on the support rota this week and cannot see the shared queue, put him in the support desk group",
+      "user": "I started on the support rota this week and cannot see the shared queue, put me in the support desk group",
       "expect": {
         "kind": "new_task",
         "contains": [
@@ -153,7 +153,7 @@
       }
     },
     {
-      "user": "add tnovak to the support desk group as well, I am not sure the first one went through",
+      "user": "add me to the support desk group as well, I am not sure the first one went through",
       "expect": {
         "kind": "new_task",
         "contains": [

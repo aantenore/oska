@@ -1,6 +1,6 @@
 {
   "name": "01_greeting",
-  "description": "An opening greeting is answered from the catalogue alone, with no model call.",
+  "description": "An opening greeting is answered from the catalog alone, with no model call.",
   "level": 1,
   "provider_script": [],
   "turns": [

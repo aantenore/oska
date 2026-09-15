@@ -7,7 +7,7 @@ from opsdeck.index.base import (
     TextSource,
     enriched_source,
     routing_source,
-    textualise,
+    textualize,
 )
 from opsdeck.index.discovery import Discovery
 from opsdeck.index.embedding import EmbeddingIndex
@@ -23,5 +23,5 @@ __all__ = [
     "TextSource",
     "enriched_source",
     "routing_source",
-    "textualise",
+    "textualize",
 ]

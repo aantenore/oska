@@ -1,6 +1,6 @@
 {
   "name": "08_off_scope",
-  "description": "A request the catalogue cannot answer is declined with the scope it does declare.",
+  "description": "A request the catalog cannot answer is declined with the scope it does declare.",
   "level": 1,
   "provider_script": [
     {

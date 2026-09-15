@@ -2,8 +2,9 @@
 
 A session that did something worth repeating can become a procedure. It becomes
 one the same way a hand-written procedure does: as a file in a catalog root that
-passes the validator. What the learning layer adds is a drafting step and a
-lifecycle with a named actor on every move.
+passes the validator, put there by a person. What the learning layer adds is a
+drafting step, a lifecycle with a named actor on every move, and a change
+request the runtime composes and cannot install.
 
 ## Proposals
 
@@ -47,7 +48,7 @@ does not steal an existing procedure's phrasing.
 ## Quality checks
 
 `quality.check` renders the proposal to a temporary directory, with the policy
-written beside it, and runs three things:
+written beside it, and runs four things:
 
 1. **Parse.** The frontmatter must produce a valid `SkillFrontmatter`. A parse
    failure is the only result — nothing else could run — and the score bottoms
@@ -60,6 +61,12 @@ written beside it, and runs three things:
    declared write is a write declared by a listed integration; the `Steps`
    section is not empty; the `Verification` section is not empty; no trigger
    already belongs to another published runbook.
+4. **The evaluation set**, when there is a ranking to run it against and the
+   skill being revised carries one. A proposal that cannot answer its own
+   skill's declared cases is refused. A skill with no set is not refused:
+   requiring one here would block every revision of every procedure written
+   before evaluation sets existed, which pushes authors to paste in cases that
+   pass rather than cases that matter.
 
 The report carries the list of issues and a score between 0 and 1, computed as
 `1 - issues / (lints + 1)` and clamped, so a clean proposal scores 1 and one
@@ -83,30 +90,69 @@ through `transition`, which:
   it`;
 - re-runs the quality checks when the target is `published`, and refuses if
   anything fails, saving the refreshed report so the reviewer can see why;
+- composes a change request when the target is `published`, and records its id
+  in the transition note;
 - appends a `ProposalTransition` with the state, the time, the actor and the
   note.
+
+`transition` takes no catalog root and cannot be given one. `published` is the
+end of what this function does: it means the package is composed and waiting
+for a person, not that anything is being served.
 
 A rejected proposal stays on disk with its history. A published one keeps the
 Markdown as it was published, version and status rewritten.
 
-## Publication
+## Publication composes a change request
 
-Publication writes into the catalog root named by `learning.publish_root` in
-`configs/runtime.json`, resolved under the state directory —
-`state/skills` by default, which is one of the default catalog roots.
-
-The file lands at:
+Publication used to write a skill file under the running server, which made the
+process that answers people the process that rewrote the catalog it answered
+from. It now writes a directory under `changes.root`, resolved under the state
+directory — `state/changes` by default:
 
 ```
-<publish root>/<type>/<name>/v<version>/skill.md
-<publish root>/<type>/<name>/v<version>/policy.json
+<changes root>/<request id>/request.json
+<changes root>/<request id>/summary.md
+<changes root>/<request id>/<type>/<name>/v<version>/skill.md
+<changes root>/<request id>/<type>/<name>/v<version>/policy.json
 ```
+
+The package is laid out the way a catalog root is laid out, so applying a
+request is a copy of one subtree rather than a translation. `request.json` holds
+the proposal it came from, the skill id and version, who asked, when, the
+quality report that let it through, and the state of the request.
+`summary.md` is what a reviewer reads without opening anything else.
 
 The version is one past the highest version of that id anywhere in the catalog,
-so publishing a procedure whose id already exists supersedes it rather than
-colliding with it, and `status` is rewritten to `published`. The registry picks
-it up on the next call, because the set of files on disk changed and the
-fingerprint with it. No restart, no reload command.
+so a request for a procedure whose id already exists supersedes it rather than
+colliding with it, and `status` is rewritten to `published` in the file.
+
+Where enrichment is on and a provider is given, the derived routing examples of
+the new procedure are written beside the package inside the request, so they
+travel with it and land in the catalog when a person applies it. That work
+follows the publication and never gates it: a provider that fails is recorded
+in the transition note and leaves the composed package exactly as it is.
+
+A request is `open`, and a person makes it `applied` or `rejected`. Both are
+final: a change request is the record of one review, not a queue entry to reuse.
+
+```sh
+opsdeck change list
+opsdeck change show <request_id>
+opsdeck change apply <request_id> --into state/skills --by <actor>
+opsdeck change reject <request_id> --by <actor> --note "..."
+```
+
+`--into` has no default and no configured value it falls back to. This is the
+one place in the system that writes into a catalog root, and the root is an
+argument because nothing in the engine, the HTTP application or the improvement
+job knows which root a deployment serves — none of them can call it.
+
+Applying is not serving. A catalog root that has gained a version is a source,
+and a deployment serving a built revision answers from the revision until a new
+one is built and chosen. The command says so after it copies. A deployment
+reading its skill roots directly picks the new version up on the next call,
+because the set of files on disk changed and the fingerprint with it. See
+[operating.md](operating.md).
 
 ## Why there is no auto-approve
 
@@ -126,8 +172,16 @@ no configuration key and no API parameter that changes this. The scenario suite
 asserts it: scenario 15 requires that a transition with an empty actor is
 refused and leaves the state untouched.
 
+The change request is the same argument made once more, at the last step. Even
+a proposal a person has approved through every state of the lifecycle does not
+become a file in a catalog root on the strength of that: composing the package
+and installing it are separate acts, and only the second changes what is
+served. The split is enforced by where the code lives rather than promised —
+`transition` cannot take a catalog root, and the function that can is reachable
+from a terminal and from nowhere in the serving process.
+
 What is automated is everything up to the decision: the draft, the checks, the
-publication mechanics. What a person does is read the file and say yes.
+package. What a person does is read the file and say yes.
 
 ## Where this sits on the autonomy ladder
 
@@ -151,16 +205,23 @@ opsdeck propose from-session <session_id> --by <actor>
 opsdeck propose list [--state draft|submitted|approved|rejected|published]
 opsdeck propose show <proposal_id>
 opsdeck propose transition <proposal_id> --to <state> --by <actor> [--note "..."]
+
+opsdeck change list [--state open|applied|rejected]
+opsdeck change show <request_id>
+opsdeck change apply <request_id> --into <catalog root> --by <actor>
+opsdeck change reject <request_id> --by <actor> [--note "..."]
 ```
 
-All four accept `--skills` to point at other catalog roots.
+All of them accept `--skills` to point at other catalog roots.
 
 `from-session` prints the proposal id, its state, and one line per quality
 issue. `--by` overwrites the actor on the drafting entry; without it the entry
 records the session id. `list` prints id, state, source session and issue count.
 `show` prints the whole proposal as JSON, Markdown and policy included.
-`transition` prints the same line as `list` for the moved proposal; a refused
-move prints the lifecycle's message on standard error and exits non-zero.
+`transition` prints the same line as `list` for the moved proposal, and the
+change request it composed when the move was to `published`; a refused move
+prints the lifecycle's message on standard error and exits non-zero.
+`change show` prints the request and then the files its package holds.
 
 A worked sequence, against the example catalog:
 
@@ -169,8 +230,13 @@ opsdeck propose from-session walk --by s.reyes
 opsdeck propose transition <id> --to submitted --by s.reyes --note "ran it once"
 opsdeck propose transition <id> --to approved  --by s.reyes --note "wording read"
 opsdeck propose transition <id> --to published --by s.reyes
+opsdeck change show <request id>              # read the package before it lands
+opsdeck change apply <request id> --into state/skills --by s.reyes
 opsdeck capabilities        # the new procedure is in the list
 ```
+
+The last two are the part a person does. Up to `published` the runtime has
+written a package and nothing else.
 
 ## HTTP
 
@@ -179,11 +245,15 @@ opsdeck capabilities        # the new procedure is in the list
 | `POST /proposals/from-session/{session_id}` | Draft from a session and store it. Returns the proposal |
 | `GET /proposals` | Every proposal held |
 | `GET /proposals/{proposal_id}` | One proposal |
-| `POST /proposals/{proposal_id}/transition` | Move it. Body: `{"to": ..., "by": ..., "note": ...}` |
+| `POST /proposals/{proposal_id}/transition` | Move it. Body: `{"to": ..., "by": ..., "note": ...}`. Returns the proposal and, when the move composed one, its change request |
+| `GET /changes` | Every change request held, oldest first |
+| `GET /changes/{request_id}` | One change request |
 
-The drafting route takes no actor, so the drafting entry records the session id;
-the transition route takes `by` in the body and it is required by the lifecycle,
-not by the schema — an empty one comes back as a 409.
+There is no endpoint that applies a change request, and there is not going to be
+one. The two `changes` routes read; nothing over HTTP writes into a catalog
+root. The drafting route takes no actor, so the drafting entry records the
+session id; the transition route takes `by` in the body and it is required by
+the lifecycle, not by the schema — an empty one comes back as a 409.
 
 Errors are `{"error": ..., "detail": ...}`: 404 `unknown_proposal`, 409
 `illegal_transition` for an edge that is not allowed, a missing actor or a failed

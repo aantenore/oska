@@ -5,6 +5,28 @@ against the declarations, against the ledger and against the policy, and then
 it stops the plan and waits for an approval. The only write this module
 performs is the one an approval has already been given for, and it records the
 intent to write before the call goes out.
+
+A call that did not reach the system at all is neither of the two things the
+rest of this module deals in. It is not a result and it is not a refusal, so it
+is reported as what it is: one capability that is temporarily unavailable, and
+the moment it may be tried again. The plan carries on past it, because a
+binding that is down takes its own operations with it and nothing else.
+
+A field a procedure declares as a principal input is filled here, between the
+plan and the policy: after the model has finished proposing operations and
+before anything judges or performs one. The plan may not carry such a field at
+all. A plan that carries one is refused rather than corrected, because a value
+the model chose and a value the channel authenticated are not interchangeable
+and the difference is the whole point of declaring the field.
+
+A write whose answer never came is harder than either. The connector cannot
+tell a request that never left from one the system applied and then failed to
+acknowledge: a gateway answering 502 and a read that timed out look the same
+from here, and both are classified retryable. So nothing is assumed about such
+a write. The read-back the operation declares is run anyway, and what it finds
+decides: the write landed, it did not land, or — when the read-back cannot be
+reached either — nothing is known about it, and a write nothing is known about
+is not sent again unless the system of record itself would stop the repeat.
 """
 
 from __future__ import annotations
@@ -14,7 +36,13 @@ from typing import Literal
 
 from opsdeck.audit.events import new_event
 from opsdeck.audit.sink import AuditSink
-from opsdeck.connectors.base import Connector, ConnectorError
+from opsdeck.connectors.base import (
+    Connector,
+    ConnectorError,
+    classification_of,
+    health_of,
+    is_unavailable,
+)
 from opsdeck.connectors.registry import ConnectorRegistry
 from opsdeck.contracts.common import (
     ConnectorResult,
@@ -31,20 +59,67 @@ from opsdeck.engine import outcomes as build
 from opsdeck.engine.state import SessionState
 from opsdeck.governance.approval import ApprovalGate
 from opsdeck.governance.capabilities import CapabilityRegistry
+from opsdeck.governance.identity import (
+    IdentityError,
+    Principal,
+    refused_fields,
+    resolve_inputs,
+)
 from opsdeck.governance.ledger import WriteLedger
 from opsdeck.governance.policy_engine import PolicyEngine
 from opsdeck.governance.verification import Verifier, read_state
 
-__all__ = ["PlanExecutor", "StopReason", "TurnContext", "approvals_required"]
+__all__ = [
+    "PlanExecutor",
+    "StopReason",
+    "TurnContext",
+    "approvals_required",
+    "repeat_is_stopped",
+]
 
 StopReason = Literal["completed", "approval", "denied", "invalid_plan"]
 
 SECOND_APPROVAL = "require_second_approval"
 
+_NOT_READ_BACK = "the system answered no, so there was nothing to read back"
+_READ_BACK_LOST = "the read-back did not answer either, so what the write did is not known"
+_NOTHING_DECLARED = "nothing declares what to read back for this operation"
+_LOST = "the call did not complete"
+_UNKNOWN_OUTCOME = (
+    "{error}; the declared read-back could not be reached either, so whether the write "
+    "landed is unknown, and it is not sent again in this session"
+)
+
 
 def approvals_required(effect: str) -> int:
     """How many approvals an effect asks for before the write may run."""
     return 2 if effect == SECOND_APPROVAL else 1
+
+
+def repeat_is_stopped(
+    capabilities: CapabilityRegistry,
+    spec: OperationSpec | None,
+    move: LifecycleTransition | None,
+) -> bool:
+    """Whether the system of record would itself stop a second send of this write.
+
+    Two declarations say that it would. Idempotency fields name what makes two
+    requests the same request over there, so a repeat is collapsed into the
+    first. A lifecycle move the entity does not declare again from the state it
+    reaches is refused over there, so a repeat is answered no rather than
+    performed twice. An operation that declares neither has nothing between it
+    and a duplicate, and the runtime is then the only thing that can stop one.
+    """
+    if spec is None:
+        return False
+    if spec.idempotency_fields:
+        return True
+    if move is None:
+        return False
+    entity = capabilities.lifecycle_entity(spec)
+    if entity is None:
+        return False
+    return capabilities.move_for(entity, spec.name, move.to) is None
 
 
 @dataclass
@@ -100,6 +175,17 @@ class PlanExecutor:
         start: int = 0,
     ) -> StopReason:
         """Work through the plan from `start` and report why it stopped."""
+        try:
+            from_principal = resolve_inputs(
+                runbook, Principal.from_dict(ctx.state.principal)
+            )
+        except IdentityError as exc:
+            ctx.record(build.invalid_plan_outcome(plan.runbook_id, [str(exc)]))
+            return "invalid_plan"
+        supplied = self._supplied_by_the_model(runbook, plan, start)
+        if supplied:
+            ctx.record(build.invalid_plan_outcome(plan.runbook_id, supplied))
+            return "invalid_plan"
         for index in range(start, len(plan.operations)):
             operation = plan.operations[index]
             spec = self._capabilities.operation_spec(
@@ -116,6 +202,7 @@ class PlanExecutor:
                     )
                 )
                 return "invalid_plan"
+            _fill(spec, operation.payload, from_principal)
             if not spec.write:
                 self._read(ctx, hydrated, operation)
                 continue
@@ -123,6 +210,21 @@ class PlanExecutor:
             if stop is not None:
                 return stop
         return "completed"
+
+    @staticmethod
+    def _supplied_by_the_model(runbook: Skill, plan: Plan, start: int) -> list[str]:
+        """Why this plan may not run: it fills in what the identity fills in.
+
+        The whole plan from here on is read before anything of it is performed,
+        so a read is not executed on the strength of a plan whose write names an
+        identity the person chose.
+        """
+        return [
+            f"{runbook.id} takes {name} from the authenticated session, and the plan "
+            f"supplies it to {operation.operation}"
+            for operation in plan.operations[start:]
+            for name in refused_fields(runbook, operation.payload)
+        ]
 
     def refresh_context(
         self,
@@ -229,9 +331,83 @@ class PlanExecutor:
             status="executed" if result.ok else "error",
             response=result.data,
             error=result.error,
+            classification=classification_of(result),
         )
         updated = self._verify(ctx, updated or receipt, spec, payload, result, move)
+        if is_unavailable(result):
+            return ctx.record(self._settle_lost(ctx, pending, spec, updated, result, move))
         return ctx.record(build.receipt_outcome(updated))
+
+    def _settle_lost(
+        self,
+        ctx: TurnContext,
+        pending: PendingApproval,
+        spec: OperationSpec | None,
+        receipt: WriteReceipt,
+        result: ConnectorResult,
+        move: LifecycleTransition | None,
+    ) -> Outcome:
+        """What a write whose answer never came did, decided by its read-back alone.
+
+        Nothing here is settled by assumption. The read-back has already run,
+        whatever the write reported, and it is what says which of three things
+        happened.
+
+        A read-back that found the write in the system says it landed: the
+        receipt becomes an executed, verified write and the key is closed. A
+        read-back that found it did not land leaves the key open — nothing
+        changed over there, and the same intent may be asked for again in this
+        session. A read-back that could not be reached either leaves the
+        outcome unknown, and an unknown outcome closes the key unless the
+        system of record would itself stop a repeat. When the runtime cannot
+        tell whether a write landed, it does not send it again.
+        """
+        if receipt.verification is VerificationStatus.verified:
+            landed = self._ledger.update(
+                receipt.receipt_id, status="executed", classification="terminal"
+            )
+            self._settlement(ctx, receipt, "landed", closed=True)
+            return build.receipt_outcome(landed or receipt)
+        if receipt.verification is VerificationStatus.failed:
+            self._settlement(ctx, receipt, "did_not_land", closed=False)
+            return build.unavailable_outcome(
+                pending.integration_id, pending.operation, result, receipt
+            )
+        if repeat_is_stopped(self._capabilities, spec, move):
+            self._settlement(ctx, receipt, "unknown", closed=False)
+            return build.unavailable_outcome(
+                pending.integration_id, pending.operation, result, receipt
+            )
+        unknown = self._ledger.update(
+            receipt.receipt_id,
+            classification="terminal",
+            error=_UNKNOWN_OUTCOME.format(error=result.error or _LOST),
+        )
+        self._settlement(ctx, receipt, "unknown", closed=True)
+        return build.receipt_outcome(unknown or receipt)
+
+    @staticmethod
+    def _settlement(
+        ctx: TurnContext,
+        receipt: WriteReceipt,
+        found: str,
+        *,
+        closed: bool,
+    ) -> None:
+        """Record what the read-back of a lost write found and what it settled."""
+        ctx.emit(
+            "execute",
+            {
+                "integration_id": receipt.integration_id,
+                "operation": receipt.operation,
+                "write": True,
+                "stage": "settlement",
+                "receipt_id": receipt.receipt_id,
+                "ledger_key": receipt.ledger_key,
+                "found": found,
+                "key_closed": closed,
+            },
+        )
 
     def _verify(
         self,
@@ -242,8 +418,18 @@ class PlanExecutor:
         result: ConnectorResult,
         move: LifecycleTransition | None = None,
     ) -> WriteReceipt:
-        if spec is None or not result.ok:
-            evidence = {"reason": "the write did not report success, so nothing was read back"}
+        """Read the write back and record what that showed.
+
+        A write the system refused is not read back: it answered, and the
+        answer was no. A write whose answer never came is read back like one
+        that reported success, because the failure says nothing about whether
+        the system applied it.
+        """
+        if spec is None:
+            evidence = {"reason": _NOTHING_DECLARED}
+            status = VerificationStatus.unverified
+        elif not result.ok and not is_unavailable(result):
+            evidence = {"reason": _NOT_READ_BACK}
             status = VerificationStatus.unverified
         else:
             connector = self._connector(receipt.integration_id)
@@ -252,6 +438,8 @@ class PlanExecutor:
                 status = VerificationStatus.unverified
             else:
                 status, evidence = self._verifier.verify(spec, payload, connector, move=move)
+                if not result.ok:
+                    status, evidence = _unknown_if_unanswered(status, evidence)
         ctx.emit(
             "verify",
             {
@@ -275,6 +463,13 @@ class PlanExecutor:
         result = self._call(
             ctx, operation.integration_id, operation.operation, operation.payload
         )
+        if is_unavailable(result):
+            ctx.record(
+                build.unavailable_outcome(
+                    operation.integration_id, operation.operation, result
+                )
+            )
+            return
         ctx.record(
             build.read_outcome(operation.integration_id, operation.operation, result)
         )
@@ -306,7 +501,7 @@ class PlanExecutor:
             operation.payload,
             spec.idempotency_fields,
         )
-        held = self._ledger.lookup(ctx.state.session_id, key)
+        held = self._ledger.settled(ctx.state.session_id, key)
         if held is not None:
             ctx.emit(
                 "ledger_hit",
@@ -477,6 +672,20 @@ class PlanExecutor:
                 "latency_ms": result.latency_ms,
             },
         )
+        if is_unavailable(result):
+            health = health_of(result)
+            ctx.emit(
+                "unavailable",
+                {
+                    "integration_id": integration_id,
+                    "operation": operation,
+                    "write": write,
+                    "error": result.error,
+                    "breaker": health.state,
+                    "consecutive_failures": health.consecutive_failures,
+                    "retry_in_seconds": health.retry_in_seconds,
+                },
+            )
         return result
 
     def _connector(self, integration_id: str) -> Connector | None:
@@ -505,6 +714,40 @@ class PlanExecutor:
 def _short_name(entity_id: str) -> str:
     """The record key a read returns an entity under: `entity.alert` is `alert`."""
     return entity_id.split(".", 1)[-1]
+
+
+def _fill(spec: OperationSpec, payload: dict, from_principal: dict) -> list[str]:
+    """Put the values the identity supplies into one payload, and name what moved.
+
+    Only the fields this operation declares are filled: a procedure binds a
+    field to the identity once, and the operations that accept that field take
+    it while the rest are left as the plan wrote them.
+    """
+    properties = spec.input_schema.get("properties")
+    names = set(properties) if isinstance(properties, dict) else set()
+    filled: list[str] = []
+    for name, value in from_principal.items():
+        if name in names and payload.get(name) != value:
+            payload[name] = value
+            filled.append(name)
+    return filled
+
+
+def _unknown_if_unanswered(
+    status: VerificationStatus, evidence: dict
+) -> tuple[VerificationStatus, dict]:
+    """A read-back that did not answer says nothing, least of all that a write failed.
+
+    The verifier compares what it read against what the operation declares, and
+    a read it could not perform fails every comparison. That is the right answer
+    for a write that reported success and the wrong one for a write whose own
+    answer was lost: there, a read-back that did not answer leaves the outcome
+    unknown, and only a read-back that answered and contradicted the write says
+    that nothing landed.
+    """
+    if status is VerificationStatus.failed and evidence.get("ok") is not True:
+        return VerificationStatus.unverified, {**evidence, "reason": _READ_BACK_LOST}
+    return status, evidence
 
 
 def _narrowed(spec: OperationSpec | None, payload: dict) -> dict:

@@ -365,7 +365,7 @@ def test_a_composite_expands_into_its_runbooks_in_order(
 
 
 @pytest.mark.parametrize("kind", [TurnKind.greeting, TurnKind.off_scope])
-def test_catalogue_replies_need_no_model(repo_root: Path, tmp_path: Path, kind: TurnKind) -> None:
+def test_catalog_replies_need_no_model(repo_root: Path, tmp_path: Path, kind: TurnKind) -> None:
     engine = _engine(repo_root, tmp_path, [_route(kind.value)])
 
     result = engine.turn("scope", "anything at all")

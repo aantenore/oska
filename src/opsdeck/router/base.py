@@ -6,7 +6,7 @@ from dataclasses import dataclass
 
 from opsdeck.config import RouterRules
 from opsdeck.contracts.common import RouteDecision, TurnKind
-from opsdeck.index.base import normalise
+from opsdeck.index.base import normalize
 
 __all__ = ["RoutingContext", "RuleRouter"]
 
@@ -36,7 +36,7 @@ class RuleRouter:
 
     def route(self, text: str, state_summary: RoutingContext) -> RouteDecision | None:
         """Return a decision when the message is one of the configured words."""
-        message = normalise(text)
+        message = normalize(text)
         if not message:
             return None
         if state_summary.pending_approval:
@@ -56,4 +56,4 @@ def _decision(kind: TurnKind) -> RouteDecision:
 
 
 def _token_set(tokens: list[str]) -> set[str]:
-    return {normalise(token) for token in tokens if normalise(token)}
+    return {normalize(token) for token in tokens if normalize(token)}

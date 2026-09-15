@@ -19,11 +19,11 @@ conversation, from an earlier turn, or from what a write replied.
 
 ## 2. Skill-driven
 
-Behaviour lives in versioned, declarative skill artefacts, not in code and not
+Behavior lives in versioned, declarative skill artifacts, not in code and not
 in prompts. The runtime is generic. The skills make it specific.
 
 Consequence: the same binary serves an entirely different domain by pointing at
-a different catalogue root. Adding a procedure is adding a file, not shipping
+a different catalog root. Adding a procedure is adding a file, not shipping
 code.
 
 ## 3. Declared operations only
@@ -44,9 +44,9 @@ audit. No configuration can disable a step. A missing policy denies.
 Consequence: there is exactly one code path from a plan to a connector for a
 write, and it is the path that performs those steps. Safety is not a flag.
 
-## 5. Catalogue-derived voice
+## 5. Catalog-derived voice
 
-What the system says it can do is computed from the published catalogue. There
+What the system says it can do is computed from the published catalog. There
 is no hand-written capability copy, in the greeting, in the refusal, or in the
 prompt that asks the model to classify a request.
 
@@ -62,7 +62,7 @@ conformance suite offline against a scripted provider.
 
 Consequence: tests are deterministic and cost nothing. A change of model
 provider is a configuration change, and the scenario suite proves the
-behaviour that survives it.
+behavior that survives it.
 
 ## 7. Human-controlled evolution
 
@@ -99,8 +99,8 @@ budget answers from what it already holds instead of failing.
 
 ## 10. Promises are declared, not asserted
 
-Every promise the system makes about its own behaviour is declared once, in a
-catalogue of guardrails, with the point it acts at — input, planning, execution
+Every promise the system makes about its own behavior is declared once, in a
+catalog of guardrails, with the point it acts at — input, planning, execution
 or output — and the mechanism that keeps it. A promise the guardrail chain
 enforces names the check that enforces it and carries every value that check
 reads; a promise kept elsewhere names the module that keeps it and claims no
@@ -110,7 +110,7 @@ presenting any of them as something it is not.
 
 Consequence: a reviewer can read the list of promises and see, per line, which
 ones survive a model that ignores them. A sentence in a prompt cannot be
-counted as a safeguard, because the artefact that would have to count it says
+counted as a safeguard, because the artifact that would have to count it says
 what it is.
 
 ## How the principles constrain each other
@@ -123,7 +123,7 @@ and what it can do cannot diverge.
 Principle 10 sharpens principle 4 rather than adding to it: the write path is
 the enforced promise, and every other promise has to declare whether it is of
 that kind or of the other. Principle 9 constrains principles 5 and 6 in the
-same way, by making derived text a publish-time artefact rather than a turn-time
+same way, by making derived text a publish-time artifact rather than a turn-time
 one.
 
 Principles 4 and 7 are the two places where a human is required. Everything

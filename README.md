@@ -22,7 +22,8 @@ what the agent can do, the description and the system drift apart the same way
 the wiki did, and the code has no way to tell a real operation from an invented
 one. The risk is not that the model is wrong about a fact. It is that it is
 wrong about a write, the write goes out anyway, and nobody can say afterwards
-what was sent, who agreed to it, or whether it worked.
+what was sent, who agreed to it, or whether it worked — or that it never
+arrived and is reported as a refusal.
 
 ## The model
 
@@ -39,44 +40,65 @@ what was sent, who agreed to it, or whether it worked.
   for.
 - **Skills as versioned artifacts.** Behavior lives in Markdown files with
   typed frontmatter, one directory per skill and version. The runtime is
-  generic; the catalog makes it specific, and reloads when the files on disk
-  change.
+  generic; the catalog makes it specific.
+- **A release is an artifact too.** Building a revision validates the catalog
+  roots, copies what held up where nothing writes again, and names it after a
+  hash of its contents. A session is pinned to the revision it started on, a
+  new task adopts the newest and records the switch, an approval runs under the
+  revision it was described in, and every receipt names its revision.
 - **Governed write path.** A write is checked against the declarations, looked
   up in the ledger, judged by a policy, frozen on the exact payload and held
   for approval, recorded as an intent, executed, read back, and only then
   reported. No setting turns a step off, and a procedure with no policy writes
   nothing.
+- **A capability that is down is not a refusal.** A connector says whether the
+  system answered no, whether the request was never well formed, or whether the
+  call never arrived. Only the last opens a circuit breaker, and it settles
+  nothing in the ledger: a write that never reached the system is not a write.
+- **Fields a person cannot choose.** A procedure declares which payload fields
+  are taken from the identity the channel authenticated. They are never asked
+  for, never offered to the model, and a plan that carries one is refused
+  rather than corrected.
 - **Declared promises.** A procedure names the guardrails it keeps, and one
   catalog says of each whether code enforces it at a named point or whether it
   is text handed to the model. An identifier no catalog defines is refused at
   publish.
+- **Cases rather than thresholds.** A skill may carry an evaluation set beside
+  it: the requests that must reach it and the requests that must not. A new
+  procedure that takes another's requests fails the build instead of a
+  conversation.
 - **Catalog-derived voice.** What the runtime says it can do is computed from
-  the published catalog. There is no hand-written capability copy anywhere in
-  the package, and on an entity with a lifecycle only what is legal from its
-  current state is offered.
+  the published catalog; there is no hand-written capability copy anywhere in
+  the package. The actions a turn leaves on offer go to the reply writer as
+  keys and come back in the language of the conversation, and on an entity with
+  a lifecycle only what is legal from its current state is offered.
 - **A bounded turn.** A turn may make a fixed number of model calls and no
   more; past that it says so and answers from what it has. No feature adds a
   call to a turn.
 - **Human-controlled evolution.** A new procedure enters as a proposal, passes
   the same validation the catalog passes, and moves state by state with a named
-  actor on every move. There is no code path that approves or publishes on its
-  own, and the self-improvement job stops at a draft.
+  actor on every move. Publishing one composes a change request for a person to
+  read; installing it into a catalog root is a separate command that takes the
+  root as an argument. The process that answers people can propose a change to
+  the catalog it answers from and can never make one.
 
 ## The layers
 
 | Layer | Responsibility | Package |
 | --- | --- | --- |
 | L0 Systems | The world: systems of record, APIs, tools. Out of scope, reachable only through L1. | — |
-| L1 Integration | Declared operations and the adapters that run them: mock, HTTP, argv. | `opsdeck.connectors` |
+| L1 Integration | Declared operations and the adapters that run them: mock, HTTP, argv. Failure classification, timeout and circuit breaker. | `opsdeck.connectors` |
 | L2 Ontology | Entities, states, lifecycles, relations, operation bindings, the shared vocabulary. | `opsdeck.ontology` |
-| L3 Skill | The skill artifact, the catalog, the validator, the capability resolver, hydration, derived routing examples. | `opsdeck.catalog`, `opsdeck.contracts.skill` |
-| L4 Governance | Capability registry, policy engine, approval gate, verifier, write ledger, guardrail catalog, audit and traces. | `opsdeck.governance`, `opsdeck.audit` |
+| L3 Skill | The skill artifact, the catalog, the validator, the capability resolver, hydration, derived routing examples, evaluation sets, revisions. | `opsdeck.catalog`, `opsdeck.contracts.skill` |
+| L4 Governance | Capability registry, policy engine, approval gate, verifier, write ledger, authenticated identity, retention, guardrail catalog, audit and traces. | `opsdeck.governance`, `opsdeck.audit` |
 | L5 Cognition | Discovery, routing, planning, reply writing, and the provider behind them. | `opsdeck.index`, `opsdeck.router`, `opsdeck.planner` |
 | L6 Interaction | Session state, the turn engine, the model budget, the channels a person reaches it through. | `opsdeck.engine`, `opsdeck.api`, `opsdeck.cli` |
-| L7 Evolution | Proposals, quality gates, the lifecycle, publication into a catalog root, the self-improvement job. | `opsdeck.learning`, `opsdeck.improvement` |
+| L7 Evolution | Proposals, quality gates, the lifecycle, change requests, the self-improvement job. | `opsdeck.learning`, `opsdeck.improvement` |
 
 A layer depends only on the layers below it and on the contracts, which are
-owned by none of them. See [`spec/02-layers.md`](spec/02-layers.md) for the
+owned by none of them. `opsdeck.observability` sits beside the layers rather
+than inside one: it reads the audit trail and the traces back and computes the
+service-level numbers. See [`spec/02-layers.md`](spec/02-layers.md) for the
 rule and [`docs/architecture.md`](docs/architecture.md) for how the code keeps
 it.
 
@@ -99,13 +121,15 @@ opsdeck config                   # the settings in force, as JSON
 opsdeck capabilities             # the procedures on offer, in the catalog's words
 opsdeck ontology                 # entities, states, relations, what acts on them
 opsdeck ontology --format mermaid
+opsdeck evaluate catalog         # run the evaluation set each skill carries
 opsdeck conform                  # run the scenario suite, report the level reached
 ```
 
-`validate` reports `15 skills, no issues`. `conform` runs the twenty-one
-scenarios under `examples/ops/scenarios/` and prints `conformance level 3`. The
-second catalog is a separate run, because a suite belongs to the catalog it was
-written for:
+`validate` reports `15 skills, no issues`. `evaluate catalog` runs the eighteen
+cases the three procedures that carry a set declare, and names the ones that
+carry none. `conform` runs the twenty-three scenarios under
+`examples/ops/scenarios/` and prints `conformance level 3`. The second catalog
+is a separate run, because a suite belongs to its own catalog:
 
 ```sh
 opsdeck conform --skills examples/access/skills \
@@ -113,14 +137,27 @@ opsdeck conform --skills examples/access/skills \
   --connectors examples/access/configs/connectors.json
 ```
 
-Two commands do work that never happens during a turn. `opsdeck enrich` derives
+Five more belong to whoever runs an installation rather than to whoever writes
+a catalog.
+
+```sh
+opsdeck revision build           # validate the roots, release them under a content hash
+opsdeck revision list            # every revision, the served one marked
+opsdeck change list              # the catalog changes the runtime proposed
+opsdeck slo report               # the service-level numbers, and what is not computed
+opsdeck forget session walk      # remove receipts, audit entries and stored state
+```
+
+[`docs/operating.md`](docs/operating.md) is what each of them is for.
+
+Two more do work that never happens during a turn. `opsdeck enrich` derives
 routing examples from the declared triggers, so a catalog written in one
 language is reached in another; `opsdeck improve` reads the record of what ran,
 keeps what is reversible and reports the rest.
 
 ```sh
 opsdeck enrich show runbook.service_restart   # declared phrases, then derived
-opsdeck improve evaluate                      # route the labelled set, change nothing
+opsdeck improve evaluate                      # route the labeled set, change nothing
 ```
 
 `enrich run` needs a model provider, `improve run` an audit trail to read. See
@@ -130,7 +167,7 @@ opsdeck improve evaluate                      # route the labelled set, change n
 With no provider configured, `opsdeck run --session ops --text "hello"` answers
 what the runtime can do and declines to plan. To run turns against recorded
 answers, offline and deterministic — without `--text` it reads one request per
-line until the input ends or you type `/quit`:
+line until the input ends:
 
 ```sh
 opsdeck run --session walk \
@@ -147,15 +184,15 @@ set -a; . ./.env; set +a
 opsdeck run --session ops --text "how is the checkout service doing"
 ```
 
-`opsdeck serve` serves the same runtime over HTTP, on the host and port
-`configs/runtime.json` names or the ones `--host` and `--port` give it.
+`opsdeck serve` serves the same runtime over HTTP. It authenticates nobody: an
+identity arrives in headers an authenticated proxy sets, and the runtime trusts
+them and verifies nothing itself.
 
 ## What a turn looks like
 
 Scenario `02_restart_staging`, replayed with the scripted provider: three
-requests, one session. The first asks for something that changes state, so the
-engine routes it, picks the procedure, plans it, runs the read, and stops at
-the write:
+requests, one session. The first changes state, so the engine routes it, picks
+the procedure, plans it, runs the read, and stops at the write:
 
 ```
 This changes something, so it needs your approval first.
@@ -177,8 +214,9 @@ receipt  integration.container_runtime  service.restart  4a9bad9f-...
 
 Asking for the same restart again does not run it again: the ledger key covers
 the idempotency fields the integration declares, so the second request finds
-that receipt and reports it instead of sending anything.
-`opsdeck receipts --session walk` prints it in full, read back from the ledger.
+that receipt and reports it instead of sending anything. `opsdeck receipts
+--session walk --json` prints it in full, the catalog revision the turn was
+decided under included.
 
 ## Repository layout
 
@@ -186,7 +224,7 @@ that receipt and reports it instead of sending anything.
 configs/          runtime.json, model.json, guardrails.json: thresholds, provider access, declared promises
 schemas/          JSON schemas for skills, policies and proposals
 src/opsdeck/      the packages listed in the layer table
-examples/ops/     the reference domain: skills, fixtures, connectors, scenarios, the labelled routing set
+examples/ops/     the reference domain: skills, fixtures, connectors, scenarios, the labeled routing set
 examples/access/  the second domain, same shape and a smaller catalog
 spec/             the OSKA standard
 docs/             how this implementation works
@@ -195,21 +233,23 @@ tests/            unit tests and the scenario suite
 
 Start with [`examples/ops/README.md`](examples/ops/README.md) to see how a
 domain is declared, [`docs/skill-contract.md`](docs/skill-contract.md) for the
-file format, and [`docs/adopting.md`](docs/adopting.md) to put this on top of a
-system of your own.
+file format, [`docs/operating.md`](docs/operating.md) for running an
+installation, and [`docs/adopting.md`](docs/adopting.md) to put this on top of
+a system of your own.
 
 ## A second domain
 
 `examples/access/` declares access management: accounts, groups and the
 requests to be put into them, with membership granted and taken away under a
 policy that turns on whether a group is privileged. It shares no vocabulary and
-no code with the operational catalog; the package imports nothing from either
-directory. It makes the claim testable rather than stated: the same runtime,
-pointed at another catalog and another connector binding, greets in that
-catalog's words, stops its writes for approval, reads them back, and refuses
-the fourth grant of a session because that policy says three. Its request
-record carries a declared lifecycle, so a request still open is offered the
-move that completes it and one already granted is offered nothing.
+no code with the operational catalog, which makes the claim testable rather
+than stated. The same runtime, pointed at another catalog and another connector
+binding, greets in that catalog's words, stops its writes for approval, reads
+them back, and refuses the fourth grant of a session because that policy says
+three. Its request record carries a declared lifecycle, so a request still open
+is offered the move that completes it. Its grant takes the account from the
+authenticated identity, so a session nobody signed in to is refused rather than
+asked which account was meant.
 
 ```sh
 opsdeck capabilities --skills examples/access/skills
@@ -222,12 +262,14 @@ better one to copy.
 
 Version 0.1. Draft, private, not published anywhere. The interfaces are stable
 enough to build a second domain against — one now exists — and not stable
-enough to depend on. Two reference catalogs run against the same package. The
-twenty-one scenarios under `examples/ops/scenarios/` reach OSKA conformance level 3
-(Adaptive): every level 1 and level 2 scenario passes, and the learning
-lifecycle scenario passes with it. The seven under
-`examples/access/scenarios/` reach level 2, which is every level they declare a
-scenario for. 498 unit and scenario tests, all of them offline and all passing.
+enough to depend on. The twenty-three scenarios under
+`examples/ops/scenarios/` reach OSKA conformance level 3 (Adaptive): every
+level 1 and level 2 scenario passes, and the learning lifecycle scenario passes
+with it. The eight under `examples/access/scenarios/` reach level 2, which is
+every level they declare a scenario for. Three procedures of the operational
+catalog and two of the access catalog carry an evaluation set, and the command
+names the ones that do not. 871 unit and scenario tests, all of them offline
+and all passing.
 
 ## License
 

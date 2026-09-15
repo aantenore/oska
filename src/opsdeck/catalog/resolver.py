@@ -1,8 +1,19 @@
-"""Wording and capability lists derived from the catalog."""
+"""Wording and capability lists derived from the catalog.
+
+An action the runtime offers is two things at once. It is a key, which names
+the action for the rest of the turn and never reaches a person, and it is a
+label, which is the wording its author declared. The two are kept apart because
+the label is the only half that may be rewritten: the reply writer, which
+already answers in the language of the conversation, hands the label back
+translated and the runtime puts it in place of the declared one. What the
+action is stays the key's business, and nothing that rewrites a label can
+change it.
+"""
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 
 from opsdeck.catalog.registry import SkillRegistry
 from opsdeck.contracts.skill import Skill, SkillType
@@ -18,6 +29,19 @@ from opsdeck.ontology.queries import (
 
 PROCESS_TYPES = (SkillType.runbook, SkillType.composite)
 REQUIRED_NOTE = "the next step this {name} needs"
+
+
+@dataclass
+class SuggestedAction:
+    """One action a turn leaves on offer.
+
+    `key` names the action and is the only half a translated label comes back
+    under. `label` is the wording, declared by the author of the procedure until
+    a reply writer returns it in the language of the conversation.
+    """
+
+    key: str
+    label: str
 
 
 class CapabilityResolver:
@@ -64,7 +88,9 @@ class CapabilityResolver:
                     break
         return found
 
-    def suggestions_for_entity(self, entity_id: str, state: str | None) -> list[str] | None:
+    def offered_actions_for_entity(
+        self, entity_id: str, state: str | None
+    ) -> list[SuggestedAction] | None:
         """What to offer for an object of this entity, or None when it has no lifecycle.
 
         A lifecycle answers the question on its own: only what is legal from the
@@ -77,16 +103,24 @@ class CapabilityResolver:
         if state is None:
             return []
         name = entity_id.split(".", 1)[-1]
-        phrases: list[str] = []
+        actions: list[SuggestedAction] = []
         for move, skill in self.moves_for_entity(entity_id, state):
             if not move.offered:
                 continue
-            phrase = self.action_phrase(skill, on_selection=True)
+            label = self.action_phrase(skill, on_selection=True)
             if move.required:
-                phrase = f"{phrase} ({REQUIRED_NOTE.format(name=name)})"
-            if phrase not in phrases:
-                phrases.append(phrase)
-        return phrases
+                label = f"{label} ({REQUIRED_NOTE.format(name=name)})"
+            offer(actions, skill.id, label)
+        return actions
+
+    def suggestions_for_entity(self, entity_id: str, state: str | None) -> list[str] | None:
+        """The wording of what to offer for this entity, without the keys."""
+        offered = self.offered_actions_for_entity(entity_id, state)
+        return None if offered is None else [action.label for action in offered]
+
+    def action_for_skill(self, skill: Skill, on_selection: bool = False) -> SuggestedAction:
+        """The offer one procedure makes, keyed by the procedure itself."""
+        return SuggestedAction(key=skill.id, label=self.action_phrase(skill, on_selection))
 
     def entity_summary(self, entity_id: str) -> str:
         """One sentence naming how an entity is identified, its states and its relations."""
@@ -133,6 +167,41 @@ class CapabilityResolver:
         if not processes:
             return "No procedure is available."
         return f"I can {self.phrase_list(processes)}."
+
+
+def offer(actions: list[SuggestedAction], key: str, label: str) -> list[SuggestedAction]:
+    """Add one action to what a turn offers, unless the same wording is there already.
+
+    Two actions never share a key. A key is what a translated label comes back
+    under, so a repeated one would put the wording of one action on another.
+    """
+    if any(action.label == label for action in actions):
+        return actions
+    actions.append(SuggestedAction(key=_free_key(actions, key), label=label))
+    return actions
+
+
+def relabel(actions: Sequence[SuggestedAction], labels: Mapping[str, str]) -> None:
+    """Put a returned label in place of the declared one, where one came back.
+
+    An action nothing came back for keeps the wording its author declared, and a
+    label under a key the turn never offered is dropped: a reply writer may
+    rephrase what is on offer and may not add to it.
+    """
+    for action in actions:
+        label = labels.get(action.key)
+        if isinstance(label, str) and label.strip():
+            action.label = label.strip()
+
+
+def _free_key(actions: Sequence[SuggestedAction], key: str) -> str:
+    taken = {action.key for action in actions}
+    if key not in taken:
+        return key
+    index = 2
+    while f"{key}#{index}" in taken:
+        index += 1
+    return f"{key}#{index}"
 
 
 def join_phrases(phrases: Sequence[str], conjunction: str = "and") -> str:

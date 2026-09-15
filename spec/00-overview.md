@@ -4,7 +4,7 @@
 
 Agent systems are usually built prompt-first. The prompt describes what the
 agent can do. The code hopes the model behaves. Capability drifts away from the
-prompt as soon as a tool changes. Nobody can answer, from the artefacts alone,
+prompt as soon as a tool changes. Nobody can answer, from the artifacts alone,
 three questions an operator will ask on the first bad day:
 
 - What is this system allowed to do, exactly?
@@ -23,9 +23,9 @@ identified, what states it can be in, and which moves between those states are
 legal. The state of an object is read from the system of record through a
 declared read, never inferred from the conversation. Skills are declared on top
 of it: what can be done, and how. The model reasons only inside what is
-declared. Every effect on the world passes through governance. The catalogue,
+declared. Every effect on the world passes through governance. The catalog,
 not the prompt, is the source of truth for what the agent says it can do. The
-catalogue evolves only through a human-controlled lifecycle.
+catalog evolves only through a human-controlled lifecycle.
 
 A system built this way is:
 
@@ -38,13 +38,13 @@ A system built this way is:
   ledger, because the path that executes writes is the only path that reaches a
   connector, and it performs those steps in a fixed order.
 - **Honest about what holds it.** Every promise the system makes about its own
-  behaviour is declared once, with the point at which it acts and whether it is
-  enforced by code at that point or handed to the model as text. The catalogue
+  behavior is declared once, with the point at which it acts and whether it is
+  enforced by code at that point or handed to the model as text. The catalog
   of promises says which; a sentence in a prompt is never presented as a
   control.
 - **Portable.** The model, the retrieval index, the router and the reply writer
   are providers behind interfaces. Replacing one does not change the
-  catalogue, the governance or the audit trail.
+  catalog, the governance or the audit trail.
 
 The trade is explicit. OSKA gives up open-ended autonomy. An OSKA system cannot
 invent a new capability at run time, and this is not a limitation to be removed
@@ -58,13 +58,13 @@ reached automatically.
 This specification covers:
 
 - The eight-layer model, its modules and the dependency rule between them.
-- The skill contract: the declarative artefact that carries entities,
+- The skill contract: the declarative artifact that carries entities,
   integrations, procedures and composites.
 - The write path: declaration, policy, approval, execution, verification,
   ledger, audit.
 - The turn algorithm: how one user turn becomes routing, planning, execution
   and a reply.
-- The evolution lifecycle: how a new procedure enters the catalogue, and the
+- The evolution lifecycle: how a new procedure enters the catalog, and the
   autonomy ladder a system that learns from its own traffic has to declare
   itself on.
 - Conformance: levels, the scenario format, and the checklist that maps every
@@ -79,7 +79,7 @@ This specification does not cover:
 - **Model quality.** Nothing here makes a weak model good. The guarantees are
   structural: a bad plan is rejected, a bad reply is constrained to verified
   facts, a bad write is blocked before it runs.
-- **Authentication and authorisation of humans.** OSKA assumes an
+- **Authentication and authorization of humans.** OSKA assumes an
   authenticated channel and records the actor it is given. Establishing who
   that actor is belongs to the deployment.
 - **Prompt engineering.** Prompt text is an implementation detail of the
@@ -95,7 +95,7 @@ This specification does not cover:
 
 A person asks for something in their own words. The system decides which
 declared procedure that is, or says it is out of scope in words derived from
-its own catalogue. It reads what it needs. If the procedure writes, it stops
+its own catalog. It reads what it needs. If the procedure writes, it stops
 and shows the exact payload it intends to send, and it waits. On approval, it
 records the intent, sends the write, reads the result back, and reports only
 what the read-back confirmed. If the read-back disagrees, it says so and does

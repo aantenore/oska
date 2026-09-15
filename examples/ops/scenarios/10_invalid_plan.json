@@ -1,6 +1,6 @@
 {
   "name": "10_invalid_plan",
-  "description": "A plan that names an operation the catalogue does not declare is refused twice and nothing runs.",
+  "description": "A plan that names an operation the catalog does not declare is refused twice and nothing runs.",
   "level": 2,
   "provider_script": [
     {

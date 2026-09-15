@@ -1,0 +1,10 @@
+{
+  "cases": [
+    { "text": "find the timeout errors in the payments logs", "expects": "this", "language": "en" },
+    { "text": "show me the log lines of the api matching refused", "expects": "this", "language": "en" },
+    { "text": "cerca errori nei log del servizio", "expects": "this", "language": "it" },
+    { "text": "is the api healthy right now", "expects": "not this", "language": "en" },
+    { "text": "the api is logging errors, restart it", "expects": "not this", "language": "en" },
+    { "text": "write what the logs showed on the incident", "expects": "not this", "language": "en" }
+  ]
+}

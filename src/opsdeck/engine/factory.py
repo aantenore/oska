@@ -8,6 +8,15 @@ plans, breaks ties and phrases the reply. Whatever the provider is, it is
 wrapped in the turn's model budget before anything is given it, so every call
 the runtime makes is counted in one place.
 
+Which catalog is in force is decided here as well. When the revision store of
+this deployment holds a revision for the configured tenant, and the
+configuration names one or names none and one exists, the catalog is served
+from that revision and nothing reads a mutable directory while it serves;
+otherwise the configured skill roots are read directly, which is what a single
+process on its own disk wants and what the example catalogs use. The ledger is
+wrapped either way, so every receipt opened in a turn names the revision the
+turn was decided under.
+
 The guardrail catalog and the trace sink are built here too, from the runtime
 configuration: guardrails on unless the configuration switches them off, traces
 off unless it switches them on. The enrichment configuration and the learned
@@ -19,12 +28,16 @@ disk; neither is written here.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from opsdeck.audit.sink import AuditSink, JsonlSink
 from opsdeck.audit.trace import JsonlTraceSink, TraceSink
-from opsdeck.catalog.registry import SkillRegistry
+from opsdeck.catalog.registry import Catalog, ServedCatalog, SkillRegistry, active_revision
 from opsdeck.catalog.resolver import CapabilityResolver
+from opsdeck.catalog.revision import RevisionStore
 from opsdeck.catalog.validator import CatalogError, validate_all
 from opsdeck.config import (
+    CatalogConfig,
     RuntimeConfig,
     Settings,
     guardrail_catalog_path,
@@ -32,6 +45,7 @@ from opsdeck.config import (
     state_path,
 )
 from opsdeck.connectors.registry import ConnectorRegistry
+from opsdeck.contracts.receipt import WriteReceipt
 from opsdeck.engine.engine import BudgetedProvider, Engine, ModelBudget
 from opsdeck.engine.session_store import SessionStore
 from opsdeck.governance.approval import ApprovalGate
@@ -40,6 +54,7 @@ from opsdeck.governance.guardrails import GuardrailCatalog
 from opsdeck.governance.ledger import WriteLedger
 from opsdeck.governance.policy_engine import PolicyEngine
 from opsdeck.governance.verification import Verifier
+from opsdeck.improvement.preferences import preferences_root
 from opsdeck.index.base import LearnedPhrases, SkillIndex
 from opsdeck.index.discovery import Discovery
 from opsdeck.index.embedding import EmbeddingIndex
@@ -48,7 +63,7 @@ from opsdeck.planner.planner import Planner
 from opsdeck.planner.provider import ModelProvider
 from opsdeck.router import FastPath, ModelRouter, RuleRouter, TurnRouter
 
-__all__ = ["build_engine"]
+__all__ = ["build_engine", "revision_ledger"]
 
 
 def build_engine(
@@ -57,7 +72,7 @@ def build_engine(
     provider: ModelProvider | None = None,
     audit_sink: AuditSink | None = None,
     trace_sink: TraceSink | None = None,
-    connector_behaviours: dict[str, dict] | None = None,
+    connector_behaviors: dict[str, dict] | None = None,
 ) -> Engine:
     """Assemble an engine from the settings and the configuration files they name."""
     runtime = load_runtime_config(settings=settings)
@@ -66,7 +81,7 @@ def build_engine(
         provider = BudgetedProvider(provider, budget)
     guardrails = _guardrail_catalog(runtime, settings)
     trace = trace_sink or _trace_sink(runtime, settings)
-    registry = SkillRegistry(settings.skills_roots)
+    registry = _catalog(runtime, settings)
     _refuse_a_broken_catalog(registry, settings)
     resolver = CapabilityResolver(registry)
 
@@ -88,11 +103,17 @@ def build_engine(
     )
     planner = None if provider is None else Planner(provider, registry, resolver)
     connectors = ConnectorRegistry.from_config(
-        settings.connectors_config, behaviours=connector_behaviours
+        settings.connectors_config,
+        behaviors=connector_behaviors,
+        resilience=runtime.resilience,
     )
     capabilities = CapabilityRegistry(registry)
-    ledger = WriteLedger(state_path(settings.state_dir, runtime.ledger.path))
+    ledger = revision_ledger(
+        state_path(settings.state_dir, runtime.ledger.path),
+        busy_timeout=runtime.storage.busy_timeout_seconds,
+    )
     audit = audit_sink or JsonlSink(state_path(settings.state_dir, runtime.audit.path))
+    preferences = preferences_root(settings.state_dir)
     return Engine(
         registry=registry,
         resolver=resolver,
@@ -108,10 +129,60 @@ def build_engine(
         session_store=SessionStore(state_path(settings.state_dir, runtime.sessions.path)),
         audit=audit,
         runtime_config=runtime,
+        preferences_root=preferences,
         guardrails=guardrails,
         trace=trace,
         budget=budget,
     )
+
+
+def revision_ledger(path: Path, *, busy_timeout: float | None = None) -> WriteLedger:
+    """A write ledger that names the revision in force on every receipt it opens.
+
+    A receipt answers what was done; under a released catalog it also has to
+    answer which catalog said it could be done, because the procedure that
+    declared the operation is an artifact with a name and that name is the only
+    way back to the text a person approved. That is one field on the way out and
+    nothing else, so it is added to a ledger here rather than made a second kind
+    of ledger: everything a receipt is, and everything the store does with it,
+    stays where it is written.
+    """
+    ledger = WriteLedger(path, busy_timeout=busy_timeout)
+    opened = ledger.new_receipt
+
+    def new_receipt(
+        session_id: str,
+        key: str,
+        integration_id: str,
+        operation: str,
+        payload: dict,
+    ) -> WriteReceipt:
+        receipt = opened(session_id, key, integration_id, operation, payload)
+        receipt.revision = active_revision() or None
+        return receipt
+
+    ledger.new_receipt = new_receipt
+    return ledger
+
+
+def _catalog(runtime: RuntimeConfig, settings: Settings) -> Catalog:
+    """The catalog this deployment serves: a built revision, or the skill roots.
+
+    A revision wins whenever the store holds one that answers the configuration:
+    the revision it names, or the newest when it names none. A configuration
+    that names a revision the store does not hold is not silently ignored; it
+    falls back to the roots, and the catalog check below is what then decides
+    whether anything is served at all.
+    """
+    catalog: CatalogConfig = runtime.catalog
+    store = RevisionStore(state_path(settings.state_dir, catalog.revisions_root))
+    if catalog.revision:
+        if store.get(catalog.tenant, catalog.revision) is not None:
+            return ServedCatalog(store, catalog.tenant, catalog.revision)
+        return SkillRegistry(settings.skills_roots)
+    if store.current(catalog.tenant) or store.latest(catalog.tenant):
+        return ServedCatalog(store, catalog.tenant)
+    return SkillRegistry(settings.skills_roots)
 
 
 def _guardrail_catalog(runtime: RuntimeConfig, settings: Settings) -> GuardrailCatalog:
@@ -128,7 +199,7 @@ def _trace_sink(runtime: RuntimeConfig, settings: Settings) -> TraceSink | None:
     return JsonlTraceSink(state_path(settings.state_dir, runtime.tracing.path))
 
 
-def _refuse_a_broken_catalog(registry: SkillRegistry, settings: Settings) -> None:
+def _refuse_a_broken_catalog(registry: Catalog, settings: Settings) -> None:
     """Nothing is served from a catalog whose files do not hold up.
 
     The settings travel with the catalog, so what a skill may declare is read

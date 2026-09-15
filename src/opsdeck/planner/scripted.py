@@ -59,7 +59,7 @@ class ScriptedModelProvider:
         if self._index >= len(self._script):
             raise ModelProviderError(
                 f"the script is exhausted after {self._index} step(s); "
-                f"the last one was {self._last_purpose or 'unlabelled'!r} and "
+                f"the last one was {self._last_purpose or 'unlabeled'!r} and "
                 f"the request that found no answer was: {_excerpt(last_user)}"
             )
         step = self._script[self._index]

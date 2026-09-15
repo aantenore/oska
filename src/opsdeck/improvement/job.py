@@ -1,15 +1,22 @@
-"""The scheduled job: four steps, one report, and a ceiling it cannot lift.
+"""The scheduled job: five steps, one report, and a ceiling it cannot lift.
 
 The steps are in the order their evidence allows. Signals first, because
-everything else reads them. Learned phrasings second, because they are the only
-change the job makes and they are files it can delete again. Tuning and
-evaluation third, over a labelled set a person wrote, because a number derived
-from traffic the system routed itself would only confirm its own habits. It is
+everything else reads them, and the judgments people recorded against turns are
+read with them, so a signal carries what someone thought of the answer. The
+comments those judgments carry are classified here and nowhere else: a turn
+that had to decide what a comment meant would be spending a model call on
+something nobody asked it for, and would be acting on a sentence before anyone
+had read it. What a classification may produce is a preference about how
+answers read, which reaches the reply writer and nothing else.
+
+Learned phrasings next, because they and the preferences are the only changes
+the job makes and both are files it can delete again. Tuning and evaluation
+after that, over a labeled set a person wrote, because a number derived from
+traffic the system routed itself would only confirm its own habits. It is
 measured over the catalog as the runtime ranks it, phrases derived and phrases
 just learned included, so the number says what routing does now and not what it
-did before the job ran. Gaps
-last, because a gap is what is left when the first three have explained
-everything they can.
+did before the job ran. Gaps last, because a gap is what is left when
+everything before it has explained what it can.
 
 What the job may not do is the part worth reading. It drafts a proposal and
 stops. It does not move one, it does not write a policy, and it does not touch a
@@ -33,7 +40,9 @@ from opsdeck.contracts.proposal import ProposalState, SkillProposal
 from opsdeck.governance.ledger import WriteLedger
 from opsdeck.improvement import learned as learned_phrases
 from opsdeck.improvement.evaluation import RoutingCase, load_cases, run_evaluation
+from opsdeck.improvement.feedback import FeedbackStore, feedback_root, scores
 from opsdeck.improvement.gaps import Gap, find_gaps
+from opsdeck.improvement.preferences import learn_preferences, preferences_root
 from opsdeck.improvement.report import (
     DraftedProposal,
     ImprovementReport,
@@ -63,15 +72,18 @@ def run_job(
     cases_path: Path | None = None,
     redactions_path: Path | None = None,
     proposals: ProposalStore | None = None,
+    feedback: FeedbackStore | None = None,
 ) -> ImprovementReport:
-    """Run the four steps, write the report, and return it."""
+    """Run the five steps, write the report, and return it."""
     runtime = load_runtime_config(settings=settings)
     improvement = runtime.improvement
     state_dir = Path(settings.state_dir)
     registry = SkillRegistry(settings.skills_roots)
     ledger = WriteLedger(state_path(state_dir, runtime.ledger.path))
 
-    signals = load_signals(state_path(state_dir, runtime.audit.path), ledger)
+    judged = (feedback or FeedbackStore(feedback_root(state_dir))).all()
+    signals = load_signals(state_path(state_dir, runtime.audit.path), ledger, judged)
+    preferences = learn_preferences(judged, preferences_root(state_dir), provider=provider)
     kept = learned_phrases.learn(
         signals,
         registry,
@@ -111,7 +123,12 @@ def run_job(
     report = ImprovementReport(
         signals=len(signals),
         grounded=sum(1 for signal in signals if signal.grounded),
+        judged=len(judged),
+        judgments=scores(judged),
         learned={skill_id: len(phrases) for skill_id, phrases in kept.items()},
+        preferences={
+            session_id: len(held) for session_id, held in sorted(preferences.items())
+        },
         tuning=tuning,
         tuning_applied=overrides is not None,
         overrides_path=None if overrides is None else str(overrides),
@@ -135,7 +152,7 @@ def _tune(
     runtime: RuntimeConfig,
     provider: ModelProvider | None,
 ) -> Tuning | None:
-    """Search the thresholds over the labelled set, or nothing when there is no set."""
+    """Search the thresholds over the labeled set, or nothing when there is no set."""
     if not cases:
         return None
     ranked = rank_cases(

@@ -41,11 +41,17 @@ place membership changes, and both of its writes read back through
 
 **Runbooks.** `runbook.access_check` answers what a person has, read-only and
 therefore with no policy. `runbook.access_grant` and `runbook.access_revoke`
-each perform one write and carry a `policy.json`. `runbook.request_close`
-records the outcome on the request, which is a write like any other and stops
-for its own approval.
+each perform one write and carry a `policy.json`, and each carries an
+`evaluation.json` naming the requests it must answer and the requests it must
+not. `runbook.request_close` records the outcome on the request, which is a
+write like any other and stops for its own approval.
 
-**Composite.** `composite.request_fulfilment` runs the check, the grant and the
+`runbook.access_grant` also declares `principal_inputs: {username: subject}`.
+The account it puts into a group is the account of whoever is signed in, taken
+from the identity the channel authenticated and never asked for, so a session
+nobody signed in to is refused rather than asked which account was meant.
+
+**Composite.** `composite.request_fulfillment` runs the check, the grant and the
 close in that order. Each step keeps its own policy, so the sequence stops
 twice: once for the membership and once for the request.
 
@@ -83,10 +89,12 @@ currently hold.
 
 ## The scenarios
 
-Six sessions under `scenarios/`, run with `opsdeck conform --skills
+Eight sessions under `scenarios/`, run with `opsdeck conform --skills
 examples/access/skills --scenarios examples/access/scenarios --connectors
 examples/access/configs/connectors.json`. They reach conformance level 2: the
 greeting answered from this catalog's own wording, a standard grant with its
 verified receipt and a ledger replay, a privileged grant taking two approvals, a
 revocation and the same revocation again, a fourth grant refused by the
-per-session limit, and the composite settling an open request end to end.
+per-session limit, the composite settling an open request end to end, a request
+read while it is open being offered the move that completes it, and a grant
+refused to a session nobody signed in to.

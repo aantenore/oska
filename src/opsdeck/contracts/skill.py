@@ -133,6 +133,7 @@ class SkillFrontmatter(BaseModel):
     state_read: str | None = None
     relations: list[Relation] = Field(default_factory=list)
     human_inputs: list[str] = Field(default_factory=list)
+    principal_inputs: dict[str, str] = Field(default_factory=dict)
     guardrails: list[str] = Field(default_factory=list)
     policy: str | None = None
 
@@ -173,6 +174,13 @@ class SkillFrontmatter(BaseModel):
                     raise ValueError(f"{self.id}: only an entity declares {name}")
         if self.human_inputs and self.type not in (SkillType.runbook, SkillType.composite):
             raise ValueError(f"{self.id}: only a procedure declares human inputs")
+        if self.principal_inputs and self.type not in (SkillType.runbook, SkillType.composite):
+            raise ValueError(f"{self.id}: only a procedure declares principal inputs")
+        shared = set(self.human_inputs) & set(self.principal_inputs)
+        if shared:
+            raise ValueError(
+                f"{self.id}: {sorted(shared)} cannot be both a human input and a principal input"
+            )
         if self.runbooks and self.type is not SkillType.composite:
             raise ValueError(f"{self.id}: only a composite declares runbooks")
         if self.type is SkillType.composite and not self.runbooks:

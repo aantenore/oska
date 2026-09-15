@@ -105,14 +105,21 @@ call on phrasings an author wrote down, not to guess.
 | `ledger.path` | `state/ledger.sqlite` | The write ledger |
 | `audit.path` | `state/audit.jsonl` | The audit trail |
 | `sessions.path` | `state/sessions.sqlite` | Conversation state, one row per session |
-| `learning.publish_root` | `state/skills` | Where an approved proposal is published |
+| `learning.publish_root` | `state/skills` | The catalog root a change request is meant to land in |
 
 These are resolved through the state directory: a relative path keeps only its
 last segment and is placed under `OPSDECK_STATE_DIR`, an absolute path is used
 as it stands. Every other path in this file that names something mutable —
-`tracing.path`, `improvement.learned_root`, `improvement.report_path` — is
-resolved the same way. So setting `OPSDECK_STATE_DIR=/var/lib/opsdeck` moves
-them all at once, and nothing in `runtime.json` needs to change.
+`tracing.path`, `improvement.learned_root`, `improvement.report_path`,
+`catalog.revisions_root`, `changes.root` — is resolved the same way. So setting
+`OPSDECK_STATE_DIR=/var/lib/opsdeck` moves them all at once, and nothing in
+`runtime.json` needs to change.
+
+`learning.publish_root` names a root rather than causing anything to be written
+there. Nothing publishes into it on its own: `opsdeck change apply` takes the
+root as a required argument, and this is the value a person would usually pass.
+The conformance runner is the one caller that reads it, standing in for the
+person so a level 3 scenario can see the procedure it published.
 
 ### `reply`
 
@@ -241,6 +248,100 @@ report. `cluster_min_size` is the line between noise and a missing capability:
 lowering it produces more drafts for a reviewer to read, raising it hides
 patterns until they are common.
 
+### `catalog`
+
+Which catalog this deployment serves, and how long a session keeps the one it
+started on. See [operating.md](operating.md).
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `catalog.revisions_root` | `state/revisions` | Where built revisions are kept, one directory per tenant, resolved under the state directory |
+| `catalog.revision` | `""` | The revision to serve. Empty means the one the store records, or failing that the newest it holds |
+| `catalog.tenant` | `"default"` | The catalog a deployment serves when it serves more than one |
+| `catalog.pin_sessions` | `true` | Whether a session keeps the revision it started on |
+
+With no revision built for the tenant, the configured skill roots are read
+directly and reload when the files under them change. That is what one process
+on its own disk wants and what the example catalogs use; several replicas want
+a revision, because a directory tells each of them about a change at a
+different moment.
+
+Naming a `revision` pins the deployment to it and takes the choice away from
+`opsdeck revision use`, which is right for a rollback under review and wrong as
+a standing setting, because the file then has to be edited and redeployed to
+move a release. A named revision the store does not hold falls back to the
+configured skill roots rather than to another revision, and the catalog check
+the factory runs is what then decides whether anything is served at all.
+
+Setting `pin_sessions` to `false` lets every turn follow the deployment, at the
+cost that a conversation can be told one thing and then answer from another
+catalog. An approval is held to its revision either way, because the sentence a
+person approved was composed from it.
+
+### `changes`
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `changes.root` | `state/changes` | Where a proposed catalog change is written for a person to review, resolved under the state directory |
+
+One directory per request, holding the package laid out the way a catalog root
+is laid out, the request record and a summary. Moving it moves where a reviewer
+looks; it changes nothing about who may apply one, because `opsdeck change
+apply` takes the catalog root as a required argument and there is no configured
+value it could fall back to.
+
+### `resilience`
+
+What a connector is allowed to cost before a capability is called unavailable.
+See [governance.md](governance.md#when-the-system-does-not-answer).
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `resilience.timeout_seconds` | `30.0` | Seconds one call may take before it counts as never having arrived |
+| `resilience.failures_before_open` | `3` | Consecutive calls that never arrived before the binding stops being called |
+| `resilience.recovery_seconds` | `30.0` | How long it stays out of service before one attempt is let through |
+
+These apply to every binding the connector registry builds, and only transport
+failures count toward them: a system that answered no is a system that is up.
+
+Raising the timeout makes a slow system look healthy and a turn take longer —
+it is spent inside the turn, so it competes with everything else the turn has
+to do. Lowering `failures_before_open` to one takes a binding out of service on
+a single blip; raising it means more turns wait for a system that is already
+known to be down. `recovery_seconds` is how quickly a recovered system is
+noticed, and the cost of shortening it is one call against a system that may
+still be broken.
+
+### `retention`
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `retention.days` | `0` | How long the record of a conversation is kept. Zero keeps everything |
+
+The window is what `opsdeck forget expired` applies when it is given no
+`--days`, measured from the moment each session was last written. Nothing
+applies it on its own: no turn expires anything, and the serving process
+removes nothing, so a deployment that wants a window has to run the command on
+a schedule. Deletion on request, `opsdeck forget session`, is answered whatever
+this says.
+
+Setting it costs what it sounds like it costs. The receipts, the audit entries
+and the stored state of a conversation past the window are gone together, and
+the account of what was written goes with them — which is the point, and is
+also why the number deserves a decision rather than a default.
+
+### `storage`
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `storage.busy_timeout_seconds` | `10.0` | How long a connection waits for another to finish before it gives up |
+
+The sessions and the ledger are SQLite, and two turns of the same process may
+write at once. This is how long one waits for the other rather than failing the
+turn. Raising it is worth doing only when turns start failing on a busy file
+rather than on the system they were talking to; lowering it turns contention
+into a failed turn sooner, which is a diagnosis and not a setting to run with.
+
 ## `configs/model.json`
 
 | Key | Default | Meaning |
@@ -351,22 +452,30 @@ Everything mutable lives under `OPSDECK_STATE_DIR`, `state/` by default, and
 
 ```
 state/
-  sessions.sqlite     session state: history, pending goal, pending approval, language
+  sessions.sqlite     session state: history, principal, revision, pending goal, pending approval, language
   ledger.sqlite       write receipts
   audit.jsonl         one JSON event per line
   traces.jsonl        one span per line, only when tracing is on
   proposals/          one JSON file per proposal, named by proposal id
-  skills/             published proposals, as a catalog root
+  changes/            one directory per change request: the package, the request, the summary
+  revisions/          one directory per tenant, holding its built revisions and the CURRENT file
+  skills/             a catalog root an applied change request lands in
   learned/            one directory per procedure, holding the phrasings learned for it
+  feedback/           one file per session, holding the judgments recorded on its answers
+  preferences/        one file per session, holding what was learned about how it reads
   improvement.json    the report of the last improvement run
   discovery-overrides.json   tuned thresholds, written only when a run is told to apply them
 ```
 
 `sessions.sqlite` always sits directly under the state directory; the others
 are placed there by the resolution rule described above. `state/skills` is one
-of the default catalog roots, which is how a published proposal reaches the
-runtime without anything being restarted. Nothing under `learned/` is authored:
-deleting a procedure's directory undoes everything that was learned for it.
+of the default catalog roots, which is where `opsdeck change apply` is usually
+pointed. Nothing under `learned/`, `feedback/` or `preferences/` is authored:
+deleting a file undoes what it held and nothing else.
+
+A revision directory is written once and never again, so the contents of
+`revisions/` are the only thing here that is safe to copy between machines as
+it stands. Deleting one a session is pinned to is a way to break that session.
 
 Delete the directory to start clean. Delete `ledger.sqlite` alone and the
 runtime forgets which writes it has already done, which is exactly as dangerous

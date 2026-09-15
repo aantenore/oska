@@ -211,6 +211,47 @@ appended to it, so the account of a write always comes from the receipt and
 carries its identifier. A reply that omitted the write, or described it more
 kindly than the receipt allows, is answered by the lines that follow it.
 
+#### What the turn leaves on offer
+
+An offered action is a key and a label. The key names the action and never
+reaches a person; the label is the wording its author declared, in whatever
+language the catalog is written in. A reply is written in the language the
+person used, so the two can disagree, and a turn that answers in one language
+and offers its next steps in another has failed at something small and visible.
+
+They are reconciled by the call that is already being made. The reply writer
+receives the actions with the reply brief and may return a label for each key
+in the language it is answering in; the runtime uses a returned label in place
+of the declared one and keeps the declared wording where nothing came back.
+
+```text
+reply brief:
+  reply_intent, outcomes, actions: [{key, label}]
+  presentation_preferences: [string]     # optional; how the answer should read
+
+reply answer:
+  reply: string
+  action_labels: {key: string}           # optional; the wording, translated
+```
+
+The offer itself is then stated by the runtime, one action per line, after the
+reply and after the receipt lines. There is no sentence around the list,
+because a lead-in would be written in the language of the implementation and
+would sit in front of labels written in the language of the conversation.
+
+Three things follow from doing it this way. Nothing is added to the turn: the
+same three calls a turn already makes. The prompts routing is built from stay
+in the language the catalog declares, because routing is asked in every
+language a person writes in and must not be narrowed to one. And an action is
+never invented by rewording: a label returned under a key the turn did not
+offer is dropped.
+
+A presentation preference recorded for the session, if there is one, travels in
+the same brief as a fact about how the answer should read. It goes no further.
+The planner is not told it, no policy reads it, and no payload carries it; what
+a turn does is decided by the catalog and the plan, never by a preference
+about prose.
+
 ### Provider interface
 
 Responsibility: make cognition replaceable.
@@ -240,7 +281,7 @@ offline.
   handed.
 - Every model call is replaceable by a scripted response without changing any
   other layer.
-- A missing provider degrades the system to catalogue-derived answers; it never
+- A missing provider degrades the system to catalog-derived answers; it never
   degrades governance.
 - No feature adds a model call to a turn. Work that needs a model happens at
   publish time or in a scheduled job, and a turn reads what that work left.
@@ -274,7 +315,7 @@ offline.
   entries with a question each, and MUST NOT be invented.
 - **OSKA-COG-10** — The reply writer MUST state only outcomes present in the
   outcome list and MUST offer only suggestions derived from the published
-  catalogue.
+  catalog.
 - **OSKA-COG-11** — A conformant system MUST provide a scripted provider that
   satisfies the provider interface, and MUST be able to run its entire
   conformance suite with it, offline.
@@ -306,6 +347,26 @@ offline.
   settled by a routing decision that reports one and kept until another decision
   reports a different one. A turn decided by the rules or by the fast path MUST
   NOT detect it again.
+- **OSKA-COG-20** — The actions a turn leaves on offer MUST reach the reply
+  writer as a key and the label its author declared, and the reply writer MUST
+  be able to return a label for each key in the language of the reply. The
+  runtime MUST use a returned label in place of the declared one, MUST keep the
+  declared wording for an action no label came back for, and MUST discard a
+  label returned under a key the turn did not offer.
+- **OSKA-COG-21** — Rewriting those labels MUST travel in the call that writes
+  the reply and MUST NOT add a model call to the turn, in accordance with
+  `OSKA-COG-12`. A conformant system MUST be able to show this by counting the
+  completions of a turn that offers actions against those of a turn that offers
+  none.
+- **OSKA-COG-22** — The prompts a routing decision is built from MUST stay in
+  the language the catalog declares, whatever language the turn is answered
+  in.
+- **OSKA-COG-23** — What a turn offers MUST be stated from the labels it holds
+  and MUST NOT be surrounded by text the runtime writes in a language of its
+  own.
+- **OSKA-COG-24** — A presentation preference held for a session MUST reach the
+  reply writer as a fact and MUST NOT reach the planner, a policy or an
+  operation payload.
 
 ## Rationale
 
@@ -318,7 +379,7 @@ in a loop is approval of the next call, asked repeatedly, which people learn to
 click through. A plan produced in one step, validated in one step and executed
 under governance gives approval a payload to attach to.
 
-Splitting routing into rules, fast path and model is not an optimisation, or
+Splitting routing into rules, fast path and model is not an optimization, or
 not only one. The rules stage exists because some classifications must not
 depend on a model at all: whether the word "yes" approves a pending write is a
 question about session state, and a model that gets it wrong approves something
@@ -329,7 +390,7 @@ handles what is left, which is the interesting part.
 
 Constraining the reply writer to stated outcomes is the least glamorous rule
 here and the one that changes the system's character most. A model asked to
-summarise what happened will smooth over a failed read-back, because fluent
+summarize what happened will smooth over a failed read-back, because fluent
 prose prefers a clean ending. Handing it a typed outcome list, and forbidding
 anything outside it, is what makes "the restart is unverified" a sentence the
 system can actually produce. The conformance suite checks this directly: no
@@ -351,4 +412,16 @@ reply may call a write verified unless its receipt says so.
 - `src/opsdeck/planner/` — `provider.py` (the interface), `scripted.py`, the
   service-backed provider implementation, `planner.py`, `prompts.py`.
 - `src/opsdeck/engine/reply.py` — the deterministic renderer used when no
-  provider is configured.
+  provider is configured, the lines that state what a turn leaves on offer, and
+  the presentation preferences handed to the reply writer and to nothing else.
+- `src/opsdeck/catalog/resolver.py` — the offered action as a key and a label,
+  the rule that two actions never share a key, and the relabeling that keeps
+  the declared wording where nothing came back.
+- `src/opsdeck/planner/planner.py` — the reply schema carrying `action_labels`,
+  and the brief the reply writer answers from.
+- `tests/unit/test_labels.py` — the offer in the language of the turn, the
+  count that shows no call was added, and the preference that reaches the reply
+  writer and no other prompt.
+- `examples/ops/scenarios/26_labels_in_the_turn_language.json` — the same
+  thing as an executable document: a turn asked in Italian, offered its next
+  steps in Italian, in three model calls.

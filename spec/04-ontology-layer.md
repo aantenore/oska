@@ -8,7 +8,7 @@ noun phrase in a prompt. Everything above it refers to records by entity type
 and identifier, and every operation in L1 is bound to one of these types.
 
 The layer also carries the shared vocabulary: the words the person, the
-catalogue and the model all use for the same thing. A system whose ontology
+catalog and the model all use for the same thing. A system whose ontology
 calls a record an "incident" and whose replies call it a "ticket" will drift,
 because the model will be asked to translate between two vocabularies nobody
 declared.
@@ -97,7 +97,7 @@ required, because "the next step" is singular.
 
 `offered: false` marks a move that is legal and is planned and executed when a
 person asks for it, but that the runtime MUST NOT suggest. Legality and advice
-are not the same judgement: revoking an access that was granted a moment ago is
+are not the same judgment: revoking an access that was granted a moment ago is
 a move somebody may have good reason to make, and it is not a move a machine
 has any business proposing.
 
@@ -146,10 +146,10 @@ that entity type and MUST name one of its declared states.
 Responsibility: answer structural questions from the declarations alone, with
 no model involved.
 
-The graph is built from the published skills of one state of the catalogue and
+The graph is built from the published skills of one state of the catalog and
 carries that state's fingerprint. It is derived, not authored: every node and
 every edge stands for something a skill declares, an unpublished skill
-contributes nothing, and a reference to something the catalogue does not hold is
+contributes nothing, and a reference to something the catalog does not hold is
 dropped rather than invented.
 
 ```text
@@ -166,7 +166,7 @@ Edge:
   attributes: object
 
 OntologyGraph:
-  from_catalogue(catalogue) -> OntologyGraph
+  from_catalog(catalog) -> OntologyGraph
   node(node_id) -> Node | null
   nodes_of(kind) -> [Node]
   edges_from(node_id, kind?) -> [Edge]
@@ -206,15 +206,15 @@ the operator asking what the system can reach, and the export below.
 
 ### Ontology Cache
 
-Responsibility: hold one graph and rebuild it when the catalogue changes.
+Responsibility: hold one graph and rebuild it when the catalog changes.
 
 ```text
 OntologyCache:
-  graph() -> OntologyGraph     # rebuilt when the catalogue fingerprint moves
+  graph() -> OntologyGraph     # rebuilt when the catalog fingerprint moves
 ```
 
 Building the graph is a read over declarations already in memory, so a cache
-keyed on the catalogue fingerprint is enough: a reload of the catalogue
+keyed on the catalog fingerprint is enough: a reload of the catalog
 invalidates it, and nothing else does.
 
 ### Export
@@ -238,7 +238,7 @@ marking the moves that are required or not offered.
 ### Vocabulary
 
 Responsibility: hold the preferred term for each entity type and state, and the
-synonyms that route to it, so the prompt text, the reply text and the catalogue
+synonyms that route to it, so the prompt text, the reply text and the catalog
 agree.
 
 In the reference implementation the preferred terms are the declared names
@@ -251,18 +251,18 @@ a second name.
 ### Validation codes
 
 The cross-reference checks of L3 report ontology failures under their own
-codes, so a catalogue that does not describe a coherent world fails to load
+codes, so a catalog that does not describe a coherent world fails to load
 with a reason rather than with a schema error.
 
 | Code | Raised when |
 | --- | --- |
 | `ontology_unknown_state_field` | `state_field` does not name a declared field |
 | `ontology_missing_states` | a state field declares no states, or states are declared with no state field |
-| `ontology_unknown_relation_target` | a relation targets something that is not an entity type in the catalogue |
+| `ontology_unknown_relation_target` | a relation targets something that is not an entity type in the catalog |
 | `ontology_unpublished_relation_target` | a relation targets an entity type that is not published |
 | `ontology_unbound_operation` | an operation of a published integration declares no entity |
 | `ontology_unlisted_operation_entity` | an operation is bound to an entity the declaring integration does not list |
-| `ontology_transition_without_entity` | an operation declares transitions without an entity in the catalogue |
+| `ontology_transition_without_entity` | an operation declares transitions without an entity in the catalog |
 | `ontology_unknown_transition_field` | a transition is not keyed by the state field of its entity |
 | `ontology_unknown_transition_state` | a transition names a value that is not a declared state |
 | `ontology_lifecycle_without_states` | a lifecycle is declared without a state field or without states |
@@ -277,7 +277,7 @@ with a reason rather than with a schema error.
 
 ## Invariants
 
-- Every entity referenced anywhere in the catalogue exists and is published.
+- Every entity referenced anywhere in the catalog exists and is published.
 - Every relation targets an entity that exists and is published.
 - An operation's entity binding names an entity the integration itself
   declares, and a declared transition names the state field and one of the
@@ -299,10 +299,10 @@ with a reason rather than with a schema error.
 - A move that is legal is not therefore suggested: `offered: false` withholds
   it from the runtime's own mouth without withholding it from the person.
 - The graph holds nothing that no skill declares: it is built from published
-  declarations, it carries the identity of the catalogue state it was built
-  from, and a reference the catalogue does not hold is dropped, never invented.
+  declarations, it carries the identity of the catalog state it was built
+  from, and a reference the catalog does not hold is dropped, never invented.
 - The ontology is data, not code. Adding an entity is adding a declaration.
-- The ontology declares no behaviour. It says what exists and how things
+- The ontology declares no behavior. It says what exists and how things
   relate; what can be done lives in L1 and L3.
 
 ## Requirements
@@ -333,7 +333,7 @@ with a reason rather than with a schema error.
   the state field of the entity type it is bound to and MUST name one of that
   type's declared states; anything else MUST fail validation.
 - **OSKA-ONT-12** — The ontology graph MUST be derived from published
-  declarations only, MUST carry the identity of the catalogue state it was
+  declarations only, MUST carry the identity of the catalog state it was
   built from, and MUST be rebuilt when that identity changes.
 - **OSKA-ONT-13** — The ontology MUST be exportable as data that reads back as
   the same graph, so a reader outside the runtime sees the nodes and edges the
@@ -415,11 +415,11 @@ anybody writing a sentence about what to offer.
 
 The `required` and `offered` flags exist because two different questions were
 being answered by one list. What is legal is a question about the system of
-record. What to suggest is a question about judgement, and the two diverge in
+record. What to suggest is a question about judgment, and the two diverge in
 both directions: a move can be legal and a bad thing to propose, and a move can
 be the only thing left to do and still need a person to ask for it. Keeping
 them apart lets an author say "yes, but do not offer it" without inventing a
-second catalogue of advice.
+second catalog of advice.
 
 The second alternative is a heavier one: a full knowledge graph with
 inference, subsumption and reasoning. OSKA deliberately stops short. The graph
@@ -433,7 +433,7 @@ they are small enough that a reviewer can read them all.
 ## In the reference implementation
 
 - `src/opsdeck/ontology/graph.py` — `Node`, `Edge`, `OntologyGraph` and
-  `OntologyCache`, built over the published catalogue and keyed on its
+  `OntologyCache`, built over the published catalog and keyed on its
   fingerprint.
 - `src/opsdeck/ontology/queries.py` — `operations_on`, `writers_of`,
   `procedures_for`, `related`, `path` and `vocabulary`, and the lifecycle

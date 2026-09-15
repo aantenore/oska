@@ -153,6 +153,7 @@ class Outcome(BaseModel):
         "invalid_plan",
         "approval_pending",
         "cancelled",
+        "unavailable",
     ]
     integration_id: str | None = None
     operation: str | None = None

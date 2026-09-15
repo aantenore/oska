@@ -9,7 +9,7 @@ from opsdeck.index.base import (
     TextSource,
     indexed_texts,
     overlap_score,
-    tokenise,
+    tokenize,
     top_ranked,
 )
 
@@ -28,12 +28,12 @@ class KeywordIndex:
         self._entries: list[tuple[IndexedText, set[str]]] = []
 
     def build(self, skills: list[Skill], texts: TextSource | None = None) -> None:
-        """Tokenise every text the given source indexes each skill under."""
-        self._entries = [(entry, tokenise(entry.text)) for entry in indexed_texts(skills, texts)]
+        """Tokenize every text the given source indexes each skill under."""
+        self._entries = [(entry, tokenize(entry.text)) for entry in indexed_texts(skills, texts)]
 
     def rank(self, query: str, limit: int) -> list[RankedSkill]:
         """Return the skills sharing the most words with the request."""
-        query_tokens = tokenise(query)
+        query_tokens = tokenize(query)
         if not query_tokens or not self._entries:
             return []
         best: dict[str, RankedSkill] = {}

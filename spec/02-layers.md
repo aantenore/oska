@@ -11,7 +11,7 @@ flowchart TB
     L6["L6 Interaction<br/>session, turn engine, channels, human-in-the-loop"]
     L5["L5 Cognition<br/>discovery, router, planner, reply writer, provider"]
     L4["L4 Governance<br/>capabilities, policy, approval, verifier, ledger, audit"]
-    L3["L3 Skill<br/>skill artefact, catalogue, validator, resolver, hydration"]
+    L3["L3 Skill<br/>skill artifact, catalog, validator, resolver, hydration"]
     L2["L2 Ontology<br/>entities, relations, bindings, graph, vocabulary"]
     L1["L1 Integration<br/>operation registry, connectors, adapters"]
     L0["L0 Systems<br/>systems of record, APIs, tools (out of scope)"]
@@ -56,23 +56,23 @@ state of an object is read from the system of record through that declared
 read, and is never inferred from the conversation or from what a write replied.
 See [04-ontology-layer.md](04-ontology-layer.md).
 
-**L3 Skill.** The skill artefact and everything that reads it: the catalogue
+**L3 Skill.** The skill artifact and everything that reads it: the catalog
 with versioned roots and fingerprint reload, the validator, the capability
 resolver that derives what the system says about itself, and hydration, which
 resolves a procedure to its dependency closure. See
 [05-skill-layer.md](05-skill-layer.md).
 
 **L4 Governance.** The write path: capability registry, policy engine, approval
-gate, verifier, write ledger and audit. Also the guardrail catalogue: every
-promise the installation makes about its own behaviour, declared once with the
+gate, verifier, write ledger and audit. Also the guardrail catalog: every
+promise the installation makes about its own behavior, declared once with the
 point at which it acts and the mechanism that keeps it — code the chain runs
 and that can refuse, an invariant a named module keeps where the chain runs
-nothing, or text handed to a model. The catalogue is what says which of the
+nothing, or text handed to a model. The catalog is what says which of the
 three a promise is; neither the skill that references it nor the prompt that
 carries it may claim otherwise. See [06-governance-layer.md](06-governance-layer.md).
 
 **L5 Cognition.** Everything a model touches: semantic discovery over the
-catalogue, the turn router, the planner that emits a typed plan, the reply
+catalog, the turn router, the planner that emits a typed plan, the reply
 writer, and the provider interface behind all of them. See
 [07-cognition-layer.md](07-cognition-layer.md).
 
@@ -81,7 +81,7 @@ channels, and the human-in-the-loop points: questions for missing inputs,
 approvals, cancellations. See [08-interaction-layer.md](08-interaction-layer.md).
 
 **L7 Evolution.** Proposals, quality gates, the lifecycle with named actors,
-and publication into a catalogue root. Also the autonomy ladder: a system that
+and publication into a catalog root. Also the autonomy ladder: a system that
 learns from its own traffic declares the rung it stands on, and every rung
 above it is closed by a code path rather than by intent. The top rung —
 publishing a capability — is never automatic. See
@@ -97,7 +97,7 @@ Three consequences carry the weight:
    L6 executes that plan through L4, which reaches L1. A component that both
    decides and acts has no place to put an approval.
 2. **L7 writes only into L3.** Evolution publishes a skill file into a
-   catalogue root. It does not touch governance, sessions, connectors or the
+   catalog root. It does not touch governance, sessions, connectors or the
    ledger. A learned procedure is a file, and it is governed like any other.
 3. **Contracts are owned by nobody.** Typed models are shared by every layer
    and declared in one place. A module that needs a type another module already
@@ -111,7 +111,7 @@ Only typed contracts. In particular:
 - L6 hands L4 one operation at a time, never a whole plan to execute freely.
 - L4 hands L1 an operation name and a validated payload, never free text.
 - L3 hands L5 a hydrated closure: the procedure text plus the entities and
-  operations it may use. It does not hand over the whole catalogue.
+  operations it may use. It does not hand over the whole catalog.
 
 ## Where a language model is allowed to appear
 
@@ -121,10 +121,10 @@ layer below it before it has any effect:
 
 | Model act | Validated by |
 | --- | --- |
-| Ranking / tie break | L3 catalogue membership |
+| Ranking / tie break | L3 catalog membership |
 | Turn classification | L6 session state (a claimed approval with nothing pending is not an approval) |
 | Plan | L3 declarations plus the operation input schemas |
-| Reply | L6 outcome list; only stated outcomes and catalogue-derived suggestions |
+| Reply | L6 outcome list; only stated outcomes and catalog-derived suggestions |
 
 No other layer may call a model provider. A system that consults a model inside
 the policy engine, the verifier or the ledger does not conform.

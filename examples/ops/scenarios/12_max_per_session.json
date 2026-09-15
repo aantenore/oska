@@ -192,7 +192,7 @@
     },
     {
       "user": "yes",
-      "connector_behaviours": {
+      "connector_behaviors": {
         "integration.container_runtime": {
           "service.status": {
             "override": {
@@ -223,7 +223,7 @@
     },
     {
       "user": "the reporting service needs a restart as well",
-      "connector_behaviours": {
+      "connector_behaviors": {
         "integration.container_runtime": {
           "service.status": null
         }

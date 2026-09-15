@@ -18,7 +18,7 @@ from opsdeck.catalog.validator import validate_all
 
 ACTIONS = (
     "check what access a person has",
-    "add a person to a group",
+    "add yourself to a group",
     "remove a person from a group",
 )
 

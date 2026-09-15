@@ -3,10 +3,28 @@
 No handler decides anything the runtime does not already decide: a turn is run
 by the engine, a proposal is drafted and moved by the learning package, and the
 wording of what the runtime can do comes from the resolver.
+
+There is no endpoint that applies a change request, and there is not going to
+be one. Moving a proposal to `published` composes a package under the change
+request root and returns it; installing that package into a catalog is
+`ChangeRequestStore.apply`, which takes the catalog root from whoever calls it
+and is called from the command line by a person. The process that answers
+people can propose a change to the catalog it answers from and can never make
+one. `GET /changes` and `GET /changes/{id}` read; nothing here writes.
+
+A turn may carry an identity. It arrives in headers an authenticated proxy sets:
+the subject of whoever is signed in, and whatever else about them the deployment
+puts on the call. The runtime trusts those headers and verifies nothing itself —
+it holds no key, checks no signature and knows no directory — so a deployment
+that lets anything but its proxy reach this port has handed every session
+whatever identity the caller typed. Refusing a turn whose identity contradicts
+the session is the only check made here, and it is a check about consistency,
+not about authenticity.
 """
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from fastapi import APIRouter, Request
@@ -17,20 +35,34 @@ from opsdeck.contracts.common import TurnResult
 from opsdeck.contracts.proposal import SkillProposal
 from opsdeck.contracts.receipt import WriteReceipt
 from opsdeck.contracts.skill import Skill
-from opsdeck.learning import LifecycleError, draft_from_session, transition
+from opsdeck.governance.identity import Principal, PrincipalMismatch
+from opsdeck.learning import (
+    ChangeRequest,
+    ChangeRequestStore,
+    LifecycleError,
+    draft_from_session,
+    store_for,
+    transition,
+)
 
 __all__ = [
+    "ATTRIBUTES_HEADER",
+    "SUBJECT_HEADER",
     "ApiError",
     "CapabilityList",
     "ProcessInfo",
     "SkillDetail",
     "SkillSummary",
     "TransitionRequest",
+    "TransitionResult",
     "TurnRequest",
     "router",
 ]
 
 router = APIRouter()
+
+SUBJECT_HEADER = "X-Principal-Subject"
+ATTRIBUTES_HEADER = "X-Principal-Attributes"
 
 
 class ApiError(Exception):
@@ -55,6 +87,13 @@ class TransitionRequest(BaseModel):
     to: str
     by: str
     note: str = ""
+
+
+class TransitionResult(BaseModel):
+    """A moved proposal and, when the move composed one, its change request."""
+
+    proposal: SkillProposal
+    change_request: ChangeRequest | None = None
 
 
 class SkillSummary(BaseModel):
@@ -100,8 +139,11 @@ class Health(BaseModel):
 
 @router.post("/sessions/{session_id}/turns", response_model=TurnResult)
 def run_turn(session_id: str, body: TurnRequest, request: Request) -> TurnResult:
-    """Run one turn of one session."""
-    return _services(request).engine.turn(session_id, body.text)
+    """Run one turn of one session, under the identity the proxy put on the call."""
+    try:
+        return _services(request).engine.turn(session_id, body.text, _principal(request))
+    except PrincipalMismatch as exc:
+        raise ApiError(409, "principal_mismatch", str(exc)) from exc
 
 
 @router.get("/sessions/{session_id}/receipts", response_model=list[WriteReceipt])
@@ -180,21 +222,26 @@ def get_proposal(proposal_id: str, request: Request) -> SkillProposal:
         raise ApiError(404, "unknown_proposal", str(exc)) from exc
 
 
-@router.post("/proposals/{proposal_id}/transition", response_model=SkillProposal)
+@router.post("/proposals/{proposal_id}/transition", response_model=TransitionResult)
 def transition_proposal(
     proposal_id: str, body: TransitionRequest, request: Request
-) -> SkillProposal:
-    """Move one proposal to another state, recording who asked."""
+) -> TransitionResult:
+    """Move one proposal to another state, recording who asked.
+
+    A move to `published` composes a change request instead of writing a skill
+    file, so the answer carries the request a person is now expected to read.
+    """
     services = _services(request)
+    changes = _changes(request)
     try:
-        return transition(
+        proposal = transition(
             services.proposals,
             proposal_id,
             body.to,
             body.by,
             body.note,
             registry=services.engine.registry,
-            publish_root=services.publish_root,
+            changes=changes,
             provider=(
                 services.engine.planner.provider if services.engine.planner is not None else None
             ),
@@ -208,6 +255,23 @@ def transition_proposal(
         raise ApiError(409, "illegal_transition", str(exc)) from exc
     except ValueError as exc:
         raise ApiError(422, "unknown_state", str(exc)) from exc
+    composed = [held for held in changes.list() if held.proposal_id == proposal.proposal_id]
+    return TransitionResult(proposal=proposal, change_request=composed[-1] if composed else None)
+
+
+@router.get("/changes", response_model=list[ChangeRequest])
+def list_changes(request: Request) -> list[ChangeRequest]:
+    """Every change request held, oldest first."""
+    return _changes(request).list()
+
+
+@router.get("/changes/{request_id}", response_model=ChangeRequest)
+def get_change(request_id: str, request: Request) -> ChangeRequest:
+    """One change request. Reading it is all this surface offers."""
+    try:
+        return _changes(request).get(request_id)
+    except KeyError as exc:
+        raise ApiError(404, "unknown_change_request", str(exc)) from exc
 
 
 @router.get("/health", response_model=Health)
@@ -219,8 +283,42 @@ def get_health(request: Request) -> Health:
     )
 
 
+def _principal(request: Request) -> Principal | None:
+    """The identity the proxy put on this call, or nothing when it put none.
+
+    A subject alone is an identity; the attributes header is optional and is a
+    JSON object when it is there. Both are taken as given: this is the point
+    where a value the runtime did not establish becomes the value a write is
+    bound to, and it is worth saying that in one place rather than implying it
+    everywhere.
+    """
+    subject = request.headers.get(SUBJECT_HEADER, "").strip()
+    if not subject:
+        return None
+    raw = request.headers.get(ATTRIBUTES_HEADER, "").strip()
+    attributes: dict = {}
+    if raw:
+        try:
+            parsed = json.loads(raw)
+        except ValueError as exc:
+            raise ApiError(
+                400, "invalid_principal", f"{ATTRIBUTES_HEADER} is not JSON"
+            ) from exc
+        if not isinstance(parsed, dict):
+            raise ApiError(
+                400, "invalid_principal", f"{ATTRIBUTES_HEADER} is not a JSON object"
+            )
+        attributes = parsed
+    return Principal(subject=subject, attributes=attributes, authenticated=True)
+
+
 def _services(request: Request) -> Any:
     return request.app.state.services
+
+
+def _changes(request: Request) -> ChangeRequestStore:
+    """The change request store these settings configure, read-only from here."""
+    return store_for(_services(request).settings)
 
 
 def _summary(skill: Skill) -> SkillSummary:

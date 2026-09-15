@@ -1,4 +1,16 @@
-"""Plan construction, plan validation, tie breaking and reply phrasing."""
+"""Plan construction, plan validation, tie breaking and reply phrasing.
+
+The call that writes a reply carries the actions the turn leaves on offer, each
+as a key and the wording its author declared, and may hand every label back in
+the language it is answering in. It is the same call either way: a turn that
+offers something costs no more model calls than a turn that offers nothing, and
+the prompts routing is built from stay in the language the catalog declares,
+because routing is asked in every language a person writes in.
+
+Presentation preferences travel the same road and only that road. They reach
+the reply writer as facts about how an answer should read. They are not in the
+planning prompt, they are not in a payload, and nothing here puts them there.
+"""
 
 from __future__ import annotations
 
@@ -9,7 +21,7 @@ from jsonschema import Draft202012Validator
 from pydantic import ValidationError
 
 from opsdeck.catalog.registry import SkillRegistry
-from opsdeck.catalog.resolver import CapabilityResolver
+from opsdeck.catalog.resolver import CapabilityResolver, SuggestedAction, relabel
 from opsdeck.contracts.common import Hydrated, Message, Outcome, RankedSkill
 from opsdeck.contracts.plan import Plan
 from opsdeck.contracts.skill import OperationSpec, Skill
@@ -66,7 +78,19 @@ REPLY_SCHEMA: dict = {
     "type": "object",
     "additionalProperties": False,
     "required": ["reply"],
-    "properties": {"reply": {"type": "string"}},
+    "properties": {
+        "reply": {"type": "string"},
+        "action_labels": {
+            "type": "object",
+            "description": (
+                "The wording of each offered action, by its key, in the language of the"
+                " reply. Translate the label and change nothing about what it offers."
+                " Leave out any action you cannot phrase, and add no key that was not"
+                " offered."
+            ),
+            "additionalProperties": {"type": "string"},
+        },
+    },
 }
 
 
@@ -161,16 +185,24 @@ class Planner:
         self,
         outcomes: list[Outcome],
         reply_intent: str,
-        suggestions: list[str],
+        actions: Sequence[SuggestedAction],
         language: str,
         conversation: list[Message] | None = None,
+        preferences: Sequence[str] = (),
     ) -> str:
-        """Phrase the reply from the outcomes of the turn and nothing else."""
-        brief = {
+        """Phrase the reply from the outcomes of the turn and nothing else.
+
+        The labels of `actions` are overwritten in place with whatever comes
+        back for them, so the wording a turn offers is in the language the turn
+        answered in without a second call being made to get it there.
+        """
+        brief: dict = {
             "reply_intent": reply_intent,
             "outcomes": [outcome.model_dump(mode="json") for outcome in outcomes],
-            "suggestions": list(suggestions),
+            "actions": [{"key": action.key, "label": action.label} for action in actions],
         }
+        if preferences:
+            brief["presentation_preferences"] = list(preferences)
         messages = [
             *(conversation or []),
             Message(role="user", content=json.dumps(brief, sort_keys=True, ensure_ascii=False)),
@@ -181,6 +213,7 @@ class Planner:
         reply = answer.get("reply")
         if not isinstance(reply, str) or not reply.strip():
             raise ModelProviderError("the model returned no reply text")
+        relabel(actions, _returned_labels(answer.get("action_labels")))
         return reply.strip()
 
     def _ask_for_plan(
@@ -284,6 +317,17 @@ def _payload_issues(
         location = ".".join(str(part) for part in error.absolute_path) or "payload"
         issues.append(f"{where}: {location} does not satisfy the input schema: {error.message}")
     return issues
+
+
+def _returned_labels(value: object) -> dict[str, str]:
+    """The labels an answer returned, keeping only the ones that are text."""
+    if not isinstance(value, dict):
+        return {}
+    return {
+        str(key): text
+        for key, text in value.items()
+        if isinstance(text, str) and text.strip()
+    }
 
 
 def _repair_note(issues: Sequence[str]) -> str:

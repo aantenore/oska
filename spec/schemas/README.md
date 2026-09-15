@@ -2,9 +2,9 @@
 
 Seven machine-readable schemas are normative for OSKA 0.1. Three of them
 already live in the repository, because the runtime validates against them at
-load time. Four are defined here: three describe artefacts the runtime produces
-rather than artefacts it reads, and one describes a configured artefact the
-runtime reads at start-up but does not carry in its catalogue.
+load time. Four are defined here: three describe artifacts the runtime produces
+rather than artifacts it reads, and one describes a configured artifact the
+runtime reads at start-up but does not carry in its catalog.
 
 ## In the repository root
 
@@ -14,13 +14,13 @@ them.
 
 | Schema | Path | Governs |
 | --- | --- | --- |
-| Skill | `schemas/skill.schema.json` | The frontmatter of every skill artefact: entity, integration, procedure and composite. See [05-skill-layer.md](../05-skill-layer.md). |
+| Skill | `schemas/skill.schema.json` | The frontmatter of every skill artifact: entity, integration, procedure and composite. See [05-skill-layer.md](../05-skill-layer.md). |
 | Policy | `schemas/policy.schema.json` | A policy document: ordered rules with effects, conditions and session limits. See [06-governance-layer.md](../06-governance-layer.md). |
 | Proposal | `schemas/proposal.schema.json` | A proposal, its state, its quality report and its transition history. See [09-evolution-layer.md](../09-evolution-layer.md). |
 
-A conformant implementation MUST validate every skill artefact against the
+A conformant implementation MUST validate every skill artifact against the
 skill schema and every policy document against the policy schema before serving
-a catalogue.
+a catalog.
 
 ## In this directory
 
@@ -36,7 +36,7 @@ a catalogue.
 **Scenario.** The `expect` object of a turn is the contract a runner checks:
 the route kind, the fragments the reply must contain, the outcome kinds in
 order, what the session waits for, the receipt count and the verification
-status of the most recent receipt. `connector_behaviours` belongs beside
+status of the most recent receipt. `connector_behaviors` belongs beside
 `expect`, on the turn, and is applied before the turn runs; the schema accepts
 it nowhere else. The `level` field is optional and defaults to 2, and every
 reference scenario stamps it. The `learning` block is optional, runs after the
@@ -59,12 +59,12 @@ operations declared in the procedure's hydrated closure, mark writes exactly as
 the declaration does, list every write in the procedure's capabilities, and
 carry payloads that satisfy each operation's own input schema. Those checks
 belong to the cognition layer and cannot be expressed here, because they depend
-on the catalogue. See `OSKA-COG-7`.
+on the catalog. See `OSKA-COG-7`.
 
-**Guardrail catalog.** A guardrail catalog is a configured artefact, not a
-catalogue artefact: it is a document an operator points the runtime at, next to
+**Guardrail catalog.** A guardrail catalog is a configured artifact, not a
+catalog artifact: it is a document an operator points the runtime at, next to
 the connector bindings and the policy documents, and it is not a skill and not
-loaded from a catalogue root. In the reference implementation it is
+loaded from a catalog root. In the reference implementation it is
 `configs/guardrails.json`, named under `guardrails.catalog` in the runtime
 configuration. Every entry declares its `point` and its `mechanism`; a `check`
 MUST name a validator the runtime registers, MUST be declared only at a point

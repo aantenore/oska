@@ -1,5 +1,10 @@
 {
   "version": 1,
+  "resilience": {
+    "timeout_seconds": 30.0,
+    "failures_before_open": 3,
+    "recovery_seconds": 30.0
+  },
   "integrations": {
     "integration.directory": {
       "type": "mock",

@@ -5,12 +5,16 @@ it stops. This package is that statement, written as code rather than as an
 intention.
 
 Level 0 — observe. Signals are read back from the audit trail and the write
-ledger. Nothing is changed.
+ledger, and a judgment a person recorded against a turn is read with them.
+Recording one changes nothing else.
 
 Level 1 — adjust what is cheap and reversible, and show every change. Learned
 phrasings are written as separate files under the improvement root, one per
-procedure, each revertible by deleting it. Threshold tuning is proposed as an
-overrides file a caller may apply. Nothing authored is edited.
+procedure, each revertible by deleting it. A preference about how answers read,
+classified from the comment of a judgment at job time, is written the same way
+and bounded the same way: it may change how an answer reads and may never
+change what the runtime does. Threshold tuning is proposed as an overrides file
+a caller may apply. Nothing authored is edited.
 
 Level 2 — draft, and stop. A request that reached no procedure becomes a gap,
 and a gap becomes a proposal in `draft` state with the entities and operations
@@ -35,6 +39,11 @@ from opsdeck.improvement.evaluation import (
     load_cases,
     run_evaluation,
 )
+from opsdeck.improvement.feedback import (
+    FeedbackStore,
+    TurnFeedback,
+    feedback_root,
+)
 from opsdeck.improvement.gaps import Gap, find_gaps, unmatched
 from opsdeck.improvement.job import run_job
 from opsdeck.improvement.learned import (
@@ -45,6 +54,15 @@ from opsdeck.improvement.learned import (
     read_learned,
     revert,
     write_learned,
+)
+from opsdeck.improvement.preferences import (
+    Preference,
+    classify_comment,
+    learn_preferences,
+    preferences_root,
+    read_preferences,
+    revert_preferences,
+    write_preferences,
 )
 from opsdeck.improvement.report import (
     DraftedProposal,
@@ -61,30 +79,40 @@ __all__ = [
     "TIE",
     "DraftedProposal",
     "EvaluationReport",
+    "FeedbackStore",
     "Gap",
     "ImprovementReport",
     "LearnedPhrase",
+    "Preference",
     "RoutingCase",
     "Similarity",
+    "TurnFeedback",
     "TurnSignal",
     "Tuning",
+    "classify_comment",
+    "feedback_root",
     "find_gaps",
     "learn",
+    "learn_preferences",
     "load_cases",
     "load_redactions",
     "load_signals",
+    "preferences_root",
     "rank_cases",
     "read_events",
     "read_learned",
+    "read_preferences",
     "read_report",
     "render_json",
     "render_text",
     "revert",
+    "revert_preferences",
     "run_evaluation",
     "run_job",
     "tune",
     "unmatched",
     "write_learned",
     "write_overrides",
+    "write_preferences",
     "write_report",
 ]

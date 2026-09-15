@@ -22,6 +22,13 @@ from opsdeck.contracts.proposal import ProposalState, SkillProposal
 from opsdeck.contracts.receipt import VerificationStatus
 from opsdeck.governance.ledger import WriteLedger
 from opsdeck.improvement.evaluation import TIE, RoutingCase, load_cases, run_evaluation
+from opsdeck.improvement.feedback import (
+    FeedbackStore,
+    TurnFeedback,
+    feedback_root,
+    latest,
+    scores,
+)
 from opsdeck.improvement.gaps import find_gaps, unmatched
 from opsdeck.improvement.job import run_job
 from opsdeck.improvement.learned import (
@@ -34,6 +41,15 @@ from opsdeck.improvement.learned import (
     revert,
     write_learned,
 )
+from opsdeck.improvement.preferences import (
+    Preference,
+    classify_comment,
+    learn_preferences,
+    preferences_root,
+    read_preferences,
+    revert_preferences,
+    write_preferences,
+)
 from opsdeck.improvement.report import read_report, render_json, render_text
 from opsdeck.improvement.signals import TurnSignal, load_signals
 from opsdeck.improvement.tuning import rank_cases, tune, write_overrides
@@ -42,6 +58,7 @@ from opsdeck.index.discovery import Discovery
 from opsdeck.index.keyword import KeywordIndex
 from opsdeck.learning.proposals import ProposalStore
 from opsdeck.ontology.graph import OntologyGraph
+from opsdeck.planner.scripted import hash_bag_vector
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[2] / "src" / "opsdeck"
 IMPROVEMENT = PACKAGE_ROOT / "improvement"
@@ -56,7 +73,7 @@ BEYOND_DRAFT = ("submitted", "approved", "published")
 
 @pytest.fixture
 def evaluation_dir(repo_root: Path) -> Path:
-    """Where the labelled set and the redaction patterns are kept."""
+    """Where the labeled set and the redaction patterns are kept."""
     return repo_root / "examples" / "ops" / "evaluation"
 
 
@@ -409,7 +426,7 @@ def test_the_seeded_set_is_written_in_two_languages_and_holds_ambiguous_cases(
     assert not any(case.text.strip().lower() in declared for case in cases)
 
 
-def test_the_evaluation_reports_the_case_that_is_labelled_wrong(
+def test_the_evaluation_reports_the_case_that_is_labeled_wrong(
     evaluation_dir: Path, registry: SkillRegistry, repo_root: Path
 ) -> None:
     discovery = discovery_over(registry, repo_root)
@@ -688,8 +705,8 @@ def test_the_job_runs_against_a_store_that_refuses_anything_but_a_draft(
     """The ceiling, proved by running under it rather than by reading the source.
 
     The store raises on any proposal that is not a draft, every write outside
-    the state directory raises, and the catalogue, the configuration and the
-    labelled set are compared before and after.
+    the state directory raises, and the catalog, the configuration and the
+    labeled set are compared before and after.
     """
     state_dir = Path(example_settings.state_dir)
     write_audit(
@@ -906,3 +923,203 @@ def test_evaluating_changes_nothing_and_a_drop_leaves_a_non_zero_status(
     assert dropped.exit_code == 1
     assert json.loads(dropped.stdout)["precision"] < 1.0
     assert held is not None and held.evaluation.precision == 1.0
+
+
+# --- level 0: a judgment on an answer -------------------------------------
+
+
+def test_a_judgment_is_recorded_against_a_turn_and_changes_nothing_else(
+    tmp_path: Path,
+) -> None:
+    """One line, one file, and no other state touched."""
+    root = tmp_path / "state" / "feedback"
+    store = FeedbackStore(root)
+
+    store.record("session-1", 1, "up")
+    store.record("session-1", 2, "down", "too long")
+    store.record("session-2", 1, "down")
+
+    held = store.for_session("session-1")
+    assert [(judgment.turn, judgment.score) for judgment in held] == [(1, "up"), (2, "down")]
+    assert held[1].comment == "too long"
+    assert len(store.all()) == 3
+    assert scores(store.all()) == {"up": 1, "down": 2}
+    assert sorted(path.name for path in tmp_path.rglob("*.jsonl")) == [
+        "session-1.jsonl",
+        "session-2.jsonl",
+    ]
+
+
+def test_the_last_judgment_of_a_turn_is_the_one_that_counts(tmp_path: Path) -> None:
+    store = FeedbackStore(tmp_path / "feedback")
+
+    store.record("session-1", 1, "down", "wrong")
+    store.record("session-1", 1, "up", "better now")
+
+    assert latest(store.all())[("session-1", 1)].score == "up"
+    assert len(store.for_session("session-1")) == 2
+
+
+def test_a_score_that_is_not_up_or_down_is_refused(tmp_path: Path) -> None:
+    store = FeedbackStore(tmp_path / "feedback")
+
+    with pytest.raises(ValueError, match="a score is"):
+        store.record("session-1", 1, "sideways")  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="counted from 1"):
+        store.record("session-1", 0, "up")
+
+
+def test_a_signal_carries_the_judgment_recorded_against_its_turn(tmp_path: Path) -> None:
+    """The turn a person judged is the turn the signal names."""
+    audit = write_audit(
+        tmp_path / "audit.jsonl",
+        [
+            event("turn", "session-1", "t1", {"turn": 1, "text": "restart the search service"}),
+            event("route", "session-1", "t1", {"source": "model", "language": "en"}),
+            event("turn", "session-1", "t2", {"turn": 2, "text": "and the logs"}, minute=1),
+            event("route", "session-1", "t2", {"source": "model", "language": "en"}, minute=1),
+        ],
+    )
+    store = FeedbackStore(tmp_path / "feedback")
+    store.record("session-1", 2, "down", "far too long")
+
+    signals = load_signals(audit, None, store.all())
+
+    assert [signal.turn for signal in signals] == [1, 2]
+    assert signals[0].feedback is None
+    assert signals[1].feedback is not None
+    assert signals[1].feedback.comment == "far too long"
+
+
+# --- level 1: a preference about how answers read --------------------------
+
+
+class _Classifier:
+    """A provider that answers the classification, and counts what it was asked."""
+
+    name = "classifier"
+
+    def __init__(self, answers: list[dict]) -> None:
+        self._answers = list(answers)
+        self.asked: list[str] = []
+
+    def complete_json(
+        self,
+        system: str,
+        messages: list[str],
+        schema: dict,
+        *,
+        temperature: float = 0.0,
+    ) -> dict:
+        self.asked.append(messages[-1].content)
+        return self._answers.pop(0)
+
+    def embed(self, texts: list[str]) -> list[list[float]]:
+        return [hash_bag_vector(text) for text in texts]
+
+
+def _judgment(comment: str, session_id: str = "session-1") -> TurnFeedback:
+    return TurnFeedback(session_id=session_id, turn=1, score="down", comment=comment, at=MOMENT)
+
+
+def test_a_comment_about_presentation_becomes_a_preference(tmp_path: Path) -> None:
+    root = tmp_path / "preferences"
+    provider = _Classifier([{"kind": "presentation", "preference": "answer in two sentences"}])
+
+    recorded = learn_preferences([_judgment("too long, be brief")], root, provider=provider)
+
+    assert [preference.text for preference in recorded["session-1"]] == [
+        "answer in two sentences"
+    ]
+    assert read_preferences(root, "session-1")[0].text == "answer in two sentences"
+    assert provider.asked == ["too long, be brief"]
+
+
+def test_a_comment_asking_for_something_to_be_done_is_discarded(tmp_path: Path) -> None:
+    """A stored one would be a standing instruction to act that nobody approved."""
+    root = tmp_path / "preferences"
+    provider = _Classifier([{"kind": "action", "preference": "restart the payments service"}])
+
+    judgments = [_judgment("just restart payments next time")]
+    recorded = learn_preferences(judgments, root, provider=provider)
+
+    assert recorded == {}
+    assert read_preferences(root, "session-1") == []
+    assert not root.exists()
+
+
+def test_without_a_provider_nothing_is_classified(tmp_path: Path) -> None:
+    root = tmp_path / "preferences"
+
+    assert learn_preferences([_judgment("too long")], root) == {}
+    assert classify_comment("", _Classifier([])) is None
+
+
+def test_an_up_and_a_comment_free_judgment_are_never_classified(tmp_path: Path) -> None:
+    provider = _Classifier([])
+    judgments = [
+        TurnFeedback(session_id="s", turn=1, score="up", comment="loved it", at=MOMENT),
+        TurnFeedback(session_id="s", turn=2, score="down", comment="", at=MOMENT),
+    ]
+
+    assert learn_preferences(judgments, tmp_path / "preferences", provider=provider) == {}
+    assert provider.asked == []
+
+
+def test_a_preference_is_a_file_and_reverting_it_is_deleting_it(tmp_path: Path) -> None:
+    root = tmp_path / "preferences"
+    write_preferences(root, "session-1", [Preference(text="no lists", session_id="session-1")])
+
+    assert read_preferences(root, "session-1")[0].text == "no lists"
+    assert revert_preferences(root, "session-1") is True
+    assert read_preferences(root, "session-1") == []
+    assert revert_preferences(root, "session-1") is False
+
+
+def test_a_run_of_the_job_reads_the_judgments_and_records_the_preferences(
+    example_settings: Settings, tmp_path: Path
+) -> None:
+    """The judgment is a level 0 signal and the preference is a level 1 change."""
+    state = Path(example_settings.state_dir)
+    write_audit(
+        state / "audit.jsonl",
+        [event("turn", "session-1", "t1", {"turn": 1, "text": "how is search doing"})],
+    )
+    store = FeedbackStore(feedback_root(state))
+    store.record("session-1", 1, "down", "too long and no lists please")
+    provider = _Classifier([{"kind": "presentation", "preference": "no lists, keep it short"}])
+
+    report = run_job(example_settings, provider=provider, proposals=ProposalStore(tmp_path / "p"))
+
+    assert report.judged == 1
+    assert report.judgments == {"up": 0, "down": 1}
+    assert report.preferences == {"session-1": 1}
+    assert read_preferences(preferences_root(state), "session-1")[0].text == (
+        "no lists, keep it short"
+    )
+    assert "presentation preferences: 1" in render_text(report)
+
+
+def test_the_command_records_a_judgment_and_reverts_a_preference(cli_state: Path) -> None:
+    runner = CliRunner()
+    write_preferences(
+        preferences_root(cli_state), "session-1", [Preference(text="no lists")]
+    )
+
+    recorded = runner.invoke(
+        app,
+        ["feedback", "session-1", "--turn", "2", "--score", "down", "--comment", "too long"],
+    )
+    refused = runner.invoke(app, ["feedback", "session-1", "--turn", "2", "--score", "meh"])
+    reverted = runner.invoke(app, ["revert", "session-1"])
+    again = runner.invoke(app, ["revert", "session-1"])
+
+    assert recorded.exit_code == 0
+    assert "nothing else changed" in recorded.stdout
+    assert refused.exit_code == 1
+    assert FeedbackStore(feedback_root(cli_state)).for_session("session-1")[0].comment == (
+        "too long"
+    )
+    assert reverted.exit_code == 0
+    assert "recorded preferences were deleted" in reverted.stdout
+    assert again.exit_code == 1

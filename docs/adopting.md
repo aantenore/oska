@@ -197,7 +197,9 @@ Read that catalog before adding an entry to it: each one says whether code
 enforces the promise at a named point or whether it is a sentence handed to the
 model, and a promise that is only ever text should be readable as such. Name
 under `human_inputs` any payload field whose value has to come from the person
-rather than the model.
+rather than the model, and under `principal_inputs` any field that belongs to
+the identity the channel authenticated rather than to either — a procedure
+acting on somebody's own account should never ask which account that is.
 
 ## 7. Write the scenarios
 
@@ -212,11 +214,21 @@ The format, and the rules for keeping a script honest, are in
 [conformance.md](conformance.md). From here the suite says whether a change
 broke something, and it runs offline in seconds.
 
-Two documents sit beside this walk rather than in it, and are worth reading
+Three documents sit beside this walk rather than in it, and are worth reading
 once the catalog is real: [multilingual.md](multilingual.md), on reaching a
-catalog in more languages than it was written in, and
+catalog in more languages than it was written in;
 [improvement.md](improvement.md), on what a scheduled job may change on its own
-once there is traffic, and where it stops.
+once there is traffic, and where it stops; and
+[operating.md](operating.md), on the jobs that belong to whoever runs the
+installation rather than to whoever writes the catalog.
+
+The first of those jobs changes how everything above is deployed. Reading skill
+files from a directory is right for one process on its own disk, and wrong as
+soon as there are replicas: each picks a change up at its own moment. Build the
+catalog as a revision instead — `opsdeck revision build`, then `opsdeck
+revision use` — and every process serves the same content under the same
+content-derived name, a session keeps the revision it started on, and every
+receipt says which revision it was written under.
 
 ## The standalone variant
 

@@ -19,9 +19,9 @@ from opsdeck.index.base import (
     LEARNED,
     LearnedPhrases,
     indexed_texts,
-    normalise,
-    textualise,
-    tokenise,
+    normalize,
+    textualize,
+    tokenize,
 )
 from opsdeck.index.discovery import Discovery
 from opsdeck.index.embedding import EmbeddingIndex
@@ -64,7 +64,7 @@ class BagProvider:
     @staticmethod
     def _vector(text: str) -> list[float]:
         vector = [0.0] * VECTOR_SIZE
-        for word in normalise(text).split():
+        for word in normalize(text).split():
             digest = hashlib.sha256(word.encode()).digest()
             vector[int.from_bytes(digest[:4], "big") % VECTOR_SIZE] += 1.0
         return vector
@@ -208,9 +208,9 @@ def test_discovery_agrees_over_either_index(registry: SkillRegistry) -> None:
     assert keyword.select(query).chosen == embedding.select(query).chosen
 
 
-def test_normalisation_drops_punctuation_and_case() -> None:
-    assert normalise("  Restart, the API!  ") == "restart the api"
-    assert tokenise("Restart the API!") == {"restart", "the", "api"}
+def test_normalization_drops_punctuation_and_case() -> None:
+    assert normalize("  Restart, the API!  ") == "restart the api"
+    assert tokenize("Restart the API!") == {"restart", "the", "api"}
 
 
 ITALIAN_REQUEST = "svuota la coda dei lavori bloccati"
@@ -277,7 +277,7 @@ def test_a_derived_phrase_follows_the_declared_texts_and_names_its_language(
     one_language_catalog: SkillRegistry, enrichment: EnrichmentConfig
 ) -> None:
     skill = one_language_catalog.require("runbook.queue_drain")
-    texts = textualise(skill, {"it": ITALIAN_PHRASES})
+    texts = textualize(skill, {"it": ITALIAN_PHRASES})
     assert [entry.language for entry in texts] == ["", "", "", "", "it", "it", "it"]
     assert texts[0].text == skill.frontmatter.description
     assert texts[4].text == ITALIAN_REQUEST
@@ -287,11 +287,11 @@ def test_the_cap_gives_way_before_a_declared_text_does(
     one_language_catalog: SkillRegistry,
 ) -> None:
     skill = one_language_catalog.require("runbook.queue_drain")
-    capped = textualise(skill, {"it": ITALIAN_PHRASES}, cap=5)
+    capped = textualize(skill, {"it": ITALIAN_PHRASES}, cap=5)
     assert len(capped) == 5
     assert [entry.language for entry in capped] == ["", "", "", "", "it"]
-    tight = textualise(skill, {"it": ITALIAN_PHRASES}, cap=2)
-    assert [entry.text for entry in tight] == [entry.text for entry in textualise(skill)]
+    tight = textualize(skill, {"it": ITALIAN_PHRASES}, cap=2)
+    assert [entry.text for entry in tight] == [entry.text for entry in textualize(skill)]
 
 
 def test_a_request_in_the_other_language_ranks_only_once_the_phrases_are_there(
@@ -431,7 +431,7 @@ def test_a_learned_phrase_follows_the_derived_ones_and_says_it_was_learned(
     skill = one_language_catalog.require("runbook.queue_drain")
     store = learn(tmp_path / "state" / "learned", skill.id, *LEARNED_PHRASES)
 
-    texts = textualise(skill, {"it": ITALIAN_PHRASES}, 0, store.phrases(skill))
+    texts = textualize(skill, {"it": ITALIAN_PHRASES}, 0, store.phrases(skill))
 
     origins = [entry.origin for entry in texts]
     assert origins == [DECLARED] * 4 + [DERIVED] * 3 + [LEARNED] * 2
@@ -447,11 +447,11 @@ def test_the_cap_drops_a_learned_phrase_before_a_derived_one(
     skill = one_language_catalog.require("runbook.queue_drain")
     store = learn(tmp_path / "state" / "learned", skill.id, *LEARNED_PHRASES)
 
-    capped = textualise(skill, {"it": ITALIAN_PHRASES}, 6, store.phrases(skill))
-    tight = textualise(skill, {"it": ITALIAN_PHRASES}, 1, store.phrases(skill))
+    capped = textualize(skill, {"it": ITALIAN_PHRASES}, 6, store.phrases(skill))
+    tight = textualize(skill, {"it": ITALIAN_PHRASES}, 1, store.phrases(skill))
 
     assert [entry.origin for entry in capped] == [DECLARED] * 4 + [DERIVED] * 2
-    assert [entry.text for entry in tight] == [entry.text for entry in textualise(skill)]
+    assert [entry.text for entry in tight] == [entry.text for entry in textualize(skill)]
 
 
 def test_a_request_in_the_learned_words_ranks_only_once_they_are_learned(

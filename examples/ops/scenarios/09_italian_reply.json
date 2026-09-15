@@ -1,6 +1,6 @@
 {
   "name": "09_italian_reply",
-  "description": "The reply is written in the language the router reported, and suggests only what the catalogue offers for what was read.",
+  "description": "The reply is written in the language the router reported, and suggests only what the catalog offers for what was read.",
   "level": 1,
   "provider_script": [
     {

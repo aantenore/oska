@@ -1,0 +1,10 @@
+{
+  "cases": [
+    { "text": "take the leaver out of the support group", "expects": "this", "language": "en" },
+    { "text": "he should not be able to reach the billing tools any more", "expects": "this", "language": "en" },
+    { "text": "rimuovi questa persona dal gruppo di supporto", "expects": "this", "language": "it" },
+    { "text": "I need to be in the reporting group", "expects": "not this", "language": "en" },
+    { "text": "show me what this person can reach today", "expects": "not this", "language": "en" },
+    { "text": "the ticket can be settled now that the access is gone", "expects": "not this", "language": "en" }
+  ]
+}

@@ -9,6 +9,13 @@ procedure with no policy writes nothing.
 A planned operation whose declared spec says `write: true` stops the plan. What
 follows happens in `engine/execution.py` and `governance/`.
 
+Before any of it, the whole plan is read once and the fields the procedure
+declares under `principal_inputs` are filled from the identity the channel
+authenticated, into every operation whose input schema accepts them. That is
+the section on identity below; it happens here so that nothing — not a read,
+not the policy, not the payload a person is shown — is ever built from a value
+the model chose for a field the identity owns.
+
 1. **Declared.** The operation must be declared by the integration the plan
    names. `CapabilityRegistry.operation_spec` looks it up; an operation that is
    not there ends the plan with an `invalid_plan` outcome. This check already
@@ -18,10 +25,12 @@ follows happens in `engine/execution.py` and `governance/`.
    `capabilities.writes` of the procedure being run. A plan that reaches for a
    write the procedure does not list is an `invalid_plan` outcome, even though
    the integration declares it.
-3. **Ledger lookup.** The ledger key is computed and looked up for this
-   session. A hit emits `ledger_hit`, records a `ledger_hit` outcome with the
-   original receipt, and moves on to the next operation. The write does not run
-   twice.
+3. **Ledger lookup.** The ledger key is computed and `settled` is asked for
+   this session. A receipt that settles the intent emits `ledger_hit`, records
+   a `ledger_hit` outcome with the original receipt, and moves on to the next
+   operation. The write does not run twice. A previous attempt the connector
+   classified `retryable` settles nothing — it never reached the system — so
+   the intent may be attempted again.
 4. **Policy.** `PolicyEngine.evaluate` loads the policy the procedure declares
    and applies the first matching rule to the payload merged with the entity
    records the plan has read so far. The effect is emitted as a `policy` event.
@@ -55,7 +64,9 @@ follows happens in `engine/execution.py` and `governance/`.
    A connector that raises is caught, and the failure becomes an outcome. An
    `execute` event with `"stage": "call"` records whether it succeeded and how
    long it took. The receipt is updated to `executed` or `error` with whatever
-   the call returned.
+   the call returned, and carries the classification the connector gave the
+   failure. A call that never reached the system takes the `unavailable` path
+   instead, described below.
 9. **Verify.** The read-back the integration declares is run and its result
    compared against `verify.expect`. A `verify` event carries the status and the
    evidence.
@@ -113,6 +124,52 @@ other comparisons said, under `state_outside_declared_set`. And a read-back
 that lands on a state other than the one the move promised is recorded under
 `state_the_move_promised`, with the state expected and the state read. A write
 that ran and left the object somewhere else is not a verified write.
+
+## When the system does not answer
+
+"I cannot do that" and "I usually can, but not right now" are different
+statements, and the connector is the only place that knows which one it is
+making. So every connector result says what kind of failure it was, and the
+kind decides everything that follows.
+
+| Kind | What it means | Classification |
+| --- | --- | --- |
+| `transport` | The call did not reach the system, or the system did not complete it: a timeout, a refused connection, a host that is not there, a server reporting that it is broken, or a breaker that is open | `retryable` |
+| `refused` | The system answered and the answer was no: a record that does not exist, a value it would not take, a permission denied | `terminal` |
+| `rejected` | The request was never sent, because it was not well formed: an operation the binding does not declare, a payload missing a field the call needs | `terminal` |
+
+A result of unknown provenance — a connector that answers without classifying —
+is read as `terminal`, so nothing is ever repeated on this system's own
+initiative.
+
+**The breaker.** After `resilience.failures_before_open` consecutive transport
+failures the connector stops being called: calls are refused locally, without
+reaching the system, for `resilience.recovery_seconds`. One attempt is then let
+through and either closes the breaker or opens it again. A system that answered
+— including one that refused — is a system that is up, and closes it. A request
+that was never sent counts for nothing. Only the operations of that one binding
+degrade; nothing else about a conversation changes.
+
+**What the ledger does with it.** `lookup` returns the most recent receipt for a
+key whatever its outcome, and is what the record shows. `settled` is what the
+write path asks, and it passes over a failure classified `retryable`: a write
+that never reached the system changed nothing there and is not a write, so it
+settles nothing and the same intent may be attempted again in the same session.
+The receipt of the attempt stays in the record either way, because what was
+tried is part of the account even when nothing came of it.
+
+**The `unavailable` outcome.** An operation whose call never arrived is neither
+a result nor a refusal. It is recorded as an `unavailable` outcome naming the
+binding, the operation, the state of the breaker and when a call may go out
+again, and an `unavailable` audit event carries the same. The plan carries on
+past it. For a write, the receipt of the attempt is carried on the outcome, so
+the reply names it along with every other write of the session.
+
+The reply says it twice over, deliberately. The deterministic line reports that
+the operation could not be reached, that nothing was sent and nothing changed,
+and when it may be tried again. The reply writer is separately instructed not
+to say it was refused and not to say it was done, because those are the two
+mistakes available here and both are worse than saying nothing.
 
 ## Guardrails
 
@@ -367,18 +424,25 @@ deployment that needs a lock across sessions has to build one.
 
 A **receipt** holds the receipt id, the session, the ledger key, the integration
 and operation, the payload, the response, the status (`pending`, `executed`,
-`error`), the verification status, the verification evidence, the creation time
+`error`), the failure classification, the catalog revision the turn was decided
+under, the verification status, the verification evidence, the creation time
 and the error text. `opsdeck receipts --session <id>` prints them oldest first,
 `--json` in full.
 
 The receipt is written before the connector is called. That is deliberate, and
 it is what makes an **uncertain write** safe. If the process dies between the
-call and the response, or the call times out, the receipt stays `pending` — and
-a later identical request finds it and stops, reporting the receipt rather than
-sending the write again. `lookup` returns the most recent receipt for the key
-whatever its outcome, so an error or an unverified write blocks a retry just as
-a verified one does. Retrying is a decision for a person, made by asking for
-something the key does not cover.
+call and the response, the receipt stays `pending` — and a later identical
+request finds it and stops, reporting the receipt rather than sending the write
+again. An error or an unverified write blocks a retry just as a verified one
+does. Retrying is a decision for a person, made by asking for something the key
+does not cover.
+
+The one failure that does not block is the one that never arrived. A receipt
+whose failure the connector classified `retryable` is left in the record and
+passed over by `settled`, so the same intent may be asked for again in the same
+session. That is not a weakening of the rule; it is the rule stated exactly. The
+ledger stops one conversation from doing the same thing twice, and a call that
+did not reach the system did not do it once.
 
 ## Audit
 
@@ -403,6 +467,9 @@ events, which is what the conformance runner inspects.
 | `reply` | The turn answered. The reply kind and what is pending |
 | `guardrail` | A guardrail acted. The point, the identifier, whether it blocked or redacted, and why |
 | `budget` | A turn asked for a model call past its budget. The limit, what was spent, how many were refused |
+| `unavailable` | A call did not reach the system. Integration, operation, whether it was a write, the error, the breaker state and when a call may go out again |
+| `revision` | The session changed the catalog revision it reads through. Which revision it moved from, which to, and why |
+| `retention` | A session was removed from the record. The operation, and how many receipts, events and stored states went |
 | `trace` | Tracing is on for this turn. Where the spans are being written |
 | `proposal` | Reserved for the evolution layer |
 
@@ -427,3 +494,93 @@ The boundary is drawn here on purpose. The runtime records who a caller said
 they were, and the channel is responsible for making that claim true. A
 deployment that exposes the API without such a proxy has no identity on its
 approvals or its lifecycle transitions, whatever the audit trail says.
+
+### The identity a turn arrives under
+
+A turn may carry a principal: the subject of whoever is signed in, and whatever
+else about them the deployment puts on the call. Over HTTP it arrives in
+`X-Principal-Subject` and `X-Principal-Attributes`, which an authenticated
+proxy sets. The runtime holds no key, checks no signature and knows no
+directory, so a deployment that lets anything but its proxy reach that port has
+handed every session whatever identity the caller typed. There is no
+corresponding option on the command line, because there is no proxy there to
+believe.
+
+One check is made, and it is about consistency rather than authenticity. A
+session opened without an identity stays open to whoever arrives first. A
+session that holds one is that person's: a turn arriving under a different
+subject, or under none at all, is refused with a `409 principal_mismatch`, and
+nothing of it is run or recorded. A session is one conversation with one
+person, and a write bound to an identity halfway through would be bound to
+whichever identity happened to be on that turn.
+
+When it comes to filling a field, a principal the channel marked as not
+authenticated counts as no principal at all.
+
+### Fields taken from it
+
+A procedure that acts on a person's own account should not ask which account
+that is. `principal_inputs` maps payload field to identity attribute, field by
+field:
+
+```yaml
+principal_inputs:
+  username: subject
+```
+
+Those fields are never asked for and never offered to the model. They are
+filled from the identity before the plan runs, into every operation whose input
+schema accepts them, so the policy judges the value that will be sent. Three
+refusals follow from that:
+
+- A plan that supplies one of these fields itself is refused, naming the field
+  and the operation. It is not quietly corrected: a value the model chose and a
+  value the channel authenticated are not interchangeable, and the difference is
+  why the field was declared.
+- A procedure that declares one and is reached by a session with no
+  authenticated identity is refused, saying so. The value is not the person's
+  to give, so there is no question to ask.
+- The validator refuses a field no operation of the procedure accepts, and one
+  that is also declared a human input. A field is either asked of the person or
+  taken from the identity.
+
+The whole plan is read before any of it runs, so a read is not executed on the
+strength of a plan whose write names an identity the person chose.
+
+## Retention
+
+A conversation is personal data. The account this system keeps of one is spread
+over three files — the receipts of what it wrote, the audit trail of how it
+decided, and the state it carried between turns — and a window or a request to
+be forgotten has to reach all three or it has reached none of them.
+`governance/retention.py` is the only thing in the system that takes anything
+out of the record.
+
+```sh
+opsdeck forget session walk
+opsdeck forget expired --days 90
+```
+
+`forget` answers a request. It runs whatever the configured window is and
+whether or not the session is past it, because a person asking is not a
+schedule. `expire` applies `retention.days`, measured from the moment each
+session was last written, which is when the conversation it holds last
+happened. A window of zero days, which is the default, keeps everything:
+nothing is removed and nothing is recorded as having been.
+
+Removal leaves a line behind. The retention event names the session, the
+operation and the counts, and nothing else: not what was said, not what was
+read, not what was written. It survives the removal it records, because a
+deletion nobody can see having happened is indistinguishable from a file
+somebody edited. The audit trail is rewritten once for all the sessions named
+rather than once per session, and the events are written into the trail that
+replaced it.
+
+Neither command runs inside the serving process. A window is an operator's job
+on an operator's schedule, and a request to be forgotten is a decision somebody
+takes and can say they took. Both are destructive and neither is reversible.
+
+The window is not the whole answer and is not meant to be. What must never be
+stored is kept out of the record in the first place — that is what the input
+guardrail at the top of a turn is for. What is stored because the account needs
+it is kept for as long as the window says and no longer.

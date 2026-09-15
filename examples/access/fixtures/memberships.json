@@ -1,16 +1,69 @@
 {
   "memberships": [
-    { "username": "amoreau", "group": "finance-reports", "state": "active" },
-    { "username": "lhaddad", "group": "finance-reports", "state": "active" },
-    { "username": "lhaddad", "group": "billing-admins", "state": "active" },
-    { "username": "rsilva", "group": "support-desk", "state": "active" },
-    { "username": "jokafor", "group": "release-managers", "state": "active" },
-    { "username": "jokafor", "group": "directory-readers", "state": "active" },
-    { "username": "mfiore", "group": "directory-readers", "state": "active" },
-    { "username": "tnovak", "group": "support-desk", "state": "revoked" },
-    { "username": "tnovak", "group": "directory-readers", "state": "revoked" },
-    { "username": "rsilva", "group": "directory-readers", "state": "revoked" },
-    { "username": "mfiore", "group": "release-managers", "state": "revoked" },
-    { "username": "mfiore", "group": "finance-reports", "state": "revoked" }
+    {
+      "username": "amoreau",
+      "group": "finance-reports",
+      "state": "active"
+    },
+    {
+      "username": "lhaddad",
+      "group": "finance-reports",
+      "state": "active"
+    },
+    {
+      "username": "lhaddad",
+      "group": "billing-admins",
+      "state": "active"
+    },
+    {
+      "username": "rsilva",
+      "group": "support-desk",
+      "state": "active"
+    },
+    {
+      "username": "jokafor",
+      "group": "release-managers",
+      "state": "active"
+    },
+    {
+      "username": "jokafor",
+      "group": "directory-readers",
+      "state": "active"
+    },
+    {
+      "username": "mfiore",
+      "group": "directory-readers",
+      "state": "active"
+    },
+    {
+      "username": "tnovak",
+      "group": "support-desk",
+      "state": "revoked"
+    },
+    {
+      "username": "tnovak",
+      "group": "directory-readers",
+      "state": "revoked"
+    },
+    {
+      "username": "rsilva",
+      "group": "directory-readers",
+      "state": "revoked"
+    },
+    {
+      "username": "mfiore",
+      "group": "release-managers",
+      "state": "revoked"
+    },
+    {
+      "username": "mfiore",
+      "group": "finance-reports",
+      "state": "revoked"
+    },
+    {
+      "username": "tnovak",
+      "group": "finance-reports",
+      "state": "revoked"
+    }
   ]
 }

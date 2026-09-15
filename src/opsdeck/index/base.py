@@ -48,11 +48,11 @@ __all__ = [
     "enriched_source",
     "indexed_texts",
     "learned_path",
-    "normalise",
+    "normalize",
     "overlap_score",
     "routing_source",
-    "textualise",
-    "tokenise",
+    "textualize",
+    "tokenize",
     "top_ranked",
 ]
 
@@ -116,15 +116,15 @@ class SkillIndex(Protocol):
         ...
 
 
-def normalise(text: str) -> str:
+def normalize(text: str) -> str:
     """Lowercase the text and reduce punctuation and runs of space to single spaces."""
     return _WHITESPACE.sub(" ", _PUNCTUATION.sub(" ", text.lower())).strip()
 
 
-def tokenise(text: str) -> set[str]:
-    """The distinct words of a text, normalised."""
-    normalised = normalise(text)
-    return set(normalised.split()) if normalised else set()
+def tokenize(text: str) -> set[str]:
+    """The distinct words of a text, normalized."""
+    normalized = normalize(text)
+    return set(normalized.split()) if normalized else set()
 
 
 def overlap_score(left: set[str], right: set[str]) -> float:
@@ -202,7 +202,7 @@ class LearnedPhrases:
         return digest.hexdigest()
 
 
-def textualise(
+def textualize(
     skill: Skill,
     derived: Mapping[str, Sequence[str]] | None = None,
     cap: int = 0,
@@ -218,7 +218,7 @@ def textualise(
     seen: set[str] = set()
 
     def add(text: str, language: str = "", origin: str = DECLARED) -> None:
-        key = normalise(text)
+        key = normalize(text)
         if not key or key in seen:
             return
         seen.add(key)
@@ -255,7 +255,7 @@ def routing_source(
     def source(skill: Skill) -> list[SkillText]:
         phrases = read_examples(skill, derived) if derived is not None else None
         kept = learned.phrases(skill) if learned is not None else ()
-        return textualise(skill, phrases, cap, kept)
+        return textualize(skill, phrases, cap, kept)
 
     return source
 
@@ -270,7 +270,7 @@ def indexed_texts(
     texts: TextSource | None = None,
 ) -> list[IndexedText]:
     """Flatten skills into the texts they are indexed under."""
-    source = texts or textualise
+    source = texts or textualize
     return [
         IndexedText(skill.id, entry.text, entry.language, entry.origin)
         for skill in skills

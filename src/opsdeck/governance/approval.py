@@ -53,13 +53,13 @@ class ApprovalGate:
             operation=operation,
             approvals_required=approvals_required,
             approvals_given=0,
-            summary=self.summarise(integration_id, operation, exact),
+            summary=self.summarize(integration_id, operation, exact),
         )
 
     def check(self, pending: PendingApproval, payload: dict) -> bool:
         """True when the payload about to run is the one that was approved."""
         return payload_hash(payload) == pending.payload_hash
 
-    def summarise(self, integration_id: str, operation: str, payload: dict) -> str:
+    def summarize(self, integration_id: str, operation: str, payload: dict) -> str:
         """The sentence the user answers, carrying the payload exactly as it will be sent."""
         return f"{operation} on {integration_id} with {canonical_json(payload)}"

@@ -82,7 +82,7 @@ class ModelRouter:
 
     def _system_prompt(self, context: RoutingContext) -> str:
         processes = self._resolver.available_processes()
-        catalogue = "\n".join(
+        catalog = "\n".join(
             f"- {skill.id}: {skill.frontmatter.description}" for skill in processes
         ) or "- none"
         rules = self._config.rules
@@ -92,7 +92,7 @@ class ModelRouter:
             f"Scope: {self._resolver.declared_scope()}",
             "",
             "Procedures you may name in runbook_id:",
-            catalogue,
+            catalog,
             "",
             "Kinds:",
             *(f"- {item}" for item in _KIND_HELP),

@@ -628,7 +628,7 @@ def test_the_state_is_read_from_the_record_of_the_object_it_is_asked_about(
 def test_a_state_nobody_reported_is_a_state_nothing_is_legal_from(
     registry: SkillRegistry,
 ) -> None:
-    """An unknown state is not a licence; it is the reason to read before writing."""
+    """An unknown state is not a license; it is the reason to read before writing."""
     entity = CapabilityRegistry(registry).entity_spec("entity.deployment")
     assert entity is not None
     assert [move.to for move in entity.moves_from("succeeded")] == ["rolled_back"]

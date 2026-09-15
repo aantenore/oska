@@ -9,6 +9,7 @@ write it, and it reaches the model as part of the planning prompt.
 ```
 <catalog root>/<type>/<name>/v<version>/skill.md
 <catalog root>/<type>/<name>/v<version>/policy.json      (when the skill writes)
+<catalog root>/<type>/<name>/v<version>/evaluation.json  (the requests it must answer)
 ```
 
 The registry discovers `**/v*/skill.md` under every configured root. An id is
@@ -36,6 +37,7 @@ version, or the highest version of all when none is published.
 | `fields`, `state_field`, `states`, `relations` | entity | The ontology |
 | `initial_state`, `final_states`, `lifecycle`, `state_read` | entity | The state machine, when the record has one |
 | `human_inputs` | runbook, composite | Payload fields only a person may supply |
+| `principal_inputs` | runbook, composite | Payload fields taken from the authenticated identity, as field to attribute |
 | `guardrails` | all | Identifiers of the promises this skill keeps |
 | `runbooks` | composite | The member runbooks, in order |
 
@@ -317,6 +319,76 @@ the text of an incident note, a justification, a reason recorded against a
 change. A composite's members each declare their own, and a goal is held to the
 union.
 
+### Fields taken from the identity
+
+`principal_inputs` names payload fields whose value comes from the identity the
+channel authenticated, mapping each field to the attribute it is read from.
+
+```yaml
+principal_inputs:
+  username: subject
+```
+
+`subject` is what that identity is called; any other attribute the deployment
+put on the call is named the same way. A procedure that acts on a person's own
+account declares the account field here and then never asks which account it
+is: the field is not offered to the model, is filled before the plan runs, and
+a plan that supplies it anyway is refused rather than corrected. A session with
+no authenticated identity does not reach such a procedure at all — the refusal
+says so, because the value is not the person's to give.
+
+Two rules the validator enforces. Every declared field must be one that some
+operation reachable from this procedure accepts, or the value would be resolved
+on every turn and written into no payload. And a field cannot be both a human
+input and a principal input: it is either asked of the person or taken from the
+identity. What the write path does with all this is in
+[governance.md](governance.md#identity).
+
+### The evaluation set beside it
+
+A ranking threshold that is a hand-set number is a guess, and a guess ages. What
+does not age is a worked example. A skill may carry an `evaluation.json` in its
+version directory holding the requests that must reach it and the requests that
+must not:
+
+```json
+{
+  "cases": [
+    { "text": "please restart the payments service", "expects": "this", "language": "en" },
+    { "text": "riavvia il servizio di pagamento", "expects": "this", "language": "it" },
+    { "text": "undo the last deployment of the api", "expects": "not this", "language": "en" }
+  ]
+}
+```
+
+`expects` is `this` or `not this` and defaults to `this`. `language` is stated
+rather than guessed, and an empty value means the author did not say.
+
+```sh
+opsdeck evaluate catalog
+opsdeck evaluate suggest runbook.service_health
+```
+
+`evaluate catalog` runs every set in the catalog through the same ranking the
+runtime uses, and leaves a non-zero status on any failing case, so a new
+procedure that takes another's requests fails the build instead of a
+conversation. It ranks by keyword overlap and needs no provider, which is what
+makes it identical on every machine; a deployment that ranks by embedding should
+run the same sets against its own provider before publishing.
+
+The cases that matter are the ones that nearly match — a set written from a
+skill's own triggers proves very little, since those words reach it by
+construction. `evaluate suggest` drafts that half, drawn from the declared
+triggers of the skills that rank closest, and prints it to paste and edit. It
+writes nothing, because which neighboring requests genuinely compete is
+a judgment about the catalog.
+
+A set is optional. `validate` does not require one, and the quality gate refuses
+a proposal whose set is there and failing rather than one whose set is absent:
+making it mandatory would push authors to paste in cases that pass rather than
+cases that matter. Both commands name the procedures carrying no set, so the
+absence is visible rather than silent.
+
 ### The policy beside it
 
 ```json
@@ -430,6 +502,8 @@ command exits non-zero when there is at least one.
 | `ontology_move_from_final_state` | entity | A move leaves a state declared final |
 | `ontology_unreachable_state` | entity | A move leads to a state that cannot be reached from the initial state |
 | `ontology_conflicting_required_move` | entity | One state declares more than one required move |
+| `principal_input_not_declared` | runbook, composite | A field taken from the identity is not a field any operation of this procedure accepts |
+| `principal_input_shadows_human_input` | runbook, composite | A field is declared both a human input and a principal input |
 | `missing_runtime` | runbook, composite | No `runtime` block |
 | `too_few_triggers` | runbook, composite | Fewer than three triggers |
 | `duplicate_triggers` | runbook, composite | The same trigger twice |
@@ -455,6 +529,11 @@ file outright, and the registry reports it as `parse_error`: an id that does not
 match its type, a description outside 20 to 200 characters, triggers on an
 entity or an integration, operations on anything but an integration, fields,
 states, relations or any of the lifecycle keys on anything but an entity,
-`human_inputs` on anything but a runbook or a composite, `runbooks` on anything
-but a composite, a composite with no runbooks, and a write operation with no
-`verify`.
+`human_inputs` or `principal_inputs` on anything but a runbook or a composite,
+the same field named by both, `runbooks` on anything but a composite, a
+composite with no runbooks, and a write operation with no `verify`.
+
+An evaluation set is not part of validation. It is a file beside the skill
+rather than a declaration in it, and `opsdeck evaluate catalog` is what reads
+it; a set that cannot be read is reported there and by the quality gate, not by
+`validate`.

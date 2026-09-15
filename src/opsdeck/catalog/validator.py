@@ -21,7 +21,7 @@ from pydantic import BaseModel, ValidationError
 from opsdeck.catalog.loader import composite_capabilities
 from opsdeck.config import Settings, guardrail_catalog_path, load_runtime_config, load_settings
 from opsdeck.contracts.policy import Policy
-from opsdeck.contracts.skill import OperationSpec, Skill, SkillType
+from opsdeck.contracts.skill import OperationSpec, Skill, SkillFrontmatter, SkillType
 
 GUARDRAIL_CATALOG_KEY = "guardrails"
 
@@ -77,6 +77,7 @@ def validate(
     by_id = _current_by_id(all_skills)
     issues.extend(_reference_issues(skill, by_id))
     issues.extend(_capability_issues(skill, by_id))
+    issues.extend(_principal_input_issues(skill, by_id))
     issues.extend(_operation_issues(skill))
     issues.extend(_ontology_issues(skill, by_id))
     issues.extend(_runtime_issues(skill))
@@ -205,6 +206,63 @@ def _capability_issues(skill: Skill, by_id: dict[str, Skill]) -> list[Validation
         elif not spec.write:
             issues.append(_issue(skill, "write_is_read", f"{name} is not a write operation"))
     return issues
+
+
+def _principal_input_issues(skill: Skill, by_id: dict[str, Skill]) -> list[ValidationIssue]:
+    """Every field taken from the identity is a field some operation here accepts.
+
+    A procedure that binds a field nothing accepts has bound nothing: the value
+    would be resolved on every turn and written into no payload, and the write
+    would go out carrying whatever the conversation supplied instead, which is
+    the situation the declaration exists to end. The other check restates in the
+    catalog what the contract already refuses, so a frontmatter that reached the
+    catalog without passing through it is still caught here.
+    """
+    frontmatter = skill.frontmatter
+    declared = frontmatter.principal_inputs
+    if not declared:
+        return []
+    accepted = _accepted_fields(frontmatter, by_id)
+    human = set(frontmatter.human_inputs)
+    issues: list[ValidationIssue] = []
+    for name in sorted(declared):
+        if name in human:
+            issues.append(
+                _issue(
+                    skill,
+                    "principal_input_shadows_human_input",
+                    f"{name} is declared a human input as well, and a field is either "
+                    "asked of the person or taken from the identity",
+                )
+            )
+        if name not in accepted:
+            issues.append(
+                _issue(
+                    skill,
+                    "principal_input_not_declared",
+                    f"{name} is not a field any operation of this procedure accepts",
+                )
+            )
+    return issues
+
+
+def _accepted_fields(frontmatter: SkillFrontmatter, by_id: dict[str, Skill]) -> set[str]:
+    """Every payload field the operations reachable from this procedure accept.
+
+    A composite declares no integrations of its own, so the operations of its
+    runbooks are what it may fill.
+    """
+    integrations = list(frontmatter.integrations)
+    if frontmatter.type is SkillType.composite:
+        for member in frontmatter.runbooks:
+            held = by_id.get(member)
+            if held is not None:
+                integrations.extend(held.frontmatter.integrations)
+    names: set[str] = set()
+    for integration in integrations:
+        for spec in _operations_of(by_id.get(integration)):
+            names |= _properties(spec.input_schema)
+    return names
 
 
 def _operation_issues(skill: Skill) -> list[ValidationIssue]:

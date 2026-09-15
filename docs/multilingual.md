@@ -65,9 +65,11 @@ Two occasions, and no others.
 
 **At publication.** When a proposal is published and a provider is configured
 and `enrichment.enabled` is on, the derived phrases of the new version are
-written as part of the same operation. Whatever happens is recorded in the
-transition note and nowhere else: the publication already stands, and nothing
-about it is undone by a paraphrase that could not be produced.
+written as part of the same operation — beside the package inside the change
+request that publication composes, so they travel with it and land in the
+catalog when a person applies it. Whatever happens is recorded in the
+transition note and nowhere else: the composed package already stands, and
+nothing about it is undone by a paraphrase that could not be produced.
 
 **When somebody asks.** After a catalog is edited by hand, after a language is
 added to the configuration, or on a schedule:

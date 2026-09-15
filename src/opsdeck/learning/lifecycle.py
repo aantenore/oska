@@ -7,17 +7,27 @@ not in `ALLOWED`, refuses an empty actor and records who asked. No other
 function in this package writes a state, and publication additionally re-runs
 the quality checks and refuses on any issue.
 
+Where publication lands has moved. It used to write the new version into a
+catalog root, which made the process that answers people the process that
+rewrote the catalog it answered from. It now composes a change request: the
+same package, written under the change request root for a person to read, with
+the request id recorded in the transition note. `transition` takes no catalog
+root and cannot be given one. A caller that wants the package installed calls
+`ChangeRequestStore.apply` with the root it names, which is reachable from a
+terminal and from nowhere in the engine, the HTTP application or a job.
+
 Publication is also where the derived routing examples of the new procedure are
-written, when a provider is given and enrichment is enabled. That work follows
-the publication and never gates it: a provider that fails, or a file that cannot
-be written, is recorded in the transition note and leaves the published
-procedure exactly as it is. Routing it in one language is what publication
-promised; routing it in several is what enrichment adds.
+written, when a provider is given and enrichment is enabled. They are written
+beside the package inside the change request, so they travel with it and land
+in the catalog when a person applies it. That work follows the publication and
+never gates it: a provider that fails, or a file that cannot be written, is
+recorded in the transition note and leaves the composed package exactly as it
+is. Routing it in one language is what publication promised; routing it in
+several is what enrichment adds.
 """
 
 from __future__ import annotations
 
-import json
 from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
@@ -29,6 +39,7 @@ from opsdeck.config import EnrichmentConfig
 from opsdeck.contracts.proposal import ProposalState, ProposalTransition, SkillProposal
 from opsdeck.contracts.skill import Skill
 from opsdeck.learning import quality
+from opsdeck.learning.changes import ChangeRequest, ChangeRequestStore, new_request
 from opsdeck.learning.proposals import ProposalStore, render_skill, split_skill
 
 ALLOWED: dict[ProposalState, frozenset[ProposalState]] = {
@@ -38,7 +49,6 @@ ALLOWED: dict[ProposalState, frozenset[ProposalState]] = {
 }
 
 SKILL_FILENAME = "skill.md"
-POLICY_FILENAME = "policy.json"
 
 
 class LifecycleError(RuntimeError):
@@ -53,13 +63,18 @@ def transition(
     note: str = "",
     *,
     registry: SkillRegistry,
-    publish_root: Path,
+    changes: ChangeRequestStore,
     schema_dir: Path | None = None,
     provider: PhraseProvider | None = None,
     enrichment: EnrichmentConfig | None = None,
     languages: Sequence[str] = (),
 ) -> SkillProposal:
-    """Move one proposal to another state and record who asked for it."""
+    """Move one proposal to another state and record who asked for it.
+
+    Reaching `published` composes a change request rather than writing into a
+    catalog: there is no catalog root to pass here, and the effect of the last
+    step is a package under `changes.root` that a person reads and applies.
+    """
     actor = by.strip()
     if not actor:
         raise LifecycleError("a transition records the actor that asked for it")
@@ -78,9 +93,10 @@ def transition(
             store.save(proposal)
             listed = "; ".join(proposal.quality.issues)
             raise LifecycleError(f"the proposal does not pass its checks: {listed}")
-        markdown, published = _publish(proposal, registry, Path(publish_root))
+        markdown, composed, request = _compose(proposal, registry, changes, actor)
         proposal.skill_markdown = markdown
-        note = _with_enrichment(note, published, provider, enrichment, languages)
+        note = _and(note, f"change request {request.request_id} at {changes.root}")
+        note = _with_enrichment(note, composed, provider, enrichment, languages)
     proposal.state = target
     proposal.history.append(
         ProposalTransition(state=target, at=datetime.now(UTC), by=actor, note=note)
@@ -102,9 +118,11 @@ def _with_enrichment(
     config: EnrichmentConfig | None,
     languages: Sequence[str],
 ) -> str:
-    """Write the derived routing examples of a freshly published procedure.
+    """Write the derived routing examples of a freshly composed procedure.
 
-    Whatever happens here is said in the note and nowhere else: the publication
+    The files land beside the package inside the change request, so a person
+    who applies the request gets them and a person who rejects it gets nothing.
+    Whatever happens here is said in the note and nowhere else: the package
     already stands, and nothing about it is undone by a paraphrase that could
     not be produced.
     """
@@ -125,23 +143,27 @@ def _and(note: str, addition: str) -> str:
     return f"{note}; {addition}" if note.strip() else addition
 
 
-def _publish(
+def _compose(
     proposal: SkillProposal,
     registry: SkillRegistry,
-    publish_root: Path,
-) -> tuple[str, Skill]:
+    changes: ChangeRequestStore,
+    actor: str,
+) -> tuple[str, Skill, ChangeRequest]:
+    """Write the package a person would install, under the change request root.
+
+    The version is still read from the catalog the runtime serves, so a request
+    says which version it would become; whether that version is still free is
+    settled again by `apply`, which refuses to overwrite one that is there.
+    """
     frontmatter, body = split_skill(proposal.skill_markdown)
-    skill = parse_skill_text(proposal.skill_markdown, publish_root / SKILL_FILENAME)
+    skill = parse_skill_text(proposal.skill_markdown, changes.root / SKILL_FILENAME)
     version = next_version(registry, skill.id)
     frontmatter["version"] = version
     frontmatter["status"] = "published"
     markdown = render_skill(frontmatter, body)
-    directory = publish_root / skill.type.value / skill.id.split(".", 1)[1] / f"v{version}"
-    directory.mkdir(parents=True, exist_ok=True)
-    if proposal.policy is not None:
-        (directory / POLICY_FILENAME).write_text(
-            json.dumps(proposal.policy, indent=2) + "\n", encoding="utf-8"
-        )
-    path = directory / SKILL_FILENAME
-    path.write_text(markdown, encoding="utf-8")
-    return markdown, parse_skill_text(markdown, path)
+    request = new_request(
+        proposal.proposal_id, skill.id, version, actor, proposal.quality
+    )
+    directory = changes.save(request, skill_markdown=markdown, policy=proposal.policy)
+    path = directory / request.package / SKILL_FILENAME
+    return markdown, parse_skill_text(markdown, path), request

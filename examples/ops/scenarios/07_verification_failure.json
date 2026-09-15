@@ -115,7 +115,7 @@
     },
     {
       "user": "yes",
-      "connector_behaviours": {
+      "connector_behaviors": {
         "integration.container_runtime": {
           "service.status": {
             "override": {
@@ -146,7 +146,7 @@
     },
     {
       "user": "reporting is still down, send that restart again",
-      "connector_behaviours": {
+      "connector_behaviors": {
         "integration.container_runtime": {
           "service.status": null
         }

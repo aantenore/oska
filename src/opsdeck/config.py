@@ -74,7 +74,7 @@ class DiscoveryConfig(BaseModel):
 
 
 class RouterRules(BaseModel):
-    """Tokens the rule layer recognises without a model."""
+    """Tokens the rule layer recognizes without a model."""
 
     approve_tokens: list[str] = Field(default_factory=list)
     reject_tokens: list[str] = Field(default_factory=list)
@@ -194,6 +194,62 @@ class ImprovementConfig(BaseModel):
     )
 
 
+DEFAULT_BUSY_TIMEOUT_SECONDS = 10.0
+"""How long a connection waits for another to finish before it gives up."""
+
+
+class StorageConfig(BaseModel):
+    """What the files a session and its receipts live in are allowed to cost.
+
+    Two turns of the same process may write at once; `busy_timeout_seconds` is
+    how long one waits for the other rather than failing the turn.
+    """
+
+    busy_timeout_seconds: float = DEFAULT_BUSY_TIMEOUT_SECONDS
+
+
+class CatalogConfig(BaseModel):
+    """Where built catalog revisions are kept, and which one is served.
+
+    `revision` names the revision the runtime serves; empty means the newest
+    one the store holds. `tenant` is the catalog a deployment serves when it
+    serves more than one.
+    """
+
+    revisions_root: Path = Path("state/revisions")
+    revision: str = ""
+    tenant: str = "default"
+    pin_sessions: bool = True
+
+
+class ChangeRequestConfig(BaseModel):
+    """Where a proposed catalog change is written for a person to review."""
+
+    root: Path = Path("state/changes")
+
+
+class ResilienceConfig(BaseModel):
+    """What a connector is allowed to cost before a capability is called unavailable.
+
+    `failures_before_open` is how many consecutive failures open the breaker,
+    `recovery_seconds` how long it stays open before one attempt is let through.
+    """
+
+    timeout_seconds: float = 30.0
+    failures_before_open: int = 3
+    recovery_seconds: float = 30.0
+
+
+class RetentionConfig(BaseModel):
+    """How long the record of a conversation is kept.
+
+    `days` is the window; zero keeps everything. Deletion on request is always
+    available regardless of the window.
+    """
+
+    days: int = 0
+
+
 class RuntimeConfig(BaseModel):
     """Contents of `runtime.json`."""
 
@@ -210,6 +266,11 @@ class RuntimeConfig(BaseModel):
     turn: TurnConfig = Field(default_factory=TurnConfig)
     enrichment: EnrichmentConfig = Field(default_factory=EnrichmentConfig)
     improvement: ImprovementConfig = Field(default_factory=ImprovementConfig)
+    catalog: CatalogConfig = Field(default_factory=CatalogConfig)
+    changes: ChangeRequestConfig = Field(default_factory=ChangeRequestConfig)
+    resilience: ResilienceConfig = Field(default_factory=ResilienceConfig)
+    retention: RetentionConfig = Field(default_factory=RetentionConfig)
+    storage: StorageConfig = Field(default_factory=StorageConfig)
 
 
 class ModelConfig(BaseModel):

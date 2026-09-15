@@ -7,6 +7,12 @@ expectation that did not hold. Nothing here raises on a failed expectation; a
 run always returns a result, so a suite reports on every scenario rather than
 stopping at the first one.
 
+A scenario may also carry a `principal`: the identity an authenticated channel
+would have put on every turn of the session. The runner passes it in as a
+channel would, so a procedure that takes a field from the identity can be
+exercised without the scenario writing that field anywhere, and a scenario that
+carries none is a session nobody signed in to.
+
 A scenario may also carry a `learning` block. That block runs after the turns:
 it drafts a proposal from the session the turns built, moves it through the
 states it names, and checks where it ended up, whether the published procedure
@@ -25,11 +31,13 @@ from pydantic import BaseModel, Field
 from opsdeck.audit.sink import MemorySink
 from opsdeck.config import Settings, load_runtime_config, state_path
 from opsdeck.contracts.common import TurnResult
-from opsdeck.contracts.proposal import SkillProposal
+from opsdeck.contracts.proposal import ProposalState, SkillProposal
 from opsdeck.contracts.receipt import WriteReceipt
 from opsdeck.engine.engine import Engine
 from opsdeck.engine.factory import build_engine
+from opsdeck.governance.identity import Principal
 from opsdeck.learning import LifecycleError, draft_from_session, quality, transition
+from opsdeck.learning.changes import ChangeRequestState, ChangeRequestStore
 from opsdeck.learning.proposals import ProposalStore
 from opsdeck.planner.scripted import ScriptedModelProvider
 from opsdeck.services import PROPOSALS_DIRNAME
@@ -39,6 +47,7 @@ __all__ = [
     "Expect",
     "LearningExpect",
     "LearningSpec",
+    "PrincipalSpec",
     "RefusedTransition",
     "ScenarioFile",
     "ScenarioResult",
@@ -78,13 +87,13 @@ class Expect(BaseModel):
 class TurnSpec(BaseModel):
     """One typed turn and its expectations.
 
-    `connector_behaviours` is applied before the turn runs, keyed by integration
-    and then by operation; a null behaviour clears the one in force.
+    `connector_behaviors` is applied before the turn runs, keyed by integration
+    and then by operation; a null behavior clears the one in force.
     """
 
     user: str
     expect: Expect
-    connector_behaviours: dict | None = None
+    connector_behaviors: dict | None = None
 
 
 class TransitionSpec(BaseModel):
@@ -125,12 +134,21 @@ class LearningSpec(BaseModel):
     expect_refused: RefusedTransition | None = None
 
 
+class PrincipalSpec(BaseModel):
+    """The identity an authenticated channel puts on every turn of this session."""
+
+    subject: str
+    attributes: dict = Field(default_factory=dict)
+    authenticated: bool = True
+
+
 class ScenarioFile(BaseModel):
     """One scenario as it is written on disk."""
 
     name: str
     description: str = ""
     level: int = DEFAULT_LEVEL
+    principal: PrincipalSpec | None = None
     provider_script: list[dict] = Field(default_factory=list)
     turns: list[TurnSpec] = Field(default_factory=list)
     learning: LearningSpec | None = None
@@ -199,14 +217,23 @@ def run_scenario(
         provider=provider,
         audit_sink=MemorySink(),
     )
+    principal = (
+        None
+        if scenario.principal is None
+        else Principal(
+            subject=scenario.principal.subject,
+            attributes=dict(scenario.principal.attributes),
+            authenticated=scenario.principal.authenticated,
+        )
+    )
     failures: list[str] = []
     replies: list[str] = []
     events: list = []
     ran = 0
     for position, turn in enumerate(scenario.turns, start=1):
-        _apply_behaviours(engine, turn.connector_behaviours or {})
+        _apply_behaviors(engine, turn.connector_behaviors or {})
         try:
-            result = engine.turn(scenario.name, turn.user)
+            result = engine.turn(scenario.name, turn.user, principal)
         except Exception as exc:  # a turn that raises is a failure of the scenario
             failures.append(f"turn {position}: the turn raised {type(exc).__name__}: {exc}")
             break
@@ -338,19 +365,37 @@ def _move(
 ) -> Any:
     """One transition, bound to this scenario's catalog and publication root."""
 
+    changes = ChangeRequestStore(publish_root.parent / "changes")
+
     def _apply(proposal_id: str, to: str, by: str, note: str = "") -> SkillProposal:
-        return transition(
+        moved = transition(
             store,
             proposal_id,
             to,
             by,
             note,
             registry=engine.registry,
-            publish_root=publish_root,
+            changes=changes,
             schema_dir=settings.schemas_dir,
         )
+        if moved.state is ProposalState.published:
+            _review(changes, publish_root, by)
+        return moved
 
     return _apply
+
+
+def _review(changes: ChangeRequestStore, publish_root: Path, by: str) -> None:
+    """Apply what publication composed, the way a reviewer would.
+
+    The runtime composes a change request and stops; putting it into a catalog
+    is a person's act. A scenario that expects a published procedure is asking
+    for both halves, so the runner performs the second one explicitly and under
+    the name of whoever asked for the move.
+    """
+    publish_root.mkdir(parents=True, exist_ok=True)
+    for request in changes.list(ChangeRequestState.open):
+        changes.apply(request.request_id, publish_root, by=by)
 
 
 def _check_refused(
@@ -468,11 +513,11 @@ def _check_receipts_are_stated(receipts: list[WriteReceipt], replies: list[str])
     return failures
 
 
-def _apply_behaviours(engine: Engine, behaviours: dict) -> None:
-    for integration_id, operations in behaviours.items():
+def _apply_behaviors(engine: Engine, behaviors: dict) -> None:
+    for integration_id, operations in behaviors.items():
         connector = engine.connectors.get(integration_id)
-        for operation, behaviour in operations.items():
-            connector.set_behaviour(operation, behaviour)
+        for operation, behavior in operations.items():
+            connector.set_behavior(operation, behavior)
 
 
 def _route_kind(result: TurnResult) -> str | None:

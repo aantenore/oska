@@ -7,28 +7,81 @@ filled in.
 ## Levels
 
 **Level 1 — Declared.** The system declares what exists and what can be done,
-and speaks from its own catalogue.
+and speaks from its own catalog.
 
-Requires: all `OSKA-INT-*`, `OSKA-ONT-*` and `OSKA-SKL-*`; `OSKA-COG-11`;
-`OSKA-XC-1` to `OSKA-XC-4` and `OSKA-XC-9`. The validator passes over the whole
-catalogue with no issues. Every sentence the system says about its capability is
-derived. The suite runs offline against a scripted provider. Scenario
-categories C1, C13 and C21 pass.
+Requires: `OSKA-INT-1` to `OSKA-INT-19`; `OSKA-ONT-1` to `OSKA-ONT-23`;
+`OSKA-SKL-1` to `OSKA-SKL-17`; `OSKA-COG-11`; `OSKA-XC-1` to `OSKA-XC-4` and
+`OSKA-XC-9`. The validator passes over the whole catalog with no issues.
+Every sentence the system says about its capability is derived. The suite runs
+offline against a scripted provider. Scenario categories C1, C13 and C21 pass.
 
 **Level 2 — Governed.** Every effect on the world crosses the write path.
 
-Requires: Level 1, plus all `OSKA-GOV-*`, all `OSKA-IXN-*`, all remaining
-`OSKA-COG-*` and all remaining `OSKA-XC-*`. Scenario categories C1 to C14, C17,
-C18, C20 and C22 pass.
+Requires: Level 1, plus `OSKA-GOV-1` to `OSKA-GOV-24` and `OSKA-GOV-30` to
+`OSKA-GOV-32`; `OSKA-IXN-1` to `OSKA-IXN-13`; `OSKA-COG-1` to `OSKA-COG-10` and
+`OSKA-COG-12` to `OSKA-COG-24`; `OSKA-XC-5` to `OSKA-XC-8`, `OSKA-XC-10` to
+`OSKA-XC-19` and `OSKA-XC-23`. Scenario categories C1 to C14, C17, C18, C20 and
+C22 pass.
 
-**Level 3 — Adaptive.** The catalogue grows through a human-controlled
+**Level 3 — Adaptive.** The catalog grows through a human-controlled
 lifecycle.
 
-Requires: Level 2, plus all `OSKA-EVO-*`. Scenario categories C15 and C16 pass.
+Requires: Level 2, plus `OSKA-EVO-1` to `OSKA-EVO-34`. Scenario categories
+C15 and C16 pass.
 
 A system MUST NOT claim a level whose scenario categories it does not run. A
 system MAY claim Level 2 without Level 3; evolution is optional, governance is
 not.
+
+The lists name ranges rather than wildcards, and that is deliberate. A wildcard
+is a claim about requirements nobody has written yet: `all OSKA-SKL-*` swept the
+revision store into Level 1 on the day that store was specified, and
+`all OSKA-GOV-*` swept in the identity requirements, neither of which any
+scenario of the level runs. A range says what a level requires and stops there.
+A requirement added to a layer therefore joins a level when someone adds it to a
+list here, and not before. The ranges are inclusive at both ends and take in the
+lettered identifiers that sit between them (`OSKA-COG-17a`, `OSKA-EVO-13a`);
+they do not overlap each other, so what a level adds to the one below it is read
+off the list rather than worked out.
+
+### Required of a deployment, not of a level
+
+Two groups of requirements are deliberately in no level, because they are
+statements about how a system is deployed rather than about what a catalog
+can be made to do.
+
+A catalog released as a revision (`OSKA-SKL-18` to `OSKA-SKL-24`,
+`OSKA-IXN-14` to `OSKA-IXN-20`) is what a deployment of several replicas needs
+and what a single process on its own disk does not; serving a directory stays
+legal at every level. An authenticated principal (`OSKA-GOV-25` to
+`OSKA-GOV-29`) is what a channel that knows who is speaking must then do about
+it; a channel that authenticates nobody has nothing to carry.
+
+Neither group is exercised by a scenario of either reference suite: the
+operational suite serves a directory and carries no principal, and the access
+suite is the only catalog that declares a principal field at all. A level is
+attained by running scenarios over one catalog, so requiring either group at a
+level would assert of a suite something no scenario of that suite supports —
+which is the error the wildcards made.
+
+So they are required of the deployment that has them, at whatever level it
+claims: a deployment serving a built revision MUST hold to the revision
+requirements, and a deployment whose channel authenticates its caller MUST hold
+to the identity requirements. Both are checked by the unit suite rather than by
+a scenario — `tests/unit/test_revision.py` and `tests/unit/test_pinning.py` for
+the first, `tests/unit/test_identity.py` for the second — and a conformance
+report SHOULD state which of the two the deployment does, beside the level it
+claims.
+
+### Still undecided
+
+Evaluation sets (`OSKA-SKL-25` to `OSKA-SKL-27` and `OSKA-EVO-35`) and the
+service-level numbers (`OSKA-XC-20` to `OSKA-XC-22`) are the requirements the
+three lists leave out for a different reason: not settled rather than not of a
+level. They are stated in the layer documents and held to by the reference
+implementation; what no level says yet is what a catalog whose skills carry no
+evaluation set, or a deployment that has never turned tracing on, is entitled to
+claim. They are listed under "Open items".
 
 C19 is declared below and no level requires it yet: it is run by the access
 suite alone, and requiring it at Level 2 would state something about the
@@ -64,7 +117,7 @@ A scenario is one session, recorded as a JSON document. The normative schema is
         "receipts": 0,
         "verification": null
       },
-      "connector_behaviours": {
+      "connector_behaviors": {
         "integration.container_runtime": { "service.restart": { "fail": true } }
       }
     }
@@ -89,7 +142,7 @@ Field meanings:
 | `turns[].expect.pending` | `"input"`, `"approval"` or `null` |
 | `turns[].expect.receipts` | Number of receipts in the session after the turn |
 | `turns[].expect.verification` | Verification status of the most recent receipt, or `null` |
-| `turns[].connector_behaviours` | Failures or overrides injected before the turn runs |
+| `turns[].connector_behaviors` | Failures or overrides injected before the turn runs |
 
 `guardrail` is not a route kind. It is what a runner MUST report for a turn
 that a guardrail declared at the `input` point ended before the turn was
@@ -103,9 +156,9 @@ turn that was classified and then refused as satisfying it. See `OSKA-GOV-19`.
 of that level passed, and MUST report as attained the highest level whose
 scenarios and those of every level below it all pass.
 
-`connector_behaviours` is written beside `expect`, on the turn. Behaviours are
+`connector_behaviors` is written beside `expect`, on the turn. Behaviors are
 keyed by integration identifier and then by operation name, and are applied
-before the turn runs; a null behaviour clears the one in force. That is the
+before the turn runs; a null behavior clears the one in force. That is the
 only placement, and a runner MUST NOT read the object from anywhere else.
 
 ### The learning block
@@ -144,7 +197,7 @@ names, and checked where it landed.
 | `learning.expect_refused` | A transition that MUST be refused: `to` names the state, `by` names the actor and defaults to the empty string, the usual case |
 | `learning.transitions` | The moves to perform in order, each carrying `to`, `by` and an optional `note` |
 | `learning.expect.state` | The state the proposal MUST be in when the block finishes |
-| `learning.expect.published_id` | The skill identifier the catalogue MUST hold, published, after the block; unset means the check is not made |
+| `learning.expect.published_id` | The skill identifier the catalog MUST hold, published, after the block; unset means the check is not made |
 | `learning.expect.quality_passed` | Whether the quality report MUST pass; unset means the check is not made |
 
 The order is normative. `expect_refused` is attempted first, while the proposal
@@ -154,11 +207,11 @@ that is allowed where the scenario expects a refusal is a failure. The
 transitions are then applied in order, and the first one that is refused stops
 the block and is reported.
 
-When `published_id` is set, the runner MUST check three things: the catalogue
+When `published_id` is set, the runner MUST check three things: the catalog
 holds that identifier, it holds it as published, and the file it holds is the
 one under the publication root — so a scenario cannot pass by finding the
 hand-written copy the candidate was drafted from. This requires the publication
-root to be one of the catalogue roots of the run, which a runner MUST arrange
+root to be one of the catalog roots of the run, which a runner MUST arrange
 for a scenario carrying a learning block.
 
 ### What a runner must do
@@ -182,7 +235,7 @@ reply calls a write verified while the receipt it names says otherwise.
 
 | Id | Category | What it must prove | Reference scenario | Level |
 | --- | --- | --- | --- | --- |
-| C1 | Greeting and scope | The capability list is derived from the catalogue | `01_greeting` | 1 |
+| C1 | Greeting and scope | The capability list is derived from the catalog | `01_greeting` | 1 |
 | C2 | Governed write | Approval on the exact payload, verified read-back, receipt; the same request again replays the ledger without writing | `02_restart_staging` | 2 |
 | C3 | Second approval | `require_second_approval` needs two approvals and states how many stand | `03_restart_production` | 2 |
 | C4 | Missing input then reject | A question is asked, answered, then the write is rejected and nothing runs | `04_rollback_rejected` | 2 |
@@ -194,7 +247,7 @@ reply calls a write verified while the receipt it names says otherwise.
 | C10 | Session limit | A write beyond `max_per_session` is denied, counting failed receipts | `12_max_per_session` | 2 |
 | C11 | Approval with nothing pending | A bare approval executes nothing and answers from scope | `13_approval_with_nothing_pending` | 1 |
 | C12 | Composite | Members run in order; the write inside one still stops for approval | `14_composite_triage` | 2 |
-| C13 | Off scope | A request outside the catalogue is declined in derived words | `08_off_scope` | 1 |
+| C13 | Off scope | A request outside the catalog is declined in derived words | `08_off_scope` | 1 |
 | C14 | Language | The reply is written in the language of the turn | `09_italian_reply` | 1 |
 | C15 | Proposal lifecycle | A proposal cannot reach `approved` or `published` without a named actor | `15_learning_lifecycle` | 3 |
 | C16 | Publication | A published skill validates, versions and routes without a restart | `15_learning_lifecycle` | 3 |
@@ -213,14 +266,14 @@ level; see "Open items".
 
 ## The reference suites
 
-The reference implementation runs two suites, over two catalogues that share no
+The reference implementation runs two suites, over two catalogs that share no
 vocabulary: `examples/ops/scenarios/` over an operational domain of services,
 deployments, incidents and alerts, and `examples/access/scenarios/` over an
 access management domain of accounts, groups and requests. The reference
 scenario named for each category above is the one in the operational suite.
 
 A level is attained per suite, because a level is a statement about a
-catalogue and the runtime that serves it, not about the package alone, and the
+catalog and the runtime that serves it, not about the package alone, and the
 two suites attain different levels. The operational suite attains level 3: it
 runs every category a level requires — C1 to C18 and C20 to C22 — C15 and C16
 included. The access suite attains level 2: it runs C1, C2 twice, C3, C10, C12
@@ -237,9 +290,110 @@ report states level 2 as attained by the runner and names the categories it
 leaves to the operational suite. The operational suite runs them all.
 
 Both suites are run by the same runner and the same command, each against its
-own catalogue and its own connector bindings; see
+own catalog and its own connector bindings; see
 [reference-implementation.md](reference-implementation.md) for the two
 invocations.
+
+## What a catalog change runs, and what a deployment can say about itself
+
+Two things a conformant system does that no scenario in the table above covers.
+It checks, whenever the catalog changes, that every procedure still answers
+the requests its author said it must and none of the requests its author said it
+must not. And it can say how it is serving, in numbers a person can be woken up
+for.
+
+### Evaluation sets
+
+A ranking threshold that is a hand-set number is a guess about a catalog, and
+the guess ages as the catalog grows. The durable thing is not the number but
+the worked example: the words a person would really use, next to the procedure
+they meant. So a skill MAY carry its own evaluation set beside it, in
+`evaluation.json` in the same version directory as `skill.md`:
+
+```json
+{
+  "cases": [
+    { "text": "please restart the payments service", "expects": "this", "language": "en" },
+    { "text": "undo the last deployment of the api", "expects": "not this", "language": "en" }
+  ]
+}
+```
+
+`text` is the request. `expects` is `this` when the request must reach the skill
+the set sits beside and `not this` when it must reach something else.
+`language` is what the request is written in; an empty value means the author
+did not say.
+
+A case marked `this` holds when the skill is the top of the ranking and the
+ranking is convincing enough for the runtime to choose it: a request that ranks
+first below the floor reaches nothing in a conversation and must not pass an
+evaluation either. A case marked `not this` holds when the skill is not the top
+of the ranking at all. That asymmetry is deliberate. A near-miss that is the
+closest match is one changed threshold away from stealing the request, so the
+negative case is held to the stricter bar.
+
+The cases that prove something are the ones that nearly match. A set written
+from the skill's own triggers reaches it by construction and proves almost
+nothing; a set whose negative cases are drawn from the declared triggers of the
+skills that rank closest to it is what catches a new procedure taking an old
+one's requests. Proposing those is a helper an author runs, and it proposes
+only: what belongs in an evaluation set is a judgment about the catalog, and
+some of what it proposes will be two procedures that genuinely overlap, which is
+a finding rather than a case to paste.
+
+This is not the labeled routing set of `OSKA-EVO-16`, and neither replaces the
+other. That set is one document about the whole catalog, written to measure
+precision over time and to contain deliberate ties; it is read by a scheduled
+job and a drop in it is an alarm. An evaluation set belongs to one skill,
+travels with it through review and publication, and a failing case is a build
+failure rather than an alarm.
+
+The reference catalogs carry evaluation sets for three procedures of the
+operational domain and two of the access domain. Each set holds requests that
+must reach its procedure, in more than one language, and at least two
+adversarial near-misses drawn from a neighboring procedure.
+
+What a set is and how it is run is required by `OSKA-SKL-25` to `OSKA-SKL-27`
+in the skill layer; the quality gate running the set of the skill it is looking
+at is `OSKA-EVO-35` in the evolution layer. No level requires them yet; see
+"Open items".
+
+### The service-level numbers
+
+What a deployment alerts on is not what it logs. Five numbers say almost
+everything worth being woken up for:
+
+| Number | What it says | Read from |
+| --- | --- | --- |
+| Turn latency at the median and the tail | How long a turn takes | The traces |
+| Fallback rate | How often the model failed and a deterministic template spoke instead | The audit trail |
+| Verification failure rate | How often the read-back after a write did not confirm it | The audit trail |
+| Guardrail block rate | How often a declared guardrail refused a turn | The audit trail |
+| Unsupported rate | How often a request found no procedure at all | The audit trail |
+
+The last of those is not an error rate. It is the product signal that the
+catalog is missing something, and it is the one number of the five that a
+healthy system can have too little of rather than too much.
+
+Four of the five come from the audit trail, which a conformant deployment keeps
+anyway. Latency comes from the traces, which are optional and off by default
+(`OSKA-XC-12`). A deployment that runs with tracing off can therefore answer
+four of the five, and the rule that matters is what it says about the fifth: a
+number that was not recorded MUST be reported as not computed, with the reason,
+and MUST NOT be reported as zero. A rate printed as zero because nothing
+recorded it reads exactly like a rate that is genuinely zero, and the two mean
+opposite things — one is a healthy deployment and the other is a blind one.
+
+The same rule applies to a number that is computed and incomplete. The fallback
+rate counts the turns a template spoke for because no model was configured and
+the turns whose plan did not hold up, both of which are audited; it does not
+count a reply the model provider failed while writing, because the reply is
+written either way and nothing records which of the two wrote it. That is a gap
+in what is recorded, and the way to close it is an audit event rather than a
+trace. Until then the number carries a note saying what it does not cover.
+
+These numbers are required by `OSKA-XC-20` to `OSKA-XC-22` in the cross-cutting
+requirements. No level requires them yet; see "Open items".
 
 ## Checklist
 
@@ -249,8 +403,14 @@ naming a test file names the file that carries the assertion: somewhere in it a
 test asserts the requirement, rather than merely exercising the module. A row
 whose proof reads `pending` names a requirement the
 reference implementation holds to but no test or scenario asserts; such rows are
-listed again, with the reason, under "Open items" below, which is empty as of
-this revision.
+listed again, with the reason, under "Open items" below.
+
+Every identifier in this table is claimed by a level, required of a deployment
+under "Required of a deployment, not of a level", or left under "Still
+undecided"; it is in exactly one of those three places.
+`tests/unit/test_conformance_document.py` reads this document and holds it to
+that, so a requirement added to a layer cannot enter or leave a level by
+accident.
 
 ### Integration (L1)
 
@@ -268,6 +428,13 @@ this revision.
 | OSKA-INT-10 | `src/opsdeck/connectors/registry.py` | `tests/unit/test_connectors.py` |
 | OSKA-INT-11 | `src/opsdeck/governance/ledger.py` | `tests/unit/test_governance.py` |
 | OSKA-INT-12 | `src/opsdeck/connectors/mock.py` | `tests/unit/test_connectors.py` |
+| OSKA-INT-13 | `src/opsdeck/connectors/base.py`, `registry.py`, `src/opsdeck/config.py` | `tests/unit/test_resilience.py` |
+| OSKA-INT-14 | `src/opsdeck/connectors/base.py`, `http.py`, `shell.py`, `mock.py` | `tests/unit/test_resilience.py` |
+| OSKA-INT-15 | `src/opsdeck/connectors/base.py` | `tests/unit/test_resilience.py` |
+| OSKA-INT-16 | `src/opsdeck/connectors/base.py` | `tests/unit/test_resilience.py` |
+| OSKA-INT-17 | `src/opsdeck/connectors/base.py` | `tests/unit/test_resilience.py` |
+| OSKA-INT-18 | `src/opsdeck/engine/execution.py`, `src/opsdeck/engine/outcomes.py` | `tests/unit/test_resilience.py`, `examples/ops/scenarios/23_capability_unavailable.json` |
+| OSKA-INT-19 | `src/opsdeck/connectors/mock.py` | `tests/unit/test_resilience.py` |
 
 ### Ontology (L2)
 
@@ -318,6 +485,16 @@ this revision.
 | OSKA-SKL-15 | `src/opsdeck/contracts/skill.py` | `tests/unit/test_human_inputs.py` |
 | OSKA-SKL-16 | `src/opsdeck/planner/planner.py` | `tests/unit/test_lifecycle.py`, `examples/ops/scenarios/21_human_input.json` |
 | OSKA-SKL-17 | `src/opsdeck/planner/prompts.py`, `src/opsdeck/planner/planner.py` | `tests/unit/test_human_inputs.py`, `tests/unit/test_planner.py` |
+| OSKA-SKL-18 | `src/opsdeck/catalog/revision.py` | `tests/unit/test_revision.py` |
+| OSKA-SKL-19 | `src/opsdeck/catalog/revision.py` | `tests/unit/test_revision.py` |
+| OSKA-SKL-20 | `src/opsdeck/catalog/revision.py`, `src/opsdeck/catalog/validator.py` | `tests/unit/test_revision.py` |
+| OSKA-SKL-21 | `src/opsdeck/catalog/revision.py` | `tests/unit/test_revision.py` |
+| OSKA-SKL-22 | `src/opsdeck/catalog/revision.py` | `tests/unit/test_pinning.py` |
+| OSKA-SKL-23 | `src/opsdeck/catalog/registry.py` | `tests/unit/test_revision.py` |
+| OSKA-SKL-24 | `src/opsdeck/catalog/registry.py`, `src/opsdeck/engine/factory.py` | `tests/unit/test_revision.py` |
+| OSKA-SKL-25 | `src/opsdeck/catalog/evaluation.py` | `tests/unit/test_skill_evaluation.py` |
+| OSKA-SKL-26 | `src/opsdeck/catalog/evaluation.py`, `src/opsdeck/cli/commands_evaluate.py` | `tests/unit/test_skill_evaluation.py` |
+| OSKA-SKL-27 | `src/opsdeck/catalog/evaluation.py` | `tests/unit/test_skill_evaluation.py` |
 
 ### Governance (L4)
 
@@ -343,6 +520,18 @@ this revision.
 | OSKA-GOV-18 | `src/opsdeck/governance/guardrails.py` | `tests/unit/test_guardrails.py` |
 | OSKA-GOV-19 | `src/opsdeck/engine/engine.py`, `src/opsdeck/governance/guardrails.py` | `tests/unit/test_guardrails.py`, `examples/ops/scenarios/19_guardrail_block.json` |
 | OSKA-GOV-20 | `src/opsdeck/governance/guardrails.py`, `configs/guardrails.json` | `tests/unit/test_guardrails.py` |
+| OSKA-GOV-21 | `src/opsdeck/governance/ledger.py`, `src/opsdeck/engine/execution.py` | `tests/unit/test_resilience.py` |
+| OSKA-GOV-22 | `src/opsdeck/governance/ledger.py` | `tests/unit/test_resilience.py` |
+| OSKA-GOV-23 | `src/opsdeck/governance/ledger.py` | `tests/unit/test_resilience.py` |
+| OSKA-GOV-24 | `src/opsdeck/engine/outcomes.py`, `src/opsdeck/engine/execution.py` | `tests/unit/test_resilience.py`, `examples/ops/scenarios/23_capability_unavailable.json` |
+| OSKA-GOV-25 | `src/opsdeck/contracts/skill.py`, `src/opsdeck/catalog/validator.py` | `tests/unit/test_identity.py` |
+| OSKA-GOV-26 | `src/opsdeck/governance/identity.py`, `src/opsdeck/engine/execution.py` | `tests/unit/test_identity.py` |
+| OSKA-GOV-27 | `src/opsdeck/planner/prompts.py`, `src/opsdeck/engine/execution.py` | `tests/unit/test_identity.py` |
+| OSKA-GOV-28 | `src/opsdeck/governance/identity.py`, `src/opsdeck/engine/engine.py` | `tests/unit/test_identity.py` |
+| OSKA-GOV-29 | `src/opsdeck/engine/engine.py`, `src/opsdeck/engine/state.py`, `src/opsdeck/api/routes.py` | `tests/unit/test_identity.py` |
+| OSKA-GOV-30 | `src/opsdeck/engine/execution.py`, `src/opsdeck/governance/verification.py` | `tests/unit/test_resilience.py` |
+| OSKA-GOV-31 | `src/opsdeck/engine/execution.py`, `src/opsdeck/governance/ledger.py` | `tests/unit/test_resilience.py` |
+| OSKA-GOV-32 | `src/opsdeck/engine/execution.py`, `src/opsdeck/governance/ledger.py` | `tests/unit/test_resilience.py` |
 
 ### Cognition (L5)
 
@@ -365,8 +554,14 @@ this revision.
 | OSKA-COG-15 | `src/opsdeck/catalog/enrichment.py` | `tests/unit/test_enrichment.py` |
 | OSKA-COG-16 | `src/opsdeck/index/base.py` | `tests/unit/test_index.py` |
 | OSKA-COG-17 | `src/opsdeck/index/base.py`, `src/opsdeck/contracts/common.py` | `tests/unit/test_index.py` |
+| OSKA-COG-17a | `src/opsdeck/index/base.py`, `src/opsdeck/index/discovery.py` | `tests/unit/test_index.py` |
 | OSKA-COG-18 | `src/opsdeck/learning/lifecycle.py` | `tests/unit/test_enrichment.py` |
 | OSKA-COG-19 | `src/opsdeck/engine/engine.py`, `src/opsdeck/engine/state.py`, `src/opsdeck/router/base.py` | `tests/unit/test_router.py`, `examples/ops/scenarios/20_other_language.json` |
+| OSKA-COG-20 | `src/opsdeck/catalog/resolver.py`, `src/opsdeck/engine/reply.py`, `src/opsdeck/planner/planner.py` | `tests/unit/test_labels.py` |
+| OSKA-COG-21 | `src/opsdeck/planner/planner.py`, `src/opsdeck/engine/reply.py` | `tests/unit/test_labels.py` |
+| OSKA-COG-22 | `src/opsdeck/planner/prompts.py`, `src/opsdeck/router/model_router.py` | `tests/unit/test_labels.py` |
+| OSKA-COG-23 | `src/opsdeck/engine/reply.py`, `src/opsdeck/engine/outcomes.py` | `tests/unit/test_labels.py` |
+| OSKA-COG-24 | `src/opsdeck/improvement/preferences.py`, `src/opsdeck/engine/reply.py` | `tests/unit/test_labels.py` |
 
 ### Interaction (L6)
 
@@ -385,6 +580,13 @@ this revision.
 | OSKA-IXN-11 | `src/opsdeck/engine/state.py`, `src/opsdeck/governance/ledger.py` | `tests/unit/test_engine.py` |
 | OSKA-IXN-12 | `src/opsdeck/contracts/common.py`, `src/opsdeck/services.py`, `src/opsdeck/cli/commands_run.py`, `src/opsdeck/api/routes.py` | `tests/unit/test_cli.py`, `tests/unit/test_api.py` |
 | OSKA-IXN-13 | `src/opsdeck/engine/engine.py`, `src/opsdeck/engine/reply.py` | `tests/unit/test_engine.py` |
+| OSKA-IXN-14 | `src/opsdeck/engine/engine.py`, `src/opsdeck/engine/state.py` | `tests/unit/test_revision.py` |
+| OSKA-IXN-15 | `src/opsdeck/catalog/registry.py`, `src/opsdeck/engine/engine.py` | `tests/unit/test_revision.py` |
+| OSKA-IXN-16 | `src/opsdeck/engine/engine.py` | `tests/unit/test_revision.py` |
+| OSKA-IXN-17 | `src/opsdeck/engine/engine.py` | `tests/unit/test_pinning.py` |
+| OSKA-IXN-18 | `src/opsdeck/engine/engine.py`, `src/opsdeck/config.py` | `tests/unit/test_pinning.py` |
+| OSKA-IXN-19 | `src/opsdeck/engine/factory.py`, `src/opsdeck/governance/ledger.py` | `tests/unit/test_revision.py` |
+| OSKA-IXN-20 | `src/opsdeck/engine/engine.py`, `src/opsdeck/engine/state.py` | `tests/unit/test_pinning.py` |
 
 ### Evolution (L7)
 
@@ -403,6 +605,7 @@ this revision.
 | OSKA-EVO-11 | `src/opsdeck/improvement/signals.py` | `tests/unit/test_improvement.py` |
 | OSKA-EVO-12 | `src/opsdeck/improvement/learned.py` | `tests/unit/test_improvement.py` |
 | OSKA-EVO-13 | `src/opsdeck/improvement/learned.py`, `examples/ops/evaluation/redactions.json` | `tests/unit/test_improvement.py` |
+| OSKA-EVO-13a | `src/opsdeck/index/base.py`, `src/opsdeck/improvement/learned.py` | `tests/unit/test_index.py`, `tests/unit/test_improvement.py` |
 | OSKA-EVO-14 | `src/opsdeck/improvement/tuning.py` | `tests/unit/test_improvement.py` |
 | OSKA-EVO-15 | `src/opsdeck/improvement/tuning.py` | `tests/unit/test_improvement.py` |
 | OSKA-EVO-16 | `src/opsdeck/improvement/evaluation.py`, `examples/ops/evaluation/routing.json` | `tests/unit/test_improvement.py` |
@@ -411,6 +614,20 @@ this revision.
 | OSKA-EVO-19 | `src/opsdeck/improvement/job.py` | `tests/unit/test_improvement.py` |
 | OSKA-EVO-20 | `src/opsdeck/improvement/job.py` | `tests/unit/test_improvement.py` |
 | OSKA-EVO-21 | `src/opsdeck/improvement/report.py` | `tests/unit/test_improvement.py` |
+| OSKA-EVO-22 | `src/opsdeck/learning/lifecycle.py`, `src/opsdeck/learning/changes.py` | `tests/unit/test_changes.py` |
+| OSKA-EVO-23 | `src/opsdeck/learning/changes.py` | `tests/unit/test_changes.py` |
+| OSKA-EVO-24 | `src/opsdeck/learning/changes.py`, `src/opsdeck/cli/commands_change.py` | `tests/unit/test_changes.py` |
+| OSKA-EVO-25 | `src/opsdeck/learning/changes.py` | `tests/unit/test_changes.py` |
+| OSKA-EVO-26 | `src/opsdeck/learning/changes.py`, `src/opsdeck/learning/lifecycle.py` | `tests/unit/test_changes.py` |
+| OSKA-EVO-27 | `src/opsdeck/api/routes.py` | `tests/unit/test_api.py` |
+| OSKA-EVO-28 | `src/opsdeck/learning/lifecycle.py` | `tests/unit/test_learning.py` |
+| OSKA-EVO-29 | `src/opsdeck/improvement/feedback.py`, `src/opsdeck/cli/commands_improve.py` | `tests/unit/test_improvement.py` |
+| OSKA-EVO-30 | `src/opsdeck/improvement/feedback.py`, `src/opsdeck/improvement/signals.py` | `tests/unit/test_improvement.py` |
+| OSKA-EVO-31 | `src/opsdeck/improvement/preferences.py`, `src/opsdeck/improvement/job.py` | `tests/unit/test_improvement.py` |
+| OSKA-EVO-32 | `src/opsdeck/improvement/preferences.py`, `src/opsdeck/engine/reply.py` | `tests/unit/test_improvement.py`, `tests/unit/test_labels.py` |
+| OSKA-EVO-33 | `src/opsdeck/improvement/preferences.py`, `src/opsdeck/cli/commands_improve.py` | `tests/unit/test_improvement.py` |
+| OSKA-EVO-34 | `src/opsdeck/improvement/report.py`, `src/opsdeck/improvement/job.py` | `tests/unit/test_improvement.py` |
+| OSKA-EVO-35 | `src/opsdeck/learning/quality.py` | `tests/unit/test_skill_evaluation.py` |
 
 ### Cross-cutting
 
@@ -430,24 +647,55 @@ this revision.
 | OSKA-XC-12 | `src/opsdeck/audit/trace.py`, `src/opsdeck/config.py`, `configs/runtime.json` | `tests/unit/test_trace.py` |
 | OSKA-XC-13 | `src/opsdeck/engine/engine.py` | `tests/unit/test_trace.py` |
 | OSKA-XC-14 | `src/opsdeck/engine/engine.py`, `src/opsdeck/engine/factory.py` | `tests/unit/test_trace.py` |
+| OSKA-XC-15 | `src/opsdeck/governance/retention.py`, `src/opsdeck/cli/commands_forget.py` | `tests/unit/test_retention.py` |
+| OSKA-XC-16 | `src/opsdeck/governance/retention.py`, `src/opsdeck/config.py` | `tests/unit/test_retention.py` |
+| OSKA-XC-17 | `src/opsdeck/governance/retention.py`, `src/opsdeck/audit/events.py` | `tests/unit/test_retention.py` |
+| OSKA-XC-18 | `src/opsdeck/audit/sink.py`, `src/opsdeck/governance/retention.py` | `tests/unit/test_retention.py` |
+| OSKA-XC-19 | `src/opsdeck/engine/engine.py`, `src/opsdeck/governance/guardrails.py` | `tests/unit/test_retention.py` |
+| OSKA-XC-20 | `src/opsdeck/observability/metrics.py`, `src/opsdeck/cli/commands_slo.py` | `tests/unit/test_observability.py` |
+| OSKA-XC-21 | `src/opsdeck/observability/metrics.py`, `src/opsdeck/observability/report.py` | `tests/unit/test_observability.py` |
+| OSKA-XC-22 | `src/opsdeck/observability/metrics.py` | `tests/unit/test_observability.py` |
+| OSKA-XC-23 | `src/opsdeck/governance/retention.py`, `src/opsdeck/cli/commands_forget.py` | `tests/unit/test_retention.py` |
 
 ## Open items
 
-No requirement is unproven. Every row of the checklist names a test or a
-scenario that asserts it.
+No row of the checklist reads `pending`. The five that did are closed:
+`OSKA-SKL-22`, `OSKA-IXN-17` and `OSKA-IXN-18` in `tests/unit/test_pinning.py`,
+which interrupts a build part-way and reads the store, and then asks for an
+approval, publishes a second revision while it waits and answers it — once with
+session pinning on and once with it off; `OSKA-COG-22` in
+`tests/unit/test_labels.py`, which answers the same request as a turn in two
+languages and reads the prompts the router and the planner were handed;
+`OSKA-XC-19` in `tests/unit/test_retention.py`, which sends a turn carrying a
+credential and finds the redacted wording, and nothing else, in the audit trail
+and in the session store.
+
+Two things are still required by no level, and are open in the sense that a
+decision about them is owed. The revision store and the identity requirements
+were open in the same sense until the level lists were written out in full; they
+are now settled the other way, under "Required of a deployment, not of a level",
+and are not repeated here. Evaluation sets
+(`OSKA-SKL-25` to `OSKA-SKL-27`, `OSKA-EVO-35`) and the service-level numbers
+(`OSKA-XC-20` to `OSKA-XC-22`) are stated in the layer documents, which is
+what the level lists are written about, so nothing structural stands in the way.
+What is missing is a decision: a level that required `OSKA-SKL-26` would also
+have to say what a catalog whose skills carry no evaluation set is entitled to
+claim, and a level that required `OSKA-XC-20` would have to say the same about a
+deployment that has never turned tracing on. Both belong in a level once that is
+settled.
 
 One further gap is recorded here because it affects a claim rather than a
 requirement. Category C19 is run by the access suite alone, because that is the
-only reference catalogue whose entities declare a `required` move and a move
+only reference catalog whose entities declare a `required` move and a move
 marked `offered: false`. `OSKA-ONT-22` is proven, in
 `tests/unit/test_lifecycle.py` and in the access scenario; what is missing is a
-second catalogue declaring the flags, so C19 is required by no level. An
+second catalog declaring the flags, so C19 is required by no level. An
 operational entity declaring them, and a scenario over it, would move C19 to
 level 2 without any other change to this document.
 
 ## Reporting conformance
 
-A conformance report SHOULD state: the level claimed, the catalogue it was run
+A conformance report SHOULD state: the level claimed, the catalog it was run
 against, the scenario directory, the counts of scenarios passed and failed per
 category, and the filled checklist with any requirement marked as not
 applicable justified in one sentence. A requirement MUST NOT be marked not

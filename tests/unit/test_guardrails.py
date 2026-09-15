@@ -571,7 +571,7 @@ def test_the_output_chain_runs_over_the_reply_before_it_is_returned(
         {
             "guardrail.nothing_leaves_unsaid": {
                 "title": "The scope is stated in the same words every time",
-                "description": "This installation states its scope from the catalogue.",
+                "description": "This installation states its scope from the catalog.",
                 "enforcement": {
                     "point": "output",
                     "mechanism": "check",
@@ -604,7 +604,7 @@ def test_the_output_chain_runs_over_the_reply_before_it_is_returned(
     result = engine.turn("output", "book me a flight to Lisbon next Tuesday")
 
     acted = [event for event in result.events if event.kind == "guardrail"]
-    assert result.reply == "This installation states its scope from the catalogue."
+    assert result.reply == "This installation states its scope from the catalog."
     assert [event.data["point"] for event in acted] == ["output"]
     assert acted[0].data["guardrail_id"] == "guardrail.nothing_leaves_unsaid"
 

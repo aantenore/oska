@@ -11,12 +11,12 @@ itself has somewhere to be stated as a testable requirement.
 
 ### Configuration
 
-Responsibility: hold every value that tunes behaviour, outside the code, in one
+Responsibility: hold every value that tunes behavior, outside the code, in one
 place per concern, replaceable without a rebuild.
 
 ```text
 Settings:
-  catalogue_roots: [path]
+  catalog_roots: [path]
   runtime_config: path
   model_config: path
   connectors_config: path
@@ -36,9 +36,9 @@ they change for different reasons and often under different authority.
 
 ### Observability
 
-Responsibility: make a session answerable after the fact, from artefacts alone.
+Responsibility: make a session answerable after the fact, from artifacts alone.
 
-Three artefacts, each addressing a different question:
+Three artifacts, each addressing a different question:
 
 - **Audit events** — what the system did, step by step, typed, with a session
   and turn identifier on every entry. Sinks are pluggable: memory for tests, an
@@ -51,7 +51,7 @@ Three artefacts, each addressing a different question:
 
 Together they answer: what happened, what changed, and would it happen again.
 
-A fourth artefact answers none of those and is kept apart for that reason.
+A fourth artifact answers none of those and is kept apart for that reason.
 **Diagnostic traces** record how long each stretch of a turn took and what it
 was nested inside: the turn, the routing, the discovery, the planning, the
 execution and the reply. They are for whoever has to explain a slow turn, and
@@ -59,6 +59,35 @@ they are optional, off unless a deployment turns them on, and safe to throw
 away. Nothing in the runtime reads a trace back and no decision is taken from
 one. A question that can only be answered from a trace is a missing audit
 event, not a reason to leave tracing on.
+
+#### The service-level numbers
+
+What a deployment is woken up for is not what it logs. A few numbers say almost
+everything worth waking somebody for, over a stated window: how many turns there
+were, how long a turn took at the median and at the 95th percentile, how often a
+deterministic template spoke because the model did not, how often the read-back
+after a write did not confirm it, how often a declared guardrail refused a turn,
+and how often a request found no procedure at all.
+
+All but the latencies come from the audit trail, which a conformant deployment
+keeps anyway; the latencies come from the traces, which are optional and off by
+default. So a deployment running with tracing off can answer some of these and
+not others, and what it says about the ones it cannot answer is the part that
+matters. A number nobody recorded is reported as not computed, naming why. A
+rate printed as zero because nothing recorded it reads exactly like a rate that
+is genuinely zero, and the two mean opposite things: one is a healthy deployment
+and the other is a blind one. The same holds for a number that is computed and
+covers less than its name suggests, which says what it leaves out.
+
+Reading these numbers is reading. They are derived from artifacts the deployment
+already keeps, they add nothing to the path of a turn, and computing them writes
+to neither source; a number that would need a new recording in the turn is a
+missing audit event, decided the way every other one is.
+
+The last of them is not an error rate. A request that found no procedure is the
+product signal that the catalog is missing something, and it is the one of
+these numbers a healthy system can have too little of rather than too much.
+`spec/12-conformance.md` sets them out one by one.
 
 ### Cost
 
@@ -112,11 +141,60 @@ outcome kinds in order, what the session is waiting for, how many receipts
 exist and the verification status of the last one. Model calls are answered by
 a scripted provider whose steps assert what the prompt that reached them
 contained, so a change in the order of the calls fails loudly rather than
-passing quietly. Connector behaviour can be injected per turn, so failures are
+passing quietly. Connector behavior can be injected per turn, so failures are
 reproducible.
 
 Scenarios are the primary conformance evidence. Unit tests prove module
 contracts; scenarios prove the architecture.
+
+### Retention
+
+Responsibility: keep the record for as long as it is needed and no longer, and
+answer a request to delete it.
+
+A conversation is personal data. The record of one is spread over as many
+artifacts as the deployment keeps — the receipts of what was written, the audit
+events of how it was decided, the session state that carried it from turn to
+turn, the judgments a person left on its answers, the preferences learned from
+those judgments and, where tracing is on, the spans naming it — and anything
+said about retention has to be true of all of them at once. A window that
+expires the events and leaves the receipts has retained the conversation, and so
+has one that leaves the feedback file.
+
+The first three are the account itself and are always there. The others belong
+to layers above retention, so a removal takes them as stores the caller hands
+in: each answers to a session identifier and reports how much went, and one
+nobody hands in is one this deployment does not keep.
+
+Two operations are required, and they are not the same operation.
+
+```text
+forget(session)          # a request, answered whatever the window is
+expire(older_than_days)  # the window, applied to every session past it
+```
+
+Both remove the session from every store that holds it. Both leave a typed
+`retention` event behind, naming the session and the counts removed per store
+and carrying nothing that was said, read or written: a deletion nobody can see having happened is
+indistinguishable from a file somebody edited. That event survives the removal
+it records, and survives a later removal of the same session.
+
+A window of zero keeps everything, which is the default, because a standard that
+silently deleted an operator's record of what their system did would be worse
+than one that kept too much. Deletion on request does not depend on the window
+and is available whatever it is set to.
+
+The rewriting of an append-only file is the one dangerous moment in this, and it
+is handled the way such things are handled: the replacement is written beside
+the original and renamed over it, so a reader sees the whole trail or the whole
+of its replacement and never half of either.
+
+The window is the second answer, not the first. What must not be kept is kept
+out of the record in the first place: a field that must not be stored is not
+written and then scrubbed, it is never written. Scrubbing is a promise about
+every future writer of every future event; not writing is a property of the
+record. Retention exists for what is stored because the account genuinely needs
+it, and says how long that is.
 
 ## Invariants
 
@@ -131,11 +209,19 @@ contracts; scenarios prove the architecture.
 - Any recorded actor is recorded verbatim; the system never substitutes a
   default actor.
 - Traces are diagnostics. The account of what the system did is the audit
-  trail, and no behaviour depends on a trace being recorded.
+  trail, and no behavior depends on a trace being recorded.
 - Tracing is off unless configuration turns it on, and the conformance suite
   runs with it off.
 - A turn spends no more model calls than its declared budget, and a turn that
   reaches it still answers.
+- What must not be kept is not written. Removing it afterwards is a repair, not
+  a design.
+- The record of one session is removed from every store that holds it —
+  receipts, audit trail, session state, and whatever else a deployment keeps
+  under that session — together, or it is not removed.
+- A removal leaves a typed event naming counts per store and nothing that was
+  said, and that event survives the removal it records.
+- An append-only trail is replaced whole: a new file, renamed over the old one.
 
 ## Requirements
 
@@ -175,26 +261,63 @@ contracts; scenarios prove the architecture.
 - **OSKA-XC-14** — The per-turn budget MUST be counted in one place, so that
   every model call the runtime makes is counted whichever part of the turn
   makes it.
+- **OSKA-XC-15** — A deployment MUST be able to delete the whole record of one
+  session on request. The deletion MUST remove that session's receipts, audit
+  events and stored state, MUST NOT depend on a configured window, and MUST NOT
+  remove the record of any other session.
+- **OSKA-XC-23** — The deletion and the window MUST reach every other store the
+  deployment keeps under a session identifier, including the feedback a person
+  left on its turns, the preferences derived from that feedback and the trace
+  spans of its turns where tracing is on. Each such store MUST report what it
+  removed, those counts MUST appear in the report and in the `retention` event,
+  and the event MUST still carry no content.
+- **OSKA-XC-16** — A retention window MUST be configurable in days, MUST be
+  measured from the last activity of a session, and MUST default to keeping
+  everything. Applying it MUST remove from every one of those stores exactly the
+  sessions past it.
+- **OSKA-XC-17** — Every removal MUST emit a typed `retention` audit event
+  recording the counts removed per store, including the stores of
+  OSKA-XC-23. That event MUST NOT carry any content
+  of the removed record, and MUST NOT itself be removed by the removal it
+  records or by a later one.
+- **OSKA-XC-18** — Rewriting an append-only record MUST be atomic from a
+  reader's point of view: the replacement MUST be written to a new file and
+  renamed over the original, and an entry that cannot be parsed MUST be kept
+  rather than dropped.
+- **OSKA-XC-19** — Data that a deployment must not retain MUST NOT be written to
+  the record in the first place. An implementation MUST NOT rely on removal
+  after the fact to satisfy a rule about what may be stored.
+- **OSKA-XC-20** — A conformant deployment MUST be able to produce, over a
+  stated window: the number of turns, turn latency at the median and at the
+  95th percentile, the fallback rate, the verification failure rate, the
+  guardrail block rate and the unsupported rate.
+- **OSKA-XC-21** — A number that the deployment did not record MUST be reported
+  as not computed, naming why, and MUST NOT be reported as zero. A number that
+  is computed but does not cover everything its name suggests MUST say what it
+  leaves out.
+- **OSKA-XC-22** — These numbers MUST be derived from the audit trail and the
+  traces alone, MUST NOT require any additional recording in the path of a turn,
+  and reading them MUST NOT write to either source.
 
 ## Rationale
 
 Configuration as an external document is the least interesting of the four and
 the one that decides whether the other three are true. A threshold compiled into
-the code is a behaviour nobody can inspect and no reviewer can diff. Discovery's
+the code is a behavior nobody can inspect and no reviewer can diff. Discovery's
 minimum score is the difference between answering a request and declining it;
 the fast-path threshold decides whether a model is consulted at all. Those are
 policy decisions in the ordinary sense, and they belong in a file that an
 operator can read, change and put under review, next to the connector bindings
 and the policy documents.
 
-Observability here is deliberately three artefacts rather than one log. A log
+Observability here is deliberately three artifacts rather than one log. A log
 answers "what happened" and is terrible at the other two questions. Receipts
 exist because "what changed in the world" must be answerable without replaying
 and re-interpreting a stream of events, and because the retry decision depends
 on it — the ledger is the same object. Scenarios exist because neither of the
-other two tells you whether the behaviour is intentional. A recorded
+other two tells you whether the behavior is intentional. A recorded
 conversation that fails when the sequence of model calls changes is the only
-artefact that makes the turn algorithm a thing you can refactor.
+artifact that makes the turn algorithm a thing you can refactor.
 
 On identity, the honest position is the narrow one. Building authentication
 into an architecture standard would either be ignored or would force a
@@ -232,7 +355,12 @@ would simply be removed the first time it fired.
   file, with the null sink in force whenever tracing is off.
 - `src/opsdeck/engine/engine.py` — the per-turn model budget and the provider
   wrapper that counts every call through it.
-- `src/opsdeck/governance/ledger.py` — durable receipts.
+- `src/opsdeck/governance/ledger.py` — durable receipts, and the one operation
+  that takes a session's receipts out of them.
+- `src/opsdeck/governance/retention.py` — `forget` and `expire`, over the three
+  stores together, and the event each of them leaves.
+- `src/opsdeck/cli/commands_forget.py` — the two commands an operator runs, and
+  what each of them reports having removed.
 - `src/opsdeck/contracts/` — the shared types, owned by no layer.
 - `tests/scenarios/test_scenarios.py` — the scenario runner, including the check
   that the scripted model calls were consumed in the recorded order.

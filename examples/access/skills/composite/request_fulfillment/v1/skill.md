@@ -1,5 +1,5 @@
 ---
-id: composite.request_fulfilment
+id: composite.request_fulfillment
 type: composite
 version: 1
 status: published

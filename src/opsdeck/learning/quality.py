@@ -8,6 +8,20 @@ The middle of those three is the catalog's own validator, unchanged and not
 restated here, which is how a proposal is held to everything a published skill
 is held to: the references it makes, the policy it declares, and the guardrails
 it names, which have to be defined by the catalog this installation configures.
+
+A fourth check runs when there is something to run it against. A skill that
+carries an evaluation set beside it declares, in its author's own words, which
+requests must reach it and which must not; a proposal that revises that skill
+and cannot answer its own cases is refused. It needs a ranking to run, so a
+caller that has none gets the three checks and not the fourth.
+
+A skill with no evaluation set is not refused, and that is a deliberate choice
+rather than an oversight. Making a set mandatory here would turn the gate into a
+migration blocker: a catalog written before evaluation sets existed would have
+every revision of every procedure refused until someone wrote cases for all of
+them, which pushes authors to paste in cases that pass rather than cases that
+matter. The gate refuses what is there and wrong, not what is absent. Requiring
+a set belongs to the catalog validator, once enough of a catalog carries one.
 """
 
 from __future__ import annotations
@@ -16,6 +30,7 @@ import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+from opsdeck.catalog.evaluation import EvaluationSetError, Ranking, load_cases, run_cases
 from opsdeck.catalog.loader import SkillParseError, parse_skill_text
 from opsdeck.catalog.registry import SkillRegistry
 from opsdeck.catalog.validator import validate
@@ -39,11 +54,14 @@ def check(
     *,
     policy: dict | None = None,
     schema_dir: Path | None = None,
+    ranking: Ranking | None = None,
 ) -> QualityReport:
-    """Parse, validate and lint a proposed skill file.
+    """Parse, validate, lint a proposed skill file, and run the cases it must answer.
 
     `policy` is the policy document the frontmatter points at; without it a
-    procedure that declares a policy file is reported as missing one.
+    procedure that declares a policy file is reported as missing one. `ranking`
+    is what the runtime ranks requests with; with one, the evaluation set of the
+    skill under review is run and a failing case refuses the proposal.
     """
     with TemporaryDirectory() as workspace:
         directory = Path(workspace)
@@ -58,6 +76,7 @@ def check(
             return QualityReport(issues=[f"parse: {message}"], score=_score(LINT_COUNT + 1))
         issues = [str(issue) for issue in validate(skill, registry.skills(), schema_dir=schema_dir)]
         issues.extend(_lints(skill, registry))
+        issues.extend(_evaluation_issues(skill, registry, ranking))
     return QualityReport(issues=issues, score=_score(len(issues)))
 
 
@@ -74,7 +93,7 @@ def _lints(skill: Skill, registry: SkillRegistry) -> list[str]:
         issues.append(
             f"description: {length} characters, expected {DESCRIPTION_MIN} to {DESCRIPTION_MAX}"
         )
-    triggers = _normalised(frontmatter.triggers)
+    triggers = _normalized(frontmatter.triggers)
     if len(set(triggers)) < MIN_TRIGGERS:
         issues.append(f"triggers: at least {MIN_TRIGGERS} distinct triggers are required")
     issues.extend(_write_issues(skill, registry))
@@ -84,6 +103,35 @@ def _lints(skill: Skill, registry: SkillRegistry) -> list[str]:
         issues.append("verification: the section is empty")
     issues.extend(_reused_triggers(skill, registry, triggers))
     return issues
+
+
+def _evaluation_issues(
+    skill: Skill,
+    registry: SkillRegistry,
+    ranking: Ranking | None,
+) -> list[str]:
+    """The cases the skill under review declares, and the ones it no longer answers.
+
+    The proposal is text in a temporary directory, so the set is read from the
+    published skill of the same identifier: what is being asked is whether the
+    revision still answers what its own author said it must.
+    """
+    if ranking is None:
+        return []
+    published = registry.get(skill.id)
+    if published is None:
+        return []
+    try:
+        cases = load_cases(published)
+    except EvaluationSetError as exc:
+        return [f"evaluation: {exc}"]
+    if not cases:
+        return []
+    return [
+        f"evaluation: expected {result.expects!r} of {result.text!r}, {result.reason}"
+        for result in run_cases(cases, skill.id, ranking)
+        if not result.passed
+    ]
 
 
 def _write_issues(skill: Skill, registry: SkillRegistry) -> list[str]:
@@ -109,7 +157,7 @@ def _reused_triggers(skill: Skill, registry: SkillRegistry, triggers: list[str])
     for published in registry.published():
         if published.type is not SkillType.runbook or published.id == skill.id:
             continue
-        for trigger in _normalised(published.frontmatter.triggers):
+        for trigger in _normalized(published.frontmatter.triggers):
             taken.setdefault(trigger, published.id)
     issues: list[str] = []
     for trigger in triggers:
@@ -119,7 +167,7 @@ def _reused_triggers(skill: Skill, registry: SkillRegistry, triggers: list[str])
     return issues
 
 
-def _normalised(triggers: list[str]) -> list[str]:
+def _normalized(triggers: list[str]) -> list[str]:
     return [trigger.strip().lower() for trigger in triggers if trigger.strip()]
 
 

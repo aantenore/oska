@@ -7,7 +7,7 @@ afternoon.
 
 What a gap suggests comes from the ontology and from nowhere else: the entities
 that are already declared and the operations already bound to them. A gap never
-suggests a written procedure. It says which words in the catalogue the requests
+suggests a written procedure. It says which words in the catalog the requests
 are near, so a person can decide whether something is missing and what it would
 be built from.
 """
@@ -21,7 +21,7 @@ from pydantic import BaseModel, Field
 from opsdeck.config import ImprovementConfig
 from opsdeck.improvement.learned import Similarity
 from opsdeck.improvement.signals import TurnSignal
-from opsdeck.index.base import normalise, overlap_score, tokenise
+from opsdeck.index.base import normalize, overlap_score, tokenize
 from opsdeck.ontology.graph import OntologyGraph
 from opsdeck.ontology.queries import operations_on, vocabulary
 from opsdeck.planner.provider import ModelProvider
@@ -63,7 +63,7 @@ def find_gaps(
     provider: ModelProvider | None = None,
 ) -> list[Gap]:
     """Cluster the requests that reached nothing, and describe the large clusters."""
-    phrases = [normalise(signal.text) for signal in unmatched(signals, min_score)]
+    phrases = [normalize(signal.text) for signal in unmatched(signals, min_score)]
     phrases = [phrase for phrase in phrases if phrase]
     similarity = Similarity(provider)
     similarity.prime(phrases)
@@ -92,7 +92,7 @@ def _cluster(
 
 def _describe(cluster: Sequence[str], graph: OntologyGraph) -> Gap:
     """One cluster, with the declared entities and operations its words are nearest."""
-    words = {token for phrase in cluster for token in tokenise(phrase)}
+    words = {token for phrase in cluster for token in tokenize(phrase)}
     entities = _nearest_entities(words, graph)
     operations = [
         str(node.label or node.id)
@@ -126,4 +126,4 @@ def _entity_words(entity_id: str, entry: dict) -> set[str]:
     identifier = entry.get("identifier")
     if identifier:
         parts.append(str(identifier))
-    return tokenise(" ".join(parts))
+    return tokenize(" ".join(parts))

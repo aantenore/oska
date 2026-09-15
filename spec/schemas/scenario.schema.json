@@ -84,8 +84,8 @@
         "expect": {
           "$ref": "#/$defs/expectation"
         },
-        "connector_behaviours": {
-          "$ref": "#/$defs/connectorBehaviours",
+        "connector_behaviors": {
+          "$ref": "#/$defs/connectorBehaviors",
           "description": "Applied before the turn runs. This is the only placement accepted."
         }
       }
@@ -170,7 +170,7 @@
         }
       }
     },
-    "connectorBehaviours": {
+    "connectorBehaviors": {
       "type": "object",
       "description": "Failures or overrides injected before the turn runs, keyed by integration identifier then operation name.",
       "additionalProperties": {
@@ -309,7 +309,7 @@
             "string",
             "null"
           ],
-          "description": "Identifier the catalogue must hold, published, and read from the publication root."
+          "description": "Identifier the catalog must hold, published, and read from the publication root."
         },
         "quality_passed": {
           "type": [

@@ -4,6 +4,12 @@ The map lives in a JSON file: `{"integrations": {"<id>": {"type": ..., ...}}}`.
 Relative fixture paths resolve against that file. `${NAME}` in an address or a
 header is replaced by the environment variable of that name; a variable that is
 not set becomes an empty string and is reported in `warnings`.
+
+What a call may cost before a capability is called unavailable is configuration
+too, and every kind of connector takes it from the same place: the `resilience`
+block, given by the caller, overridden by one the file declares for the whole
+binding, and overridden again by one an integration declares for itself. A
+binding that says nothing takes the defaults.
 """
 
 from __future__ import annotations
@@ -14,11 +20,10 @@ import re
 from collections.abc import Mapping
 from pathlib import Path
 
+from opsdeck.config import ResilienceConfig
 from opsdeck.connectors.base import Connector, ConnectorError
-from opsdeck.connectors.http import DEFAULT_TIMEOUT as HTTP_TIMEOUT
 from opsdeck.connectors.http import HttpConnector
 from opsdeck.connectors.mock import MockConnector
-from opsdeck.connectors.shell import DEFAULT_TIMEOUT as SHELL_TIMEOUT
 from opsdeck.connectors.shell import ShellConnector
 
 __all__ = ["ConnectorRegistry"]
@@ -61,8 +66,9 @@ class ConnectorRegistry:
         cls,
         path: Path | str,
         *,
-        behaviours: dict[str, dict] | None = None,
+        behaviors: dict[str, dict] | None = None,
         env: Mapping[str, str] | None = None,
+        resilience: ResilienceConfig | None = None,
     ) -> ConnectorRegistry:
         """Build the registry declared by a configuration file."""
         config_path = Path(path)
@@ -71,6 +77,7 @@ class ConnectorRegistry:
         if not isinstance(config, dict):
             raise ConnectorError(f"{config_path}: expected a JSON object")
         source = os.environ if env is None else env
+        declared = _resilience(resilience or ResilienceConfig(), config.get("resilience"))
         registry = cls()
         integrations = config.get("integrations") or {}
         for integration_id, spec in integrations.items():
@@ -80,8 +87,9 @@ class ConnectorRegistry:
                     integration_id,
                     spec,
                     config_path.parent,
-                    (behaviours or {}).get(integration_id),
+                    (behaviors or {}).get(integration_id),
                     source,
+                    _resilience(declared, spec.get("resilience"), spec.get("timeout")),
                 ),
             )
         return registry
@@ -91,8 +99,9 @@ class ConnectorRegistry:
         integration_id: str,
         spec: dict,
         base_dir: Path,
-        behaviours: dict | None,
+        behaviors: dict | None,
         env: Mapping[str, str],
+        resilience: ResilienceConfig,
     ) -> Connector:
         kind = spec.get("type")
         operations = spec.get("operations") or {}
@@ -104,7 +113,8 @@ class ConnectorRegistry:
                 id=integration_id,
                 fixture_path=_resolve(base_dir, fixture),
                 operations=operations,
-                behaviours=behaviours,
+                behaviors=behaviors,
+                resilience=resilience,
             )
         if kind == "http":
             headers = {
@@ -116,13 +126,13 @@ class ConnectorRegistry:
                 base_url=self._expand(spec.get("base_url", ""), env, integration_id),
                 headers=headers,
                 operations=operations,
-                timeout=float(spec.get("timeout", HTTP_TIMEOUT)),
+                resilience=resilience,
             )
         if kind == "shell":
             return ShellConnector(
                 id=integration_id,
                 operations=operations,
-                timeout=float(spec.get("timeout", SHELL_TIMEOUT)),
+                resilience=resilience,
             )
         raise ConnectorError(f"{integration_id}: unknown connector type {kind!r}")
 
@@ -136,6 +146,23 @@ class ConnectorRegistry:
             return resolved
 
         return _VARIABLE.sub(replace, str(value))
+
+
+def _resilience(
+    base: ResilienceConfig, declared: object = None, timeout: object = None
+) -> ResilienceConfig:
+    """The inherited resilience settings with what this level declares over them.
+
+    A binding may also carry a bare `timeout`, which says that and nothing
+    else: it is what a connector configuration said before availability was
+    part of the contract, and it still means the same thing.
+    """
+    values = base.model_dump()
+    if timeout is not None:
+        values["timeout_seconds"] = float(timeout)
+    if isinstance(declared, dict):
+        values.update(declared)
+    return ResilienceConfig.model_validate(values)
 
 
 def _resolve(base_dir: Path, value: str) -> Path:

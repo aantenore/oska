@@ -11,7 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from opsdeck.catalog.registry import SkillRegistry
-from opsdeck.catalog.resolver import CapabilityResolver
+from opsdeck.catalog.resolver import CapabilityResolver, SuggestedAction, offer
 from opsdeck.contracts.common import Hydrated, PendingInfo
 from opsdeck.contracts.plan import Plan
 from opsdeck.engine import outcomes as build
@@ -32,7 +32,7 @@ class Answer:
 
     kind: ReplyKind
     pending: PendingInfo | None = None
-    suggestions: list[str] = field(default_factory=list)
+    suggestions: list[SuggestedAction] = field(default_factory=list)
     reply_intent: str = ""
 
 
@@ -105,30 +105,33 @@ class GoalRunner:
         ctx.state.pending_goal = None
         return Answer("outcomes", reply_intent=reply_intent)
 
-    def suggestions(self, ctx: TurnContext) -> list[str]:
+    def suggestions(self, ctx: TurnContext) -> list[SuggestedAction]:
         """What can be done next with what was just read, in the catalog's own words.
 
         An entity that declares a lifecycle answers this itself: the moves that
         are legal from the state the object was just read in, minus the ones its
         author kept out of the runtime's mouth. Everything else is offered the
         procedures that act on it.
+
+        Each offer carries the key of the procedure behind it, so the wording
+        can be returned in the language of the turn without the offer itself
+        changing.
         """
         if not ctx.outcomes or any(outcome.kind != "read" for outcome in ctx.outcomes):
             return []
-        phrases: list[str] = []
+        actions: list[SuggestedAction] = []
         for entity_id in ctx.state.last_entities:
-            offered = self._resolver.suggestions_for_entity(
+            offered = self._resolver.offered_actions_for_entity(
                 entity_id, self._state_read_in_turn(ctx, entity_id)
             )
             if offered is None:
                 offered = [
-                    self._resolver.action_phrase(skill, on_selection=True)
+                    self._resolver.action_for_skill(skill, on_selection=True)
                     for skill in self._resolver.actions_for_entity(entity_id)
                 ]
-            for phrase in offered:
-                if phrase not in phrases:
-                    phrases.append(phrase)
-        return phrases
+            for action in offered:
+                offer(actions, action.key, action.label)
+        return actions
 
     def _state_read_in_turn(self, ctx: TurnContext, entity_id: str) -> str | None:
         """The state this turn read the object in, or nothing when it read none."""

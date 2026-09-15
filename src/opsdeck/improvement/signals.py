@@ -9,11 +9,17 @@ writes to either source.
 Ground truth for routing is free. A turn whose write was verified, or whose
 reads completed, names the procedure the request actually meant, next to the
 words the person actually used. That pair is the whole signal.
+
+What the record cannot show is whether the answer was any good, so the one
+thing read from outside the run is the judgment a person recorded against a
+turn. It is carried on the signal and changes nothing about it: what a turn did
+is still read from the trail and the ledger alone.
 """
 
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 from datetime import datetime
 from pathlib import Path
 
@@ -22,6 +28,7 @@ from pydantic import BaseModel, Field
 from opsdeck.contracts.events import AuditEvent
 from opsdeck.contracts.receipt import VerificationStatus
 from opsdeck.governance.ledger import WriteLedger
+from opsdeck.improvement.feedback import TurnFeedback, latest
 
 __all__ = ["TurnSignal", "load_signals", "read_events"]
 
@@ -31,11 +38,14 @@ class TurnSignal(BaseModel):
 
     `chosen_runbook` is the procedure the turn reached, from discovery when it
     chose one and from the route decision otherwise. `score` is what the top
-    candidate scored. `outcomes` names the operations that completed.
+    candidate scored. `outcomes` names the operations that completed. `turn` is
+    the position of the turn in its session, which is how a person names it.
+    `feedback` is the judgment recorded against it, when there is one.
     """
 
     session_id: str
     turn_id: str
+    turn: int = 0
     text: str = ""
     language: str = ""
     route_source: str = ""
@@ -44,6 +54,7 @@ class TurnSignal(BaseModel):
     tie: bool = False
     outcomes: list[str] = Field(default_factory=list)
     verified_write: bool = False
+    feedback: TurnFeedback | None = None
     at: datetime
 
     @property
@@ -76,12 +87,20 @@ def read_events(audit_path: Path) -> list[AuditEvent]:
     return events
 
 
-def load_signals(audit_path: Path, ledger: WriteLedger | None = None) -> list[TurnSignal]:
+def load_signals(
+    audit_path: Path,
+    ledger: WriteLedger | None = None,
+    feedback: Sequence[TurnFeedback] | None = None,
+) -> list[TurnSignal]:
     """One signal per turn of the trail, oldest first.
 
     With a ledger, every receipt the turn names is looked up and the turn counts
     as a verified write only when the read-back said so. Without one, the
     verification the audit trail recorded is taken as it stands.
+
+    With judgments, the last one recorded against a turn is carried on its
+    signal. A judgment naming a turn the trail does not hold is not a signal of
+    anything and is left where it is.
     """
     grouped: dict[tuple[str, str], list[AuditEvent]] = {}
     for event in read_events(audit_path):
@@ -91,6 +110,9 @@ def load_signals(audit_path: Path, ledger: WriteLedger | None = None) -> list[Tu
         for (session_id, turn_id), events in grouped.items()
         if any(event.kind == "turn" for event in events)
     ]
+    judgments = latest(feedback or [])
+    for signal in signals:
+        signal.feedback = judgments.get((signal.session_id, signal.turn))
     signals.sort(key=lambda signal: signal.at)
     return signals
 
@@ -108,6 +130,7 @@ def _signal(
         data = event.data
         if event.kind == "turn":
             signal.text = str(data.get("text", ""))
+            signal.turn = _position(data.get("turn"), signal.turn)
             signal.at = event.at
         elif event.kind == "route":
             signal.route_source = str(data.get("source", ""))
@@ -154,6 +177,10 @@ def _verified(receipt_ids: list[str], ledger: WriteLedger) -> bool:
         if receipt is not None and receipt.verification is VerificationStatus.verified:
             return True
     return False
+
+
+def _position(value: object, fallback: int) -> int:
+    return value if isinstance(value, int) and not isinstance(value, bool) else fallback
 
 
 def _top_score(ranked: object, fallback: float) -> float:

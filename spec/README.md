@@ -10,7 +10,7 @@ invariants. It names no vendor, no model, no framework and no database.
 An OSKA system declares what exists before it declares what can be done, and
 declares what can be done before it lets a model decide anything. Every effect
 on the world crosses a governance boundary that no configuration can lower.
-What the system says it can do is computed from its catalogue, not written by
+What the system says it can do is computed from its catalog, not written by
 hand into a prompt.
 
 ## Status
@@ -31,7 +31,7 @@ Read in order on a first pass:
 | [02-layers.md](02-layers.md) | The layered model and the dependency rule |
 | [03-integration-layer.md](03-integration-layer.md) | L1: declared operations and connectors |
 | [04-ontology-layer.md](04-ontology-layer.md) | L2: entities, relations, bindings, vocabulary |
-| [05-skill-layer.md](05-skill-layer.md) | L3: the skill contract, catalogue, resolver |
+| [05-skill-layer.md](05-skill-layer.md) | L3: the skill contract, catalog, resolver |
 | [06-governance-layer.md](06-governance-layer.md) | L4: the write path |
 | [07-cognition-layer.md](07-cognition-layer.md) | L5: discovery, routing, planning, replying |
 | [08-interaction-layer.md](08-interaction-layer.md) | L6: session, turn algorithm, channels |
@@ -55,7 +55,7 @@ is `INT`, `ONT`, `SKL`, `GOV`, `COG`, `IXN`, `EVO` or `XC`.
 
 ## Conformance in one paragraph
 
-A system conforms at Level 1 (Declared) when its catalogue validates, its
+A system conforms at Level 1 (Declared) when its catalog validates, its
 capability copy is derived and it runs offline against a scripted model
 provider. At Level 2 (Governed) it also satisfies the whole write path and
 passes the governed scenario categories. At Level 3 (Adaptive) it also
@@ -65,7 +65,7 @@ scenario suite, not by inspection.
 ## Reference implementation
 
 `opsdeck` is the reference implementation, and there are two reference
-conformance domains over two catalogues that share no vocabulary. The reference
+conformance domains over two catalogs that share no vocabulary. The reference
 implementation is normative only where this specification points at it; where
 the two disagree, this specification wins.
 
@@ -82,6 +82,6 @@ Antonio Antenore. OSKA: Ontology-first, Skill-driven Agentic architecture,
 version 0.1 (draft). 2026.
 ```
 
-## Licence
+## License
 
-The specification text follows the licence of the repository it ships in.
+The specification text follows the license of the repository it ships in.

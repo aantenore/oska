@@ -10,6 +10,9 @@ from pydantic import BaseModel, Field
 
 ReceiptStatus = Literal["pending", "executed", "error"]
 
+Classification = Literal["retryable", "terminal"]
+"""How a failed write may be treated: worth another attempt, or settled."""
+
 
 class VerificationStatus(StrEnum):
     """Result of the read-back that follows a write."""
@@ -34,3 +37,5 @@ class WriteReceipt(BaseModel):
     verification_evidence: dict | None = None
     created_at: datetime
     error: str | None = None
+    classification: Classification | None = None
+    revision: str | None = None

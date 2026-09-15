@@ -4,6 +4,12 @@ Both channels, the HTTP application and the command line, work against the same
 assembly, so what a turn does over HTTP and what it does in a terminal cannot
 drift apart. Nothing here decides anything; it reads the settings, builds the
 parts and hands them over.
+
+Which catalog the engine is built over is settled one level down, in the engine
+factory: a built revision of the configured tenant when the revision store holds
+one, and the configured skill roots otherwise. Whichever it is, it is the same
+catalog for every channel, and `Services.revision` names it so a channel can
+report what it is serving without reaching into the engine.
 """
 
 from __future__ import annotations
@@ -30,6 +36,11 @@ class Services:
     proposals: ProposalStore
     settings: Settings
     publish_root: Path
+
+    @property
+    def revision(self) -> str:
+        """The catalog revision in force, or nothing when a directory is served."""
+        return self.engine.registry.newest_revision()
 
 
 def build_services(

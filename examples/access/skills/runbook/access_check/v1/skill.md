@@ -50,7 +50,7 @@ deciding anything.
 3. When the question is about one group, read `group.get` for it and note its
    sensitivity and its owner.
 4. Report the groups by name, say which of them are privileged, and say what
-   the account's status is. Do not summarise the list away: the names are the
+   the account's status is. Do not summarize the list away: the names are the
    answer.
 
 ## Verification

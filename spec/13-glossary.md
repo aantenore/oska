@@ -18,11 +18,11 @@ identifier, a turn identifier, a timestamp and a data object.
 **Capability** — the set of operations a procedure may perform, declared in its
 frontmatter and split into reads and writes. Not a description; a permission.
 
-**Catalogue** — the collection of skill artefacts loaded from one or more
+**Catalog** — the collection of skill artifacts loaded from one or more
 roots, versioned by directory, reloaded by fingerprint.
 
 **Channel** — a transport that carries turns to the engine and renders results:
-a command line, an HTTP endpoint, a chat adapter. Adds no behaviour.
+a command line, an HTTP endpoint, a chat adapter. Adds no behavior.
 
 **Composite** — a skill declaring an ordered sequence of procedures. Has
 triggers and runtime wording, no policy of its own, and capabilities equal to
@@ -34,7 +34,7 @@ operation against one system and reports the result without judging it.
 **Contract** — a typed model shared across layers, declared once and owned by
 no layer.
 
-**Declared scope** — the single sentence, derived from the published catalogue,
+**Declared scope** — the single sentence, derived from the published catalog,
 that names every action the system can perform. The only description of the
 system's capability that exists.
 
@@ -47,7 +47,7 @@ optional state field with a closed set of states.
 **Fast path** — the routing stage that matches a turn lexically against declared
 triggers and configured utterances, above a threshold, when nothing is pending.
 
-**Fingerprint** — a digest over the catalogue files, used to detect a change and
+**Fingerprint** — a digest over the catalog files, used to detect a change and
 reload without a restart.
 
 **Hydration** — resolving a procedure to its transitive closure: the procedure,
@@ -128,10 +128,10 @@ conformance suite deterministic and offline.
 **Session** — one conversation, with its own state, its own approvals and its
 own ledger scope.
 
-**Skill** — a versioned declarative artefact: typed frontmatter plus a body.
+**Skill** — a versioned declarative artifact: typed frontmatter plus a body.
 Four types: entity, integration, procedure, composite. Not a plugin, not code.
 
-**Suggestion** — an action phrase derived from the catalogue for an entity a
+**Suggestion** — an action phrase derived from the catalog for an entity a
 read just returned. The only thing a reply may offer beyond its outcomes.
 
 **Trigger** — an example utterance declared by a procedure or composite, used
@@ -146,7 +146,7 @@ compared against expectations. The only evidence that a write took effect.
 permits a reply to claim success.
 
 **Vocabulary** — the preferred term and synonyms for each entity type and
-state, shared by the catalogue, the prompts and the replies.
+state, shared by the catalog, the prompts and the replies.
 
 **Write path** — the fixed sequence a write crosses: declaration, capability,
 ledger lookup, policy, approval, recorded intent, execution, verification,

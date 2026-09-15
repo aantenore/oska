@@ -1,0 +1,42 @@
+{
+  "name": "25_unsigned_session",
+  "description": "A procedure that takes the account from the authenticated identity is refused to a session nobody signed in to, and the account is never asked for.",
+  "level": 2,
+  "provider_script": [
+    {
+      "purpose": "router classification",
+      "expect_contains": "on the support rota from this week",
+      "response": {
+        "kind": "new_task",
+        "runbook_id": "runbook.access_grant",
+        "confidence": 0.9,
+        "language": "en"
+      }
+    },
+    {
+      "purpose": "reply writing",
+      "expect_contains": "\"kind\": \"invalid_plan\"",
+      "response": {
+        "reply": "Nobody is signed in to this session, and runbook.access_grant puts the signed-in account into a group, so there is no account for it to act on. Which account it should be is not something I can ask you: sign in and ask again."
+      }
+    }
+  ],
+  "turns": [
+    {
+      "user": "I am on the support rota from this week, put me in the support desk group",
+      "expect": {
+        "kind": "new_task",
+        "contains": [
+          "Nobody is signed in to this session",
+          "not something I can ask you"
+        ],
+        "outcomes": [
+          "invalid_plan"
+        ],
+        "pending": null,
+        "receipts": 0,
+        "verification": null
+      }
+    }
+  ]
+}

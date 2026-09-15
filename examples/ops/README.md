@@ -14,6 +14,10 @@ reading these files.
 - `configs/connectors.json` binds each integration to the mock connector.
 - `configs/connectors.real.example.json` the same catalog bound to an HTTP API
   and a command line tool, as it would look against real systems.
+- `scenarios/` the conformance suite for this catalog, one session per file.
+- `evaluation/` the labeled routing set the improvement job is measured
+  against, and the redaction patterns it filters a learned phrase through.
+- `cassettes/` where a recorded session against a real provider is kept.
 
 ## How the skills map to the model
 
@@ -38,6 +42,12 @@ is the procedure itself, written the way it would be written for a person on
 call: purpose, preconditions, steps, verification, rollback. A runbook that
 writes carries a `policy.json` next to it; a read-only runbook does not need
 one, because reads are gated by declaration alone.
+
+Three of them — `runbook.service_restart`, `runbook.alert_silence` and
+`runbook.log_search` — also carry an `evaluation.json`, holding the requests
+that must reach them and the requests that must not. `opsdeck evaluate catalog`
+runs all of them and names the procedures carrying none, so a new runbook that
+starts taking another's requests fails there rather than in a conversation.
 
 **Composites** are fixed sequences of runbooks. `composite.incident_triage`
 runs the health check, then the log search, then the incident note. Each step

@@ -11,6 +11,12 @@ tracing on.
 A span records a name, the fields handed to it, the moment it opened and how
 long it stayed open, and the span it opened inside. Sinks differ only in where
 that goes: nowhere, a list, or a file of one JSON object per line.
+
+A trace is optional and it is still a record of a conversation: the span a turn
+opens names the session, and the spans opened inside it belong to that session
+by descent. So a file of them is one of the places a request to be forgotten
+has to reach, and a sink that writes to a file can remove what it wrote for one
+session.
 """
 
 from __future__ import annotations
@@ -25,7 +31,10 @@ from pathlib import Path
 from time import perf_counter
 from typing import Protocol, runtime_checkable
 
+from opsdeck.audit.sink import rewrite_jsonl
+
 __all__ = [
+    "SESSION_FIELD",
     "JsonlTraceSink",
     "MemoryTraceSink",
     "NullTraceSink",
@@ -33,6 +42,9 @@ __all__ = [
     "TraceSink",
     "destination",
 ]
+
+SESSION_FIELD = "session"
+"""The span field naming the session a turn belongs to."""
 
 
 @dataclass
@@ -142,10 +154,57 @@ class JsonlTraceSink(_RecordingSink):
         """File this sink appends to."""
         return self._path
 
+    def delete(self, session_id: str) -> int:
+        """Remove every span of one session and report how many went.
+
+        Only the span a turn opens carries the session; the ones opened inside
+        it carry the span they are nested in, so they are found by descent from
+        a span that names it. The file is replaced whole and renamed over the
+        original, the way the audit trail is.
+        """
+        doomed = _spans_of(self._path, session_id)
+        if not doomed:
+            return 0
+        return rewrite_jsonl(self._path, lambda entry: entry.get("span_id") not in doomed)
+
     def _record(self, span: Span) -> None:
         self._path.parent.mkdir(parents=True, exist_ok=True)
         with self._path.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(span.as_dict(), sort_keys=True) + "\n")
+
+
+def _spans_of(path: Path, session_id: str) -> set[str]:
+    """The identifiers of the spans one session left in a file, nesting included."""
+    if not Path(path).is_file():
+        return set()
+    children: dict[str, list[str]] = {}
+    named: set[str] = set()
+    for line in Path(path).read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        try:
+            entry = json.loads(stripped)
+        except ValueError:
+            continue
+        if not isinstance(entry, dict):
+            continue
+        span_id = entry.get("span_id")
+        if not isinstance(span_id, str):
+            continue
+        parent = entry.get("parent_id")
+        if isinstance(parent, str):
+            children.setdefault(parent, []).append(span_id)
+        fields = entry.get("fields")
+        if isinstance(fields, dict) and fields.get(SESSION_FIELD) == session_id:
+            named.add(span_id)
+    pending = list(named)
+    while pending:
+        for child in children.get(pending.pop(), []):
+            if child not in named:
+                named.add(child)
+                pending.append(child)
+    return named
 
 
 def destination(sink: TraceSink) -> str:

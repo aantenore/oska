@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from opsdeck.api.app import create_app
@@ -12,6 +13,7 @@ from opsdeck.audit.sink import MemorySink
 from opsdeck.config import Settings
 from opsdeck.conformance import load_scenarios
 from opsdeck.engine.factory import build_engine
+from opsdeck.learning.changes import ChangeRequestState, ChangeRequestStore, store_for
 from opsdeck.learning.proposals import ProposalStore
 from opsdeck.planner.scripted import ScriptedModelProvider
 
@@ -43,18 +45,29 @@ def script(repo_root: Path) -> list[dict]:
 
 
 @pytest.fixture
-def client(example_settings: Settings, script: list[dict], tmp_path: Path) -> TestClient:
-    """A client over an application whose engine replays the scripted answers."""
+def changes(example_settings: Settings) -> ChangeRequestStore:
+    """The change request store the application writes its publications to."""
+    return store_for(example_settings)
+
+
+@pytest.fixture
+def app(example_settings: Settings, script: list[dict], tmp_path: Path) -> FastAPI:
+    """An application whose engine replays the scripted answers."""
     engine = build_engine(
         example_settings,
         provider=ScriptedModelProvider(script),
         audit_sink=MemorySink(),
     )
-    app = create_app(
+    return create_app(
         example_settings,
         engine=engine,
         proposal_store=ProposalStore(tmp_path / "proposals"),
     )
+
+
+@pytest.fixture
+def client(app: FastAPI) -> TestClient:
+    """A client over that application."""
     return TestClient(app)
 
 
@@ -147,8 +160,75 @@ def test_proposal_is_drafted_and_submitted(client: TestClient) -> None:
     )
     assert moved.status_code == 200
     body = moved.json()
-    assert body["state"] == "submitted"
-    assert body["history"][-1]["by"] == "a reviewer"
+    assert body["proposal"]["state"] == "submitted"
+    assert body["proposal"]["history"][-1]["by"] == "a reviewer"
+    assert body["change_request"] is None
+
+
+def test_publication_answers_with_a_change_request(
+    client: TestClient, changes: ChangeRequestStore, skills_root: Path
+) -> None:
+    """Publishing over HTTP composes a package; the catalog it serves is untouched."""
+    _run_the_restart(client)
+    proposal_id = client.post(f"/proposals/from-session/{SESSION}").json()["proposal_id"]
+    for state in ("submitted", "approved"):
+        client.post(
+            f"/proposals/{proposal_id}/transition", json={"to": state, "by": "a reviewer"}
+        )
+
+    published = client.post(
+        f"/proposals/{proposal_id}/transition", json={"to": "published", "by": "a reviewer"}
+    )
+
+    assert published.status_code == 200
+    body = published.json()
+    assert body["proposal"]["state"] == "published"
+    request = body["change_request"]
+    assert request is not None
+    assert request["proposal_id"] == proposal_id
+    assert request["state"] == ChangeRequestState.open.value
+    assert request["version"] == 2
+    assert request["actor"] == "a reviewer"
+
+    listing = client.get("/changes")
+    assert listing.status_code == 200
+    assert [held["request_id"] for held in listing.json()] == [request["request_id"]]
+    one = client.get(f"/changes/{request['request_id']}")
+    assert one.status_code == 200
+    assert one.json()["skill_id"] == request["skill_id"]
+
+    package = changes.package(request["request_id"])
+    assert (package / "skill.md").is_file()
+    assert not (skills_root / request["skill_id"].split(".")[1]).exists()
+    assert not (skills_root / "runbook" / "service_restart" / "v2").exists()
+
+
+def test_an_unknown_change_request_is_not_found(client: TestClient) -> None:
+    response = client.get("/changes/nothing-like-this")
+    assert response.status_code == 404
+    assert response.json()["error"] == "unknown_change_request"
+
+
+def test_no_route_applies_a_change_request(app: FastAPI, client: TestClient) -> None:
+    """The refusal is structural: there is no path that could apply one.
+
+    Every route the application declares is listed and the ones that write are
+    counted. A change request is only ever read here, so `apply` and `reject`
+    have no address at all, whatever verb is tried against the obvious ones.
+    """
+    declared = app.openapi()["paths"]
+    offered = {
+        (path, verb.upper()) for path, operations in declared.items() for verb in operations
+    }
+    change_routes = {(path, verb) for path, verb in offered if path.startswith("/changes")}
+    assert change_routes == {("/changes", "GET"), ("/changes/{request_id}", "GET")}
+    assert not any("apply" in path or "reject" in path for path, _ in offered)
+    assert not any(verb != "GET" for path, verb in change_routes)
+
+    for path in ("/changes/any-id/apply", "/changes/apply", "/changes/any-id/reject"):
+        assert client.post(path, json={"by": "someone", "into": "/tmp"}).status_code in (404, 405)
+    for verb in (client.post, client.put, client.patch, client.delete):
+        assert verb("/changes/any-id").status_code in (404, 405)
 
 
 def test_illegal_transition_is_refused(client: TestClient) -> None:

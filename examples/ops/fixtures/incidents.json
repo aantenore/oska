@@ -5,7 +5,7 @@
       "service": "payments",
       "severity": "sev1",
       "state": "open",
-      "summary": "Payment authorisations timing out since the 3.2.0 release",
+      "summary": "Payment authorizations timing out since the 3.2.0 release",
       "notes": [],
       "last_note": ""
     },

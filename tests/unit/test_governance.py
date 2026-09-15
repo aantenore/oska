@@ -423,7 +423,7 @@ def test_a_changed_payload_needs_a_new_approval() -> None:
 
 def test_the_summary_is_derived_from_the_exact_payload() -> None:
     gate = ApprovalGate()
-    summary = gate.summarise(CONTAINER, "service.restart", {"service": "checkout"})
+    summary = gate.summarize(CONTAINER, "service.restart", {"service": "checkout"})
     assert summary == 'service.restart on integration.container_runtime with {"service":"checkout"}'
 
     pending = gate.request(

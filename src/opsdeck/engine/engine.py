@@ -12,6 +12,22 @@ records nothing at all unless a deployment asked for it. The model budget
 bounds what one turn may spend: past it the model is not called again, the turn
 says so and answers from what it already has. That count belongs to the turn and
 not to the engine, because one engine serves overlapping turns.
+
+A turn may arrive under an identity. The channel authenticates it and says who
+it is; this module records it on the session the first time and refuses any
+later turn that arrives as somebody else, because a session is one conversation
+with one person and a write bound to an identity halfway through would be bound
+to whichever one happened to be on that turn. A procedure that takes a field
+from that identity is not offered to a session that has none: the value is not
+the person's to give, so the turn is refused with that as the reason instead of
+asking a question nobody should answer.
+
+A fourth wraps it where the catalog is served as a revision. The turn opens on
+the revision the session was last served by and reads the whole catalog through
+it, so a procedure retired while someone holds a pending approval does not
+disappear from the turn that offered it. Only a turn that starts a new task
+takes the newest revision, and it says so in the audit trail. That pin belongs
+to the turn for the same reason the budget does.
 """
 
 from __future__ import annotations
@@ -20,6 +36,7 @@ import uuid
 from collections.abc import Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
+from pathlib import Path
 
 from opsdeck.audit.sink import AuditSink
 from opsdeck.audit.trace import NullTraceSink, TraceSink, destination
@@ -55,6 +72,12 @@ from opsdeck.governance.guardrails import (
     GuardrailChain,
     GuardrailOutcome,
 )
+from opsdeck.governance.identity import (
+    Principal,
+    PrincipalMismatch,
+    declared_inputs,
+    requires_principal,
+)
 from opsdeck.governance.ledger import WriteLedger
 from opsdeck.governance.policy_engine import PolicyEngine
 from opsdeck.governance.verification import Verifier
@@ -73,6 +96,13 @@ _OVER_BUDGET = (
     "this turn reached the model calls it is allowed to make, so nothing further "
     "was planned or run"
 )
+_NO_PRINCIPAL = (
+    "acts on the account of whoever is signed in, and nobody is signed in to this "
+    "session, so nothing was planned; that account is not something to ask for"
+)
+_FIRST_TURN = "first_turn"
+_NEW_TASK = "new_task"
+_UNPINNED = "unpinned"
 
 
 class BudgetExceeded(ModelProviderError):
@@ -253,6 +283,14 @@ class _GuidedPlanner(Planner):
     hydrated skills declare, handed over as a system message, so a promise that
     is only ever text reaches the model the same way every time and a promise
     kept by code stays out of the prompt entirely.
+
+    What is taken away is the obligation to fill a field the runtime fills. A
+    field the procedure binds to the authenticated identity is not the model's
+    to supply, so the closure the planner reads is a copy in which no operation
+    requires it: the model plans the operation without it, the plan is judged as
+    the model was asked to write it, and the runtime completes the payload
+    before anything is decided about it. The catalog itself is not touched, and
+    the executor runs against the declarations as they are written.
     """
 
     def __init__(
@@ -277,7 +315,36 @@ class _GuidedPlanner(Planner):
         prose = self._chain.instructions(_declaring(hydrated), "planning")
         with self._trace.span("plan", runbook=hydrated.runbook.id) as span:
             span.set(guardrails=len(prose))
-            return super().plan(hydrated, guided(conversation, prose), collected_inputs)
+            return super().plan(
+                _without_identity_fields(hydrated),
+                guided(conversation, prose),
+                collected_inputs,
+            )
+
+
+def _without_identity_fields(hydrated: Hydrated) -> Hydrated:
+    """The same closure, with the identity's fields required of nobody.
+
+    A schema that requires a field the model may not write would refuse every
+    plan the model can honestly produce. The copy relaxes exactly those fields
+    and nothing else: they stay in the schema, so a value the model supplies
+    anyway is still a field this operation accepts and is still refused later
+    for being the model's.
+    """
+    names = set(declared_inputs([hydrated.runbook, *hydrated.runbooks]))
+    if not names:
+        return hydrated
+    integrations: list[Skill] = []
+    for integration in hydrated.integrations:
+        copy = integration.model_copy(deep=True)
+        for spec in copy.frontmatter.operations:
+            required = spec.input_schema.get("required")
+            if isinstance(required, list):
+                spec.input_schema["required"] = [
+                    field for field in required if field not in names
+                ]
+        integrations.append(copy)
+    return hydrated.model_copy(update={"integrations": integrations})
 
 
 def _declaring(hydrated: Hydrated) -> list[Skill]:
@@ -313,6 +380,7 @@ class Engine:
         guardrails: GuardrailCatalog | None = None,
         trace: TraceSink | None = None,
         budget: ModelBudget | None = None,
+        preferences_root: Path | None = None,
     ) -> None:
         self._registry = registry
         self._resolver = resolver
@@ -343,7 +411,9 @@ class Engine:
             else _GuidedPlanner(planner, self._chain, registry, resolver, self._trace)
         )
         self._goals = GoalRunner(registry, resolver, guided_planner, self._executor)
-        self._reply = ReplyBuilder(planner, resolver, runtime_config.reply)
+        self._reply = ReplyBuilder(
+            planner, resolver, runtime_config.reply, preferences_root=preferences_root
+        )
 
     @property
     def registry(self) -> SkillRegistry:
@@ -383,23 +453,117 @@ class Engine:
         """Every write receipt of a session, oldest first."""
         return self._ledger.for_session(session_id)
 
-    def turn(self, session_id: str, text: str) -> TurnResult:
-        """Run one turn and answer it."""
+    def turn(
+        self,
+        session_id: str,
+        text: str,
+        principal: Principal | None = None,
+    ) -> TurnResult:
+        """Run one turn and answer it, through the catalog revision it is served by.
+
+        `principal` is what the channel authenticated. It is recorded on the
+        session the first time one arrives, and a turn that arrives as somebody
+        else raises rather than running.
+        """
         state = self._sessions.load(session_id)
+        self._bind(state, principal)
         ctx = TurnContext(state=state, turn_id=uuid.uuid4().hex, audit=self._audit)
-        with self._budget.for_turn():
+        revision, reason = self._revision_for(state)
+        with self._budget.for_turn(), self._registry.pinned(revision):
             try:
                 with self._trace.span("turn", session=session_id, turn=state.turn_count + 1):
-                    return self._run(ctx, text)
+                    return self._run(ctx, text, revision, reason)
             finally:
                 self._sessions.save(state)
 
-    def _run(self, ctx: TurnContext, text: str) -> TurnResult:
+    @staticmethod
+    def _bind(state: SessionState, principal: Principal | None) -> None:
+        """Hold the session to one identity, and refuse a turn that arrives as another.
+
+        A session that was opened without one stays open to whoever arrives
+        first. A session that holds one is that person's: a turn carrying a
+        different subject, or carrying none at all, is not a turn of this
+        conversation and nothing of it is run or recorded.
+        """
+        held = Principal.from_dict(state.principal)
+        if held is None:
+            if principal is not None:
+                state.principal = principal.as_dict()
+            return
+        if principal is None:
+            raise PrincipalMismatch(
+                f"this session was opened by {held.subject} and this turn carries no identity"
+            )
+        if principal.subject != held.subject:
+            raise PrincipalMismatch(
+                f"this session was opened by {held.subject} and this turn arrives as "
+                f"{principal.subject}"
+            )
+        state.principal = principal.as_dict()
+
+    def _revision_for(self, state: SessionState) -> tuple[str, str]:
+        """The revision this turn opens on, and why it is that one.
+
+        A session that has never been served takes what the deployment serves
+        now. A pinned session keeps what it was served by until a turn starts a
+        new task, and only a turn that starts one adopts a newer revision.
+
+        A deployment that does not pin its sessions still holds one to its
+        revision while something of the previous turn is waiting under it: an
+        approval, or a goal that stopped to ask a question. Both were composed
+        from that revision — the sentence a person is about to answer, and the
+        procedure they are answering it for — and finishing either under a
+        newer catalog would finish something other than what they were shown.
+        Where pinning is off and nothing is waiting, the turn takes the newest
+        revision whether or not it starts a new task.
+        """
+        served = self._registry.newest_revision()
+        if not state.revision:
+            return served, _FIRST_TURN
+        if self._runtime.catalog.pin_sessions or _waiting(state):
+            return state.revision, ""
+        return (served or state.revision), _UNPINNED
+
+    def _record_revision(self, ctx: TurnContext, revision: str, reason: str) -> None:
+        """Note on the session which revision it is served by, when that changes."""
+        state = ctx.state
+        if not revision or revision == state.revision:
+            return
+        previous = state.revision
+        state.revision = revision
+        ctx.emit("revision", {"from": previous, "to": revision, "reason": reason})
+
+    def _adopt_newest(self, ctx: TurnContext) -> None:
+        """Start a new task on the newest catalog this deployment serves.
+
+        The turn was routed through the revision the session held, and the
+        procedure that routing named is looked up again below; a revision that
+        no longer publishes it answers from the declared scope instead, which is
+        what a retired procedure should do to a request that arrives after it.
+        """
+        newest = self._registry.newest_revision()
+        if not newest or newest == ctx.state.revision:
+            return
+        self._record_revision(ctx, newest, _NEW_TASK)
+        self._registry.adopt(newest)
+
+    def _run(
+        self, ctx: TurnContext, text: str, revision: str = "", reason: str = ""
+    ) -> TurnResult:
         state = ctx.state
         state.turn_count += 1
         state.language = state.language or self._runtime.reply.default_language
+        self._record_revision(ctx, revision, reason)
         guarded = self._chain.apply_input(text)
-        ctx.emit("turn", {"turn": state.turn_count, "text": guarded.text})
+        opened = Principal.from_dict(state.principal)
+        ctx.emit(
+            "turn",
+            {
+                "turn": state.turn_count,
+                "text": guarded.text,
+                **({"principal": opened.subject} if opened is not None else {}),
+            },
+        )
         if self._traced:
             ctx.emit("trace", {"recording": True, "where": destination(self._trace)})
         state.history.append(Message(role="user", content=guarded.text))
@@ -687,11 +851,17 @@ class Engine:
             )
             ctx.record(build.cancelled_outcome(_CANCELLED_BY_REQUEST, pending))
             state.pending_approval = None
+        self._adopt_newest(ctx)
         runbook_id = decision.runbook_id or self._choose(ctx, text)
         skill = self._registry.get(runbook_id) if runbook_id else None
         if skill is None or skill.type not in (SkillType.runbook, SkillType.composite):
             state.pending_goal = None
             return Answer("off_scope")
+        unsigned = self._unsigned(state, skill)
+        if unsigned is not None:
+            state.pending_goal = None
+            ctx.record(build.invalid_plan_outcome(skill.id, [unsigned]))
+            return Answer("outcomes", reply_intent=unsigned)
         state.pending_goal = PendingGoal(
             runbook_ids=_members(skill),
             step_index=0,
@@ -700,6 +870,23 @@ class Engine:
             request_text=text,
         )
         return self._goals.advance(ctx)
+
+    def _unsigned(self, state: SessionState, skill: Skill) -> str | None:
+        """Why this procedure is not for a session with nobody signed in, or nothing.
+
+        The procedures of a composite are read as well as the composite itself,
+        because a step that binds a field to the identity binds the whole goal
+        to it: the person would be asked for the request and refused at the
+        step, which is worse than being refused at the start.
+        """
+        members = [self._registry.get(member) for member in _members(skill)]
+        declaring = [held for held in (skill, *members) if held is not None]
+        if not requires_principal(declaring):
+            return None
+        principal = Principal.from_dict(state.principal)
+        if principal is not None and principal.authenticated:
+            return None
+        return f"{skill.id} {_NO_PRINCIPAL}"
 
     def _choose(self, ctx: TurnContext, text: str) -> str | None:
         with self._trace.span("discovery") as span:
@@ -725,6 +912,11 @@ class Engine:
             goal.collected_inputs[goal.missing[0].field] = text
             goal.missing = goal.missing[1:]
         return self._goals.advance(ctx)
+
+
+def _waiting(state: SessionState) -> bool:
+    """Whether this session left something of an earlier turn to be answered."""
+    return state.pending_approval is not None or state.pending_goal is not None
 
 
 def _planned_payload(pending: PendingApproval) -> dict | None:

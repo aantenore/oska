@@ -2,7 +2,7 @@
 
 Discovery decides with two numbers: the floor a candidate has to clear, and the
 margin under which a runner-up makes the top a tie. Both are guesses when they
-are first written, and a labelled set can say which pair of guesses is better.
+are first written, and a labeled set can say which pair of guesses is better.
 
 Tuning is bounded for one reason. A search that is allowed anywhere will find
 that a floor of zero and a margin of zero answer every case decisively, and it

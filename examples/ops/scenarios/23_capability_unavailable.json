@@ -1,0 +1,148 @@
+{
+  "name": "23_capability_unavailable",
+  "description": "A read that never reaches the runtime degrades that one capability: the turn says the check is temporarily unavailable, writes nothing, answers from the log it could still read, and the same session runs the check normally once the binding answers again. One failure is below the run of failures that opens the breaker, so the binding is reported as unavailable without being taken out of service.",
+  "level": 2,
+  "provider_script": [
+    {
+      "purpose": "router classification",
+      "expect_contains": "how is search doing in staging",
+      "response": {
+        "kind": "new_task",
+        "runbook_id": "runbook.service_health",
+        "confidence": 0.91,
+        "language": "en"
+      }
+    },
+    {
+      "purpose": "plan",
+      "expect_contains": "how is search doing in staging",
+      "response": {
+        "runbook_id": "runbook.service_health",
+        "operations": [
+          {
+            "integration_id": "integration.container_runtime",
+            "operation": "service.status",
+            "payload": {
+              "service": "search"
+            },
+            "write": false,
+            "purpose": "read the current state"
+          },
+          {
+            "integration_id": "integration.container_runtime",
+            "operation": "service.logs",
+            "payload": {
+              "service": "search"
+            },
+            "write": false,
+            "purpose": "read the tail of the log"
+          }
+        ],
+        "missing": [],
+        "reply_intent": "report the health of search"
+      }
+    },
+    {
+      "purpose": "reply writing",
+      "expect_contains": "\"kind\": \"unavailable\"",
+      "response": {
+        "reply": "The status check for search is temporarily unavailable: the runtime did not answer, so I have no state to report and nothing was changed. You can ask for it again shortly. The log did come back, and the most recent lines are there to read."
+      }
+    },
+    {
+      "purpose": "router classification",
+      "expect_contains": "try the status of search again",
+      "response": {
+        "kind": "new_task",
+        "runbook_id": "runbook.service_health",
+        "confidence": 0.91,
+        "language": "en"
+      }
+    },
+    {
+      "purpose": "plan",
+      "expect_contains": "try the status of search again",
+      "response": {
+        "runbook_id": "runbook.service_health",
+        "operations": [
+          {
+            "integration_id": "integration.container_runtime",
+            "operation": "service.status",
+            "payload": {
+              "service": "search"
+            },
+            "write": false,
+            "purpose": "read the current state"
+          },
+          {
+            "integration_id": "integration.container_runtime",
+            "operation": "service.logs",
+            "payload": {
+              "service": "search"
+            },
+            "write": false,
+            "purpose": "read the tail of the log"
+          }
+        ],
+        "missing": [],
+        "reply_intent": "report the health of search"
+      }
+    },
+    {
+      "purpose": "reply writing",
+      "expect_contains": "\"kind\": \"read\"",
+      "response": {
+        "reply": "The runtime answered this time. search is running on 0.8.2 in staging, with 2 replicas and no restarts, and the log warns that query latency p99 is above the budget."
+      }
+    }
+  ],
+  "turns": [
+    {
+      "user": "how is search doing in staging",
+      "connector_behaviors": {
+        "integration.container_runtime": {
+          "service.status": {
+            "unreachable": true,
+            "error": "the runtime did not answer"
+          }
+        }
+      },
+      "expect": {
+        "kind": "new_task",
+        "contains": [
+          "temporarily unavailable",
+          "nothing was changed"
+        ],
+        "outcomes": [
+          "unavailable",
+          "read"
+        ],
+        "pending": null,
+        "receipts": 0,
+        "verification": null
+      }
+    },
+    {
+      "user": "try the status of search again",
+      "connector_behaviors": {
+        "integration.container_runtime": {
+          "service.status": null
+        }
+      },
+      "expect": {
+        "kind": "new_task",
+        "contains": [
+          "running on 0.8.2",
+          "staging"
+        ],
+        "outcomes": [
+          "read",
+          "read"
+        ],
+        "pending": null,
+        "receipts": 0,
+        "verification": null
+      }
+    }
+  ]
+}

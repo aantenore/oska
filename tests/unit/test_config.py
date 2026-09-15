@@ -38,7 +38,7 @@ MODEL_LIKE = re.compile(
 # with the reason it is not one.
 ALLOWED_LITERALS: dict[str, set[str]] = {
     # The name of the file the improvement job writes and an index reads back.
-    # It is one artefact named in one place so that both layers agree, not a
+    # It is one artifact named in one place so that both layers agree, not a
     # value an operator would tune.
     "index/base.py": {"learned-examples.json"},
 }

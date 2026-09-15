@@ -3,12 +3,18 @@
 An outcome is the only thing a reply may be written from. Nothing here
 interprets or softens a result: a write that was not confirmed by its read-back
 is reported as unconfirmed, in the same words every time.
+
+A capability that is down has a line of its own, because neither of the lines
+it would otherwise borrow is true. It is not a refusal: nothing was decided
+about the request. It is not a completion: nothing was done. It is the one
+outcome that says when the same thing may be asked for again.
 """
 
 from __future__ import annotations
 
 from collections.abc import Sequence
 
+from opsdeck.connectors.base import health_of
 from opsdeck.contracts.common import ConnectorResult, Outcome, PendingApproval, PolicyDecision
 from opsdeck.contracts.receipt import VerificationStatus, WriteReceipt
 from opsdeck.governance.ledger import canonical_json
@@ -23,10 +29,13 @@ __all__ = [
     "receipt_lines",
     "receipt_outcome",
     "rejected_outcome",
+    "unavailable_instruction",
+    "unavailable_outcome",
     "outcome_summary",
 ]
 
 _RECEIPT_KINDS = ("receipt", "ledger_hit")
+_UNAVAILABLE = "unavailable"
 
 
 def read_outcome(integration_id: str, operation: str, result: ConnectorResult) -> Outcome:
@@ -35,6 +44,33 @@ def read_outcome(integration_id: str, operation: str, result: ConnectorResult) -
     if result.error:
         data["error"] = result.error
     return Outcome(kind="read", integration_id=integration_id, operation=operation, data=data)
+
+
+def unavailable_outcome(
+    integration_id: str,
+    operation: str,
+    result: ConnectorResult,
+    receipt: WriteReceipt | None = None,
+) -> Outcome:
+    """A capability that could not be reached just now, and when it may be again.
+
+    A receipt is carried when the operation was a write, so the attempt that
+    never left is still named by the reply along with every other write.
+    """
+    health = health_of(result)
+    return Outcome(
+        kind="unavailable",
+        integration_id=integration_id,
+        operation=operation,
+        data={
+            "write": receipt is not None,
+            "breaker": health.state,
+            "consecutive_failures": health.consecutive_failures,
+            "retry_in_seconds": health.retry_in_seconds,
+        },
+        receipt_id=receipt.receipt_id if receipt else None,
+        reason=result.error,
+    )
 
 
 def receipt_outcome(receipt: WriteReceipt) -> Outcome:
@@ -142,8 +178,31 @@ def outcome_summary(outcomes: Sequence[Outcome]) -> list[str]:
 
 
 def receipt_lines(outcomes: Sequence[Outcome]) -> list[str]:
-    """The lines that name a receipt: one per write this turn performed or replayed."""
-    return [_line(outcome) for outcome in outcomes if outcome.kind in _RECEIPT_KINDS]
+    """One line per write this turn performed, replayed, or could not send at all."""
+    return [_line(outcome) for outcome in outcomes if _names_a_receipt(outcome)]
+
+
+def unavailable_instruction(outcomes: Sequence[Outcome]) -> list[str]:
+    """What the reply writer is told about a capability that is down, one line each.
+
+    It is handed over as an instruction rather than left to the wording of an
+    outcome, because the two mistakes available here — reporting a refusal, or
+    reporting a success — are both worse than saying nothing.
+    """
+    return [
+        f"{outcome.operation} could not be reached just now and nothing was sent to it. "
+        f"Say that it is temporarily unavailable and that it may be tried again "
+        f"{_when(outcome)}. Do not say it was refused and do not say it was done. "
+        "Everything else in this conversation is unaffected."
+        for outcome in outcomes
+        if outcome.kind == _UNAVAILABLE
+    ]
+
+
+def _names_a_receipt(outcome: Outcome) -> bool:
+    return outcome.kind in _RECEIPT_KINDS or (
+        outcome.kind == _UNAVAILABLE and outcome.receipt_id is not None
+    )
 
 
 def _line(outcome: Outcome) -> str:
@@ -152,6 +211,8 @@ def _line(outcome: Outcome) -> str:
             return _read_line(outcome)
         case "receipt":
             return _receipt_line(outcome)
+        case "unavailable":
+            return _unavailable_line(outcome)
         case "ledger_hit":
             return (
                 f"{outcome.operation} was already done in this session, "
@@ -175,6 +236,33 @@ def _line(outcome: Outcome) -> str:
         case "cancelled":
             return outcome.reason or "The request under way was cancelled."
     return f"{outcome.kind}."
+
+
+def _unavailable_line(outcome: Outcome) -> str:
+    """Neither done nor refused: not reachable, and when it may be tried again.
+
+    A write says so in the same breath as its receipt, because the attempt is
+    in the record and the reply names every receipt the session holds.
+    """
+    reason = outcome.reason or "it did not answer"
+    head = (
+        f"{outcome.operation} could not be reached on {outcome.integration_id}: {reason}. "
+        f"That capability is temporarily unavailable and may be tried again {_when(outcome)}."
+    )
+    if outcome.data.get("write"):
+        return (
+            f"{head} Nothing was sent, so nothing was changed. "
+            f"Receipt {outcome.receipt_id} records the attempt."
+        )
+    return f"{head} Nothing was read and nothing was changed."
+
+
+def _when(outcome: Outcome) -> str:
+    """How long until the capability may be tried again, in words."""
+    seconds = outcome.data.get("retry_in_seconds")
+    if not isinstance(seconds, int) or seconds <= 0:
+        return "now"
+    return f"in {seconds} second" if seconds == 1 else f"in {seconds} seconds"
 
 
 def _read_line(outcome: Outcome) -> str:

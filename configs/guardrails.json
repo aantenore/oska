@@ -12,7 +12,7 @@
     },
     "guardrail.exact_payload_approval": {
       "title": "What was approved is what is sent",
-      "description": "A write runs only with the payload a person was shown and approved, compared by a hash taken over a canonical serialisation. A payload that has moved since the approval needs a new approval.",
+      "description": "A write runs only with the payload a person was shown and approved, compared by a hash taken over a canonical serialization. A payload that has moved since the approval needs a new approval.",
       "enforcement": {
         "point": "execution",
         "mechanism": "invariant",

@@ -47,7 +47,10 @@ class ImprovementReport(BaseModel):
     at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     signals: int = 0
     grounded: int = 0
+    judged: int = 0
+    judgments: dict[str, int] = Field(default_factory=dict)
     learned: dict[str, int] = Field(default_factory=dict)
+    preferences: dict[str, int] = Field(default_factory=dict)
     tuning: Tuning | None = None
     tuning_applied: bool = False
     overrides_path: str | None = None
@@ -95,7 +98,9 @@ def render_text(report: ImprovementReport) -> str:
     lines = [
         f"improvement run at {report.at.isoformat()}",
         f"level 0  signals: {report.signals} read, {report.grounded} of them grounded",
+        f"level 0  judgments: {report.judged} recorded ({_pairs(report.judgments)})",
         *_learned_lines(report),
+        *_preference_lines(report),
         *_tuning_lines(report),
         *_evaluation_lines(report),
         *_gap_lines(report),
@@ -110,6 +115,19 @@ def _learned_lines(report: ImprovementReport) -> list[str]:
     lines.extend(
         f"           {skill_id}: {count} phrase(s)"
         for skill_id, count in sorted(report.learned.items())
+    )
+    return lines
+
+
+def _preference_lines(report: ImprovementReport) -> list[str]:
+    total = sum(report.preferences.values())
+    lines = [
+        f"level 1  presentation preferences: {total} across "
+        f"{len(report.preferences)} session(s), reply wording only"
+    ]
+    lines.extend(
+        f"           {session_id}: {count} preference(s)"
+        for session_id, count in sorted(report.preferences.items())
     )
     return lines
 
@@ -170,5 +188,5 @@ def _proposal_lines(report: ImprovementReport) -> list[str]:
     return lines
 
 
-def _pairs(values: dict[str, float]) -> str:
+def _pairs(values: dict[str, float] | dict[str, int]) -> str:
     return ", ".join(f"{name}={value}" for name, value in sorted(values.items())) or "none"

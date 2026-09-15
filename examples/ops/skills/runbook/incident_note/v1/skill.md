@@ -42,7 +42,7 @@ hour later is a reconstruction; a note written now is evidence.
 
 - The incident identifier is known and the incident is open.
 - The note says what was observed or what was done, with the time and the
-  service it concerns. No speculation about cause unless it is labelled as
+  service it concerns. No speculation about cause unless it is labeled as
   such.
 
 ## Steps

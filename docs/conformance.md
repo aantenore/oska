@@ -22,10 +22,10 @@ scenario fails, so it drops into a build without further ceremony.
 
 A suite belongs to the catalog it was written for, so there are two runs, not
 one. The operational catalog is the default: `opsdeck conform` runs its
-twenty-one scenarios and reports conformance level 3. The access catalog needs
-its own roots, its own scenarios and its own connector bindings, and `--skills`
-replaces the catalog roots rather than adding to them, which is what keeps
-either suite from seeing the other's procedures:
+twenty-three scenarios and reports conformance level 3. The access catalog
+needs its own roots, its own scenarios and its own connector bindings, and
+`--skills` replaces the catalog roots rather than adding to them, which is what
+keeps either suite from seeing the other's procedures:
 
 ```sh
 opsdeck conform --skills examples/access/skills \
@@ -33,7 +33,7 @@ opsdeck conform --skills examples/access/skills \
   --connectors examples/access/configs/connectors.json
 ```
 
-Seven scenarios, conformance level 2. That is every level it declares a
+Eight scenarios, conformance level 2. That is every level it declares a
 scenario for: the evolution lifecycle of level 3 is a property of the runtime
 rather than of a domain, and is exercised once, by the operational suite.
 
@@ -43,8 +43,8 @@ totals:
 ```
 pass  02_restart_staging  level 2  3 turn(s)
 ...
-level 1: 5/5 scenarios pass
-level 2: 15/15 scenarios pass
+level 1: 6/6 scenarios pass
+level 2: 16/16 scenarios pass
 level 3: 1/1 scenarios pass
 conformance level 3
 ```
@@ -113,7 +113,7 @@ order of the model calls in the turn — see
     "receipts": 0,
     "verification": null
   },
-  "connector_behaviours": { ... }
+  "connector_behaviors": { ... }
 }
 ```
 
@@ -127,7 +127,10 @@ order of the model calls in the turn — see
 | `verification` | The verification status of the most recent receipt, or `null` when there is none. Always checked |
 
 Outcome kinds are `read`, `receipt`, `ledger_hit`, `denied`, `rejected`,
-`invalid_plan`, `approval_pending` and `cancelled`.
+`invalid_plan`, `approval_pending`, `cancelled` and `unavailable`. The last is
+a capability that could not be reached, which is neither a result nor a
+refusal; a scenario that asserts it is asserting that the plan carried on past
+it and that nothing was written.
 
 `kind` has one value that is not a route kind. A guardrail at the input
 boundary ends the turn before it is classified, so there is no `route` event to
@@ -144,13 +147,13 @@ waiting, or unexpectedly produces a receipt, fails a scenario that says nothing
 about it. That is deliberate. A scenario is a statement about a turn, not a
 selection of the parts of it you happened to look at.
 
-### `connector_behaviours`
+### `connector_behaviors`
 
 Applied before the turn runs, keyed by integration id and then by operation.
 They are how a scenario makes a system misbehave.
 
 ```json
-"connector_behaviours": {
+"connector_behaviors": {
   "integration.container_runtime": {
     "service.status": { "override": { "ok": true, "service": { "status": "degraded" } } }
   }
@@ -159,14 +162,22 @@ They are how a scenario makes a system misbehave.
 
 | Behavior | Effect |
 | --- | --- |
-| `{"fail": true, "error": "..."}` | The operation returns a failure |
-| `{"fail_after": 1, "error": "..."}` | It succeeds that many times, then fails |
+| `{"fail": true, "error": "..."}` | The system answers no. Terminal: another attempt would be answered the same way, and the breaker is not touched, because a system that refuses is a system that is up |
+| `{"unreachable": true, "error": "..."}` | The call does not reach the system at all. Retryable, and the only injected failure that counts toward the breaker. This is how an outage is simulated |
+| `{"fail_after": 1, "error": "..."}` | It succeeds that many times, then fails in whichever of the two ways the behavior declares |
 | `{"override": {...}, "ok": true}` | It returns this data instead of reading the fixture |
 | `null` | Clears the behavior in force for that operation |
 
 A behavior stays in force until a later turn replaces or clears it, which is how
 a verification-failure scenario makes the write succeed and the read-back
-disagree.
+disagree, and how an outage scenario makes one turn fail and the next one
+succeed.
+
+The difference between `fail` and `unreachable` is the whole of what an
+availability scenario is about, so a scenario that means an outage has to say
+`unreachable`. A `fail` produces a refusal, settles the intent in the ledger
+and leaves the breaker closed; an `unreachable` produces an `unavailable`
+outcome, settles nothing, and counts toward opening the breaker.
 
 The mock connector is the only one a scenario drives, and it works on an
 in-memory copy of its fixture, so a scenario changes state and the files on disk
@@ -201,8 +212,15 @@ proposal is still a draft, so what refuses it is the missing actor and not an
 edge that leads nowhere; the runner also checks that the refused move left the
 state untouched. `transitions` are then applied in order. `expect` checks the
 final state, optionally that the quality check passed, and optionally that the
-catalog now holds the published id — read back from the publication root, which
-the runner adds as a catalog root for any scenario with a learning block.
+catalog now holds the published id.
+
+The move to `published` composes a change request rather than writing a skill
+file, so the runner does what a person would do next: it applies the request
+into the publication root, under the actor the transition named, and adds that
+root as a catalog root for any scenario with a learning block. That is the one
+place in the suite where a review is stood in for, and it is stood in for
+explicitly, because a scenario that asserts a published procedure has to have
+somebody publish it.
 
 ## Levels
 
@@ -217,14 +235,15 @@ whose lower levels all pass too. One failing level 1 scenario caps the report at
 0, however many level 3 scenarios pass, because a system that cannot say what it
 does correctly has nothing to govern.
 
-The twenty-one scenarios in `examples/ops/scenarios/` cover greeting, off scope,
-language, a governed write with approval and verification and a ledger replay, a
-production write needing a second approval, a rejection, goal replacement, a
-policy denial, a verification failure, an invalid plan, a cancelled approval, a
-session limit, an approval with nothing pending, a composite, a refusal at the
-second policy evaluation, and the learning lifecycle.
+The twenty-three scenarios in `examples/ops/scenarios/` cover greeting, off
+scope, language, a governed write with approval and verification and a ledger
+replay, a production write needing a second approval, a rejection, goal
+replacement, a policy denial, a verification failure, an invalid plan, a
+cancelled approval, a session limit, an approval with nothing pending, a
+composite, a refusal at the second policy evaluation, and the learning
+lifecycle.
 
-Five of them are newer categories and are worth naming separately, because each
+Seven of them are newer categories and are worth naming separately, because each
 asserts something the others cannot:
 
 - **An illegal lifecycle move.** A rollback asked for on a deployment that has
@@ -246,10 +265,79 @@ asserts something the others cannot:
 - **A human input.** The text of an incident note is asked for, stored against
   the field, and written exactly as it was given; the same request again
   returns the receipt the ledger already holds.
+- **A capability that is unavailable.** One read is made unreachable for one
+  turn. The turn records an `unavailable` outcome, answers from the read that
+  did come back, writes nothing, and says the capability may be tried again;
+  the next turn, with the behavior cleared, runs the same check normally. One
+  failure is below the run that opens the breaker, so the binding is reported
+  as unavailable without being taken out of service.
+- **Labels in the language of the turn.** A request in Italian is offered its
+  next steps in Italian. The actions travel to the reply writer as a key and
+  the wording their author declared and come back rewritten by the same call
+  that wrote the reply, so the offer is the catalog's and the language is the
+  conversation's.
 
-The access suite adds one more: a request read while it is open is offered the
+The access suite adds two more: a request read while it is open is offered the
 move that completes it, and one already granted is offered nothing, because the
-move it has left is declared as never suggested.
+move it has left is declared as never suggested; and a procedure that takes the
+account from the authenticated identity is refused to a session nobody signed
+in to, with `invalid_plan` and no question asked about which account was meant.
+
+## What a catalog change runs
+
+The suite is one of three things a change to a catalog should pass, and they
+answer different questions.
+
+```sh
+opsdeck validate          # does the catalog hold up against itself
+opsdeck evaluate catalog  # does each procedure still answer its own requests
+opsdeck conform           # does the runtime still behave the way the standard says
+```
+
+The middle one is the newer half and the one a catalog change is most likely to
+break. A skill may carry an `evaluation.json` beside it holding the requests
+that must reach it and the requests that must not; `evaluate catalog` runs every
+such set through the same ranking the runtime uses and exits non-zero on any
+failing case. A new procedure whose triggers overlap an existing one does not
+announce itself in `validate` and does not show up in a scenario unless somebody
+wrote one for it: it shows up here, as a case that used to reach one procedure
+and now reaches another. The format and the authoring command are in
+[skill-contract.md](skill-contract.md#the-evaluation-set-beside-it).
+
+It ranks by keyword overlap and needs no provider, so it is offline and
+identical on every machine, which is what makes it a build step. A deployment
+that ranks by embedding should also run the sets against its own provider before
+publishing, because that is the ranking its conversations will get.
+
+The same sets run again at the quality gate: a proposal that revises a skill and
+cannot answer that skill's own cases is refused. A skill with no set is not
+refused, and both commands name the procedures that carry none, so the absence
+is visible rather than silent.
+
+## The service-level numbers
+
+A suite says whether the runtime behaves correctly on cases somebody wrote down.
+It says nothing about how a deployment is actually serving, and that is a
+different question with a different command:
+
+```sh
+opsdeck slo report
+opsdeck slo report --since 7 --json
+```
+
+Six numbers, read back from records the deployment keeps anyway: the median and
+the tail of how long a turn takes, how often a deterministic template spoke
+because no model could, how often the read-back after a write did not confirm
+it, how often a guardrail refused, and how often a request found no procedure at
+all. The last is not an error rate — it is the signal that the catalog is
+missing something, and it is the number that tells an author to write a
+scenario that does not exist yet.
+
+The rule is that a number nothing recorded is reported as not computed, with the
+reason, and never as zero. The two latency numbers come from traces, which are
+off by default, so a deployment that has never switched tracing on is told to
+switch it on rather than shown a healthy-looking zero.
+[operating.md](operating.md) is how to read one.
 
 ## Writing a scenario for a new domain
 

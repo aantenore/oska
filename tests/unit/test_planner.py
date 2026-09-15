@@ -9,7 +9,7 @@ import httpx
 import pytest
 
 from opsdeck.catalog.registry import SkillRegistry
-from opsdeck.catalog.resolver import CapabilityResolver
+from opsdeck.catalog.resolver import CapabilityResolver, SuggestedAction
 from opsdeck.contracts.common import Hydrated, Message, Outcome, RankedSkill
 from opsdeck.contracts.plan import Plan
 from opsdeck.planner.openai_compatible import OpenAICompatibleProvider
@@ -53,6 +53,34 @@ def _planner(
 ) -> tuple[Planner, ScriptedModelProvider]:
     provider = ScriptedModelProvider(script)
     return Planner(provider, registry, resolver), provider
+
+
+class _Recorder:
+    """A provider that keeps every exchange it was asked about, prompt included."""
+
+    name = "recorder"
+
+    def __init__(self, inner: ScriptedModelProvider) -> None:
+        self._inner = inner
+        self._seen: list[str] = []
+
+    def seen(self) -> list[str]:
+        """Every system prompt and message this provider was handed, one string each."""
+        return list(self._seen)
+
+    def complete_json(
+        self,
+        system: str,
+        messages: list[Message],
+        schema: dict,
+        *,
+        temperature: float = 0.0,
+    ) -> dict:
+        self._seen.append("\n".join([system, *(message.content for message in messages)]))
+        return self._inner.complete_json(system, messages, schema, temperature=temperature)
+
+    def embed(self, texts: list[str]) -> list[list[float]]:
+        return self._inner.embed(texts)
 
 
 def test_undeclared_operation_is_rejected_then_repaired(
@@ -167,9 +195,64 @@ def test_write_reply_sees_only_the_outcomes(
         )
     ]
 
-    reply = planner.write_reply(outcomes, "report the status", ["restart it"], "en", CONVERSATION)
+    actions = [SuggestedAction(key=RUNBOOK, label="restart it")]
+    reply = planner.write_reply(outcomes, "report the status", actions, "en", CONVERSATION)
 
     assert reply == "The service is running."
+    assert actions[0].label == "restart it"
+
+
+def test_the_reply_writer_is_handed_the_actions_and_returns_their_wording(
+    registry: SkillRegistry, resolver: CapabilityResolver
+) -> None:
+    """The offer travels as a key and a label, and comes back in the reply's language."""
+    script = [
+        {
+            "purpose": "reply",
+            "expect_contains": '"actions": [{"key": "runbook.service_restart"',
+            "response": {
+                "reply": "Il servizio e in esecuzione.",
+                "action_labels": {RUNBOOK: "riavvialo", "runbook.nothing_offered": "ignorami"},
+            },
+        }
+    ]
+    planner, provider = _planner(script, registry, resolver)
+    actions = [
+        SuggestedAction(key=RUNBOOK, label="restart it"),
+        SuggestedAction(key="runbook.service_rollback", label="roll it back"),
+    ]
+
+    reply = planner.write_reply([], "report the status", actions, "it", CONVERSATION)
+
+    assert reply == "Il servizio e in esecuzione."
+    assert [(action.key, action.label) for action in actions] == [
+        (RUNBOOK, "riavvialo"),
+        ("runbook.service_rollback", "roll it back"),
+    ]
+    assert provider.consumed() == 1
+
+
+def test_a_presentation_preference_reaches_the_reply_and_never_the_plan(
+    hydrated: Hydrated, registry: SkillRegistry, resolver: CapabilityResolver
+) -> None:
+    """A preference is a fact for the reply writer and is absent from every plan prompt."""
+    preference = "keep the answer to two sentences"
+    script = [
+        {
+            "purpose": "plan",
+            "response": _plan_response([_operation("service.status", {"service": "x"}, False)]),
+        },
+        {"purpose": "reply", "response": {"reply": "Done."}},
+    ]
+    recorder = _Recorder(ScriptedModelProvider(script))
+    planner = Planner(recorder, registry, resolver)
+
+    planner.plan(hydrated, list(CONVERSATION))
+    planned = recorder.seen()
+    planner.write_reply([], "report it", [], "en", CONVERSATION, [preference])
+
+    assert not any(preference in exchange for exchange in planned)
+    assert any(preference in exchange for exchange in recorder.seen()[len(planned) :])
 
 
 def test_script_mismatch_names_the_expectation_and_the_message() -> None:

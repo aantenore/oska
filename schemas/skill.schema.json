@@ -329,6 +329,13 @@
         "type": "string"
       },
       "description": "Identifiers of guardrails declared in the governed catalog."
+    },
+    "principal_inputs": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      },
+      "description": "Payload fields resolved from the authenticated principal, mapped to the principal attribute they take their value from. Never asked for, never written by the model."
     }
   }
 }

@@ -1,0 +1,10 @@
+{
+  "cases": [
+    { "text": "please restart the payments service", "expects": "this", "language": "en" },
+    { "text": "the checkout service is stuck, can you bounce it", "expects": "this", "language": "en" },
+    { "text": "riavvia il servizio di pagamento", "expects": "this", "language": "it" },
+    { "text": "put the checkout service back on the version it ran before", "expects": "not this", "language": "en" },
+    { "text": "undo the last deployment of the api", "expects": "not this", "language": "en" },
+    { "text": "before we restart anything, how is the payments service doing", "expects": "not this", "language": "en" }
+  ]
+}

@@ -1,13 +1,21 @@
 """The improvement job from a terminal: run it, read it, undo one part of it.
 
-Four commands and one rule. `run` carries out the job and writes the report,
-`show` prints the last report, `revert` deletes what was learned for one
-procedure, and `evaluate` routes the labelled set without changing anything.
+Five commands and one rule. `run` carries out the job and writes the report,
+`show` prints the last report, `feedback` records a judgment on one answer,
+`revert` deletes what was learned for one procedure or what was recorded about
+how one session likes its answers written, and `evaluate` routes the labeled
+set without changing anything.
+
+`feedback` is a recording and nothing else. It writes one line and no procedure
+changes, no threshold moves and no wording is learned because of it. What comes
+of it, if anything, comes of the next run of the job.
 
 `revert` is a deletion and nothing else. The phrasings it removes are what an
 index ranks by, and the index folds their files into the fingerprint it holds,
 so the next ranking is built without them and is the ranking that was there
-before they were learned. Nothing has to be restarted.
+before they were learned. A preference it removes stops reaching the reply
+writer of that session, which is the only place a preference ever reached.
+Nothing has to be restarted.
 
 A run whose precision is below the precision of the previous report leaves a
 non-zero status. That is an alarm for whoever is watching the job, not an
@@ -18,7 +26,7 @@ report says which cases were missed so a person can decide.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, cast
 
 import typer
 
@@ -26,8 +34,10 @@ from opsdeck.catalog.registry import SkillRegistry
 from opsdeck.cli.options import JsonOption, SkillsOption, fail, settings_for
 from opsdeck.config import Settings, load_runtime_config, state_path
 from opsdeck.improvement.evaluation import EvaluationReport, load_cases, run_evaluation
+from opsdeck.improvement.feedback import SCORES, FeedbackStore, Score, feedback_root
 from opsdeck.improvement.job import run_job
 from opsdeck.improvement.learned import revert as revert_learned
+from opsdeck.improvement.preferences import preferences_root, revert_preferences
 from opsdeck.improvement.report import (
     ImprovementReport,
     precision_dropped,
@@ -53,7 +63,19 @@ ApplyTuningOption = Annotated[
 ]
 CasesOption = Annotated[
     Path | None,
-    typer.Option("--cases", help="Labelled routing set to evaluate against."),
+    typer.Option("--cases", help="Labeled routing set to evaluate against."),
+]
+TurnOption = Annotated[
+    int,
+    typer.Option("--turn", help="Which answer of the session is being judged, counted from 1."),
+]
+ScoreOption = Annotated[
+    str,
+    typer.Option("--score", help="up or down."),
+]
+CommentOption = Annotated[
+    str,
+    typer.Option("--comment", help="Why, in the words of the person judging."),
 ]
 
 
@@ -84,22 +106,57 @@ def show(as_json: JsonOption = False, skills: SkillsOption = None) -> None:
     _print(report, as_json)
 
 
+@app.command("feedback")
+def feedback(
+    session_id: str,
+    turn: TurnOption,
+    score: ScoreOption,
+    comment: CommentOption = "",
+    skills: SkillsOption = None,
+) -> None:
+    """Record a judgment on one answer. Nothing else changes because of it."""
+    if score not in SCORES:
+        fail(f"a score is {' or '.join(SCORES)}, not {score!r}")
+    settings = settings_for(skills)
+    store = FeedbackStore(feedback_root(Path(settings.state_dir)))
+    try:
+        recorded = store.record(session_id, turn, cast("Score", score), comment)
+    except (KeyError, OSError, ValueError) as exc:
+        fail(f"the judgment could not be recorded: {exc}")
+    typer.echo(
+        f"{recorded.session_id} turn {recorded.turn}: {recorded.score} recorded; "
+        "nothing else changed"
+    )
+
+
 @app.command("revert")
-def revert(skill_id: str, skills: SkillsOption = None) -> None:
-    """Delete the phrasings learned for one procedure, and with them their effect."""
+def revert(target: str, skills: SkillsOption = None) -> None:
+    """Delete what was learned for a procedure, or recorded about how a session reads.
+
+    One identifier, two things it may name, because both are files this job
+    wrote and both are undone by deleting them.
+    """
     settings = settings_for(skills)
     runtime = load_runtime_config(settings=settings)
-    root = state_path(Path(settings.state_dir), runtime.improvement.learned_root)
+    state_dir = Path(settings.state_dir)
+    learned_root = state_path(state_dir, runtime.improvement.learned_root)
     try:
-        removed = revert_learned(root, skill_id)
+        removed_phrases = revert_learned(learned_root, target)
+        removed_preferences = revert_preferences(preferences_root(state_dir), target)
     except (KeyError, OSError) as exc:
         fail(f"nothing could be reverted: {exc}")
-    if not removed:
-        fail(f"nothing was learned for {skill_id}")
-    typer.echo(
-        f"{skill_id}: the learned phrasings were deleted; "
-        "the next ranking is built without them"
-    )
+    if not removed_phrases and not removed_preferences:
+        fail(f"nothing was learned or recorded for {target}")
+    if removed_phrases:
+        typer.echo(
+            f"{target}: the learned phrasings were deleted; "
+            "the next ranking is built without them"
+        )
+    if removed_preferences:
+        typer.echo(
+            f"{target}: the recorded preferences were deleted; "
+            "the next reply of that session is written without them"
+        )
 
 
 @app.command("evaluate")
@@ -108,7 +165,7 @@ def evaluate(
     as_json: JsonOption = False,
     skills: SkillsOption = None,
 ) -> None:
-    """Route the labelled set and report how it went. Nothing is changed."""
+    """Route the labeled set and report how it went. Nothing is changed."""
     settings = settings_for(skills)
     runtime = load_runtime_config(settings=settings)
     registry = SkillRegistry(settings.skills_roots)
@@ -121,7 +178,7 @@ def evaluate(
     try:
         report = run_evaluation(load_cases(cases), discovery)
     except (OSError, ValueError) as exc:
-        fail(f"the labelled set could not be read: {exc}")
+        fail(f"the labeled set could not be read: {exc}")
     typer.echo(report.model_dump_json(indent=2) if as_json else _evaluation_text(report))
     previous = read_report(_report_path(settings))
     if previous is not None and report.precision < previous.evaluation.precision:

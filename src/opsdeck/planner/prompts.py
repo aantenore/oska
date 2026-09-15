@@ -20,9 +20,12 @@ PLANNER_RULES = (
     "Never invent an identifier, a name or a value; take them from the conversation"
     " or ask for them.",
     "Order reads before writes.",
-    "A field listed as a human input is never filled in from your own judgement:"
+    "A field listed as a human input is never filled in from your own judgment:"
     " leave it out of the payload and list it in `missing` with the question to ask,"
     " unless the person has already given it.",
+    "A field listed as coming from the signed-in identity is not yours to fill and not"
+    " yours to ask for: leave it out of every payload and out of `missing`. The runtime"
+    " fills it once you have planned, and a plan that supplies it is refused.",
     "`reply_intent` is one short line telling the reply writer what this turn is about.",
 )
 
@@ -66,6 +69,12 @@ def planner_system(
     reserved = _human_inputs(runbook, hydrated.runbooks)
     if reserved:
         parts.append(f"Human inputs, which only the person supplies:\n{reserved}")
+    identified = _principal_inputs(runbook, hydrated.runbooks)
+    if identified:
+        parts.append(
+            "Fields the runtime fills from the signed-in identity, which you neither"
+            f" supply nor ask for:\n{identified}"
+        )
     parts.append(f"Declared operations:\n{_operations(hydrated.integrations)}")
     parts.append(_rules("Rules:", PLANNER_RULES))
     return "\n\n".join(part for part in parts if part)
@@ -106,6 +115,22 @@ def _human_inputs(runbook: Skill, members: Sequence[Skill]) -> str:
             if field not in fields:
                 fields.append(field)
     return "\n".join(f"- {field}" for field in fields)
+
+
+def _principal_inputs(runbook: Skill, members: Sequence[Skill]) -> str:
+    """The fields of this goal that come from whoever is signed in, one per line.
+
+    The field is named so the model knows it exists and can plan the operation
+    that carries it; the value is not shown, because the model has no use for a
+    value it may not write down.
+    """
+    lines: list[str] = []
+    for skill in (runbook, *members):
+        for field in skill.frontmatter.principal_inputs:
+            entry = f"- {field}"
+            if entry not in lines:
+                lines.append(entry)
+    return "\n".join(lines)
 
 
 def _entities(entities: Sequence[Skill]) -> str:

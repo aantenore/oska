@@ -40,9 +40,9 @@ from opsdeck.improvement.signals import TurnSignal
 from opsdeck.index.base import (
     LEARNED_FILENAME,
     learned_path,
-    normalise,
+    normalize,
     overlap_score,
-    tokenise,
+    tokenize,
 )
 from opsdeck.planner.provider import ModelProvider
 
@@ -113,7 +113,7 @@ class Similarity:
         second = self._vectors.get(right)
         if first is not None and second is not None:
             return _cosine(first, second)
-        return overlap_score(tokenise(left), tokenise(right))
+        return overlap_score(tokenize(left), tokenize(right))
 
     def closest(self, text: str, others: Iterable[str]) -> float:
         """The closeness of the nearest of `others`, or zero when there are none."""
@@ -216,15 +216,15 @@ def _keep(
     provider: ModelProvider | None,
     threshold: float,
 ) -> list[LearnedPhrase]:
-    """Normalise, redact, drop what is already said, and cap."""
+    """Normalize, redact, drop what is already said, and cap."""
     candidates: list[tuple[str, TurnSignal]] = []
     for signal in signals:
-        text = normalise(redact(signal.text, redactions)).strip()
+        text = normalize(redact(signal.text, redactions)).strip()
         if len(text.split()) >= MIN_WORDS:
             candidates.append((text, signal))
     similarity = Similarity(provider)
-    similarity.prime([text for text, _ in candidates] + [normalise(item) for item in declared])
-    against = [normalise(item) for item in declared]
+    similarity.prime([text for text, _ in candidates] + [normalize(item) for item in declared])
+    against = [normalize(item) for item in declared]
     kept: list[LearnedPhrase] = []
     for text, signal in candidates:
         if len(kept) >= config.max_phrases_per_skill:

@@ -2,8 +2,18 @@
 
 There is no authentication here. The service assumes an authenticated proxy in
 front of it, which decides who may reach it and which identity is on a call.
-The `by` field of a proposal transition is recorded as it arrives; nothing in
-this package verifies that the caller is who it says it is.
+The `by` field of a proposal transition is recorded as it arrives, and so is the
+identity a turn runs under; nothing in this package verifies that the caller is
+who it says it is. The runtime trusts the proxy and checks nothing of its own,
+which is worth stating plainly: the guarantee that a write is bound to the
+person who asked for it is exactly as strong as the deployment's guarantee that
+nothing reaches this port except through that proxy.
+
+This process serves a catalog and does not write one. The catalog roots it
+reads are read-only to it: the only thing publication produces is a change
+request under the configured change request root, and installing one is a
+command a person runs. No route here applies a change request, and the runtime
+holds no function that would let one be applied without naming a catalog root.
 
 Every handler works against the runtime `opsdeck.services` assembles, the same
 one the command line uses, so the process holds one engine, one catalog and one

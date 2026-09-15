@@ -1,4 +1,4 @@
-"""A labelled set of requests, and what routing does with it.
+"""A labeled set of requests, and what routing does with it.
 
 The set is written by hand, in more than one language, in wording that is not a
 copy of the declared triggers. Two of its cases are ambiguous on purpose and
@@ -27,7 +27,7 @@ __all__ = [
     "DEFAULT_CASES",
     "TIE",
     "EvaluationReport",
-    "Judgement",
+    "Judgment",
     "RoutingCase",
     "RoutedCase",
     "decide",
@@ -40,7 +40,7 @@ DEFAULT_CASES = Path("examples/ops/evaluation/routing.json")
 TIE = "tie"
 NONE = "none"
 
-Judgement = Literal["right", "wrong", "open"]
+Judgment = Literal["right", "wrong", "open"]
 
 
 class RoutingCase(BaseModel):
@@ -67,7 +67,7 @@ class RoutedCase(BaseModel):
 
 
 class EvaluationReport(BaseModel):
-    """How routing did over one labelled set.
+    """How routing did over one labeled set.
 
     `precision` is how often an answer was right, over the cases that were
     answered at all: a case the system declined is an abstention, not a
@@ -86,7 +86,7 @@ class EvaluationReport(BaseModel):
 
 
 def load_cases(path: Path | None = None) -> list[RoutingCase]:
-    """Read a labelled set: `{"cases": [{"text", "expected", "language"}]}`."""
+    """Read a labeled set: `{"cases": [{"text", "expected", "language"}]}`."""
     target = Path(path) if path is not None else DEFAULT_CASES
     document = json.loads(target.read_text(encoding="utf-8"))
     declared = document.get("cases", []) if isinstance(document, dict) else document
@@ -113,7 +113,7 @@ def decide(
     return ranked[0].skill_id, tie
 
 
-def judge(expected: str, chosen: str | None, tie: bool) -> Judgement:
+def judge(expected: str, chosen: str | None, tie: bool) -> Judgment:
     """`right`, `wrong` or `open` for one answer.
 
     An answer is a commitment: one procedure, or the statement that two are
@@ -131,7 +131,7 @@ def judge(expected: str, chosen: str | None, tie: bool) -> Judgement:
 
 def run_evaluation(cases: Sequence[RoutingCase], discovery: Discovery) -> EvaluationReport:
     """Route every case and report what happened."""
-    routed: list[tuple[RoutingCase, RoutedCase, Judgement]] = []
+    routed: list[tuple[RoutingCase, RoutedCase, Judgment]] = []
     for case in cases:
         result = discovery.select(case.text)
         score = result.ranked[0].score if result.ranked else 0.0
@@ -153,7 +153,7 @@ def run_evaluation(cases: Sequence[RoutingCase], discovery: Discovery) -> Evalua
     return _report(routed)
 
 
-def _report(routed: Sequence[tuple[RoutingCase, RoutedCase, Judgement]]) -> EvaluationReport:
+def _report(routed: Sequence[tuple[RoutingCase, RoutedCase, Judgment]]) -> EvaluationReport:
     total = len(routed)
     right = sum(1 for _, _, verdict in routed if verdict == "right")
     wrong = sum(1 for _, _, verdict in routed if verdict == "wrong")

@@ -24,6 +24,22 @@ system behind it. The mapping keys are:
 
 Writes land in the copy held in memory; the file on disk is never touched.
 `reset()` reloads it.
+
+A behavior injected per operation makes it answer something other than the
+fixture, so a scenario can exercise a path that needs a system to misbehave.
+The behavior keys are:
+
+`override`      answer with this data instead of reading the fixture.
+`ok`            whether an overridden answer counts as a success. Default true.
+`fail`          the system answers no. Terminal: another attempt would be
+                answered the same way, and the breaker is not touched, because
+                a system that refuses is a system that is up.
+`unreachable`   the call does not reach the system at all. A transport failure,
+                retryable, and the only injected failure that counts towards
+                the breaker. This is how an outage is simulated.
+`fail_after`    let this many calls through first, then fail in whichever of
+                the two ways the behavior declares.
+`error`         the message the failure reports.
 """
 
 from __future__ import annotations
@@ -35,7 +51,16 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
-from opsdeck.connectors.base import ConnectorError, timed
+from opsdeck.config import ResilienceConfig
+from opsdeck.connectors.base import (
+    BaseConnector,
+    ConnectorError,
+    ConnectorOutcome,
+    refused,
+    rejected,
+    succeeded,
+    transport_failure,
+)
 from opsdeck.contracts.common import ConnectorResult
 
 __all__ = ["MockConnector"]
@@ -49,7 +74,7 @@ class _RecordMissing(ConnectorError):
     """The mapping matched no record."""
 
 
-class MockConnector:
+class MockConnector(BaseConnector):
     """Serves declared operations from a JSON fixture held in memory."""
 
     def __init__(
@@ -57,12 +82,13 @@ class MockConnector:
         id: str,
         fixture_path: Path | str,
         operations: dict[str, dict],
-        behaviours: dict[str, dict] | None = None,
+        behaviors: dict[str, dict] | None = None,
+        resilience: ResilienceConfig | None = None,
     ) -> None:
-        self.id = id
+        super().__init__(id, resilience)
         self.fixture_path = Path(fixture_path)
         self._operations = dict(operations)
-        self._behaviours: dict[str, dict] = dict(behaviours or {})
+        self._behaviors: dict[str, dict] = dict(behaviors or {})
         self._calls: dict[str, int] = defaultdict(int)
         self._source = self._load()
         self._data = copy.deepcopy(self._source)
@@ -76,22 +102,22 @@ class MockConnector:
         return copy.deepcopy(self._data)
 
     def reset(self) -> None:
-        """Reload the fixture from disk and forget every injected behaviour count."""
+        """Reload the fixture, forget every injected behavior count and close the breaker."""
         self._source = self._load()
         self._data = copy.deepcopy(self._source)
         self._calls.clear()
+        self._breaker.reset()
 
-    def set_behaviour(self, operation: str, behaviour: dict | None) -> None:
-        """Install, replace or (with `None`) remove an injected behaviour."""
-        if behaviour is None:
-            self._behaviours.pop(operation, None)
+    def set_behavior(self, operation: str, behavior: dict | None) -> None:
+        """Install, replace or (with `None`) remove an injected behavior."""
+        if behavior is None:
+            self._behaviors.pop(operation, None)
             self._calls.pop(operation, None)
             return
-        self._behaviours[operation] = dict(behaviour)
+        self._behaviors[operation] = dict(behavior)
         self._calls[operation] = 0
 
-    @timed
-    def execute(self, operation: str, payload: dict) -> ConnectorResult:
+    def _perform(self, operation: str, payload: dict) -> ConnectorResult:
         """Run a declared operation against the in-memory fixture."""
         self._calls[operation] += 1
         injected = self._injected(operation)
@@ -99,14 +125,15 @@ class MockConnector:
             return injected
         mapping = self._operations.get(operation)
         if mapping is None:
-            return ConnectorResult(ok=False, error=f"undeclared operation {operation}")
+            return rejected(f"undeclared operation {operation}")
         try:
             data = self._run(mapping, payload)
         except _RecordMissing:
-            return ConnectorResult(ok=False, error=_NOT_FOUND)
+            # The system answered and the record is not there: that is not an outage.
+            return refused(_NOT_FOUND)
         except ConnectorError as error:
-            return ConnectorResult(ok=False, error=str(error))
-        return ConnectorResult(ok=True, data=data)
+            return rejected(str(error))
+        return succeeded(data)
 
     def _load(self) -> dict:
         with self.fixture_path.open(encoding="utf-8") as handle:
@@ -116,22 +143,32 @@ class MockConnector:
         return data
 
     def _injected(self, operation: str) -> ConnectorResult | None:
-        behaviour = self._behaviours.get(operation)
-        if not behaviour:
+        behavior = self._behaviors.get(operation)
+        if not behavior:
             return None
-        fail_after = behaviour.get("fail_after")
-        if fail_after is not None and self._calls[operation] > int(fail_after):
-            return self._failure(behaviour, f"{operation} failed after {fail_after} calls")
-        if behaviour.get("fail"):
-            return self._failure(behaviour, f"{operation} failed")
-        override = behaviour.get("override")
+        fail_after = behavior.get("fail_after")
+        if fail_after is not None:
+            # `fail_after` says when, the other keys say in which way.
+            if self._calls[operation] > int(fail_after):
+                return self._failure(behavior, f"{operation} failed after {fail_after} calls")
+        elif behavior.get("unreachable") or behavior.get("fail"):
+            return self._failure(behavior, f"{operation} failed")
+        override = behavior.get("override")
         if override is not None:
-            return ConnectorResult(ok=bool(behaviour.get("ok", True)), data=dict(override))
+            if behavior.get("ok", True):
+                return succeeded(dict(override))
+            return refused(str(behavior.get("error") or f"{operation} was refused")).model_copy(
+                update={"data": dict(override)}
+            )
         return None
 
     @staticmethod
-    def _failure(behaviour: dict, default: str) -> ConnectorResult:
-        return ConnectorResult(ok=False, data={}, error=str(behaviour.get("error") or default))
+    def _failure(behavior: dict, default: str) -> ConnectorOutcome:
+        """The injected failure, as the kind of failure the behavior declares."""
+        message = str(behavior.get("error") or default)
+        if behavior.get("unreachable"):
+            return transport_failure(message)
+        return refused(message)
 
     def _run(self, mapping: dict, payload: dict) -> dict:
         records = self._collection(mapping)

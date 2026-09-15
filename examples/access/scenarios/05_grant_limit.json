@@ -1,11 +1,17 @@
 {
   "name": "05_grant_limit",
-  "description": "The fourth membership of a session is refused by the per-session limit the grant policy carries, with the reason it gives.",
+  "description": "The fourth membership of a session is refused by the per-session limit the grant policy carries, with the reason it gives. Every one of them is for the signed-in account, because that is the only account this procedure grants to.",
   "level": 2,
+  "principal": {
+    "subject": "tnovak",
+    "attributes": {
+      "department": "support"
+    }
+  },
   "provider_script": [
     {
       "purpose": "router classification",
-      "expect_contains": "tnovak needs the support desk group",
+      "expect_contains": "on the support rota from this week",
       "response": {
         "kind": "new_task",
         "runbook_id": "runbook.access_grant",
@@ -32,15 +38,14 @@
             "integration_id": "integration.access_control",
             "operation": "membership.grant",
             "payload": {
-              "username": "tnovak",
               "group": "support-desk"
             },
             "write": true,
-            "purpose": "put the account into the group"
+            "purpose": "put the signed-in account into the group"
           }
         ],
         "missing": [],
-        "reply_intent": "report the support-desk membership of tnovak"
+        "reply_intent": "report the support-desk membership of the signed-in account"
       }
     },
     {
@@ -52,7 +57,7 @@
     },
     {
       "purpose": "router classification",
-      "expect_contains": "he also has to look accounts up",
+      "expect_contains": "look accounts up",
       "response": {
         "kind": "new_task",
         "runbook_id": "runbook.access_grant",
@@ -62,7 +67,7 @@
     },
     {
       "purpose": "plan",
-      "expect_contains": "look accounts up",
+      "expect_contains": "directory readers group",
       "response": {
         "runbook_id": "runbook.access_grant",
         "operations": [
@@ -79,15 +84,14 @@
             "integration_id": "integration.access_control",
             "operation": "membership.grant",
             "payload": {
-              "username": "tnovak",
               "group": "directory-readers"
             },
             "write": true,
-            "purpose": "put the account into the group"
+            "purpose": "put the signed-in account into the group"
           }
         ],
         "missing": [],
-        "reply_intent": "report the directory-readers membership of tnovak"
+        "reply_intent": "report the directory-readers membership of the signed-in account"
       }
     },
     {
@@ -99,7 +103,7 @@
     },
     {
       "purpose": "router classification",
-      "expect_contains": "rsilva asks someone else to look accounts up several times a day",
+      "expect_contains": "covering the monthly close",
       "response": {
         "kind": "new_task",
         "runbook_id": "runbook.access_grant",
@@ -109,7 +113,7 @@
     },
     {
       "purpose": "plan",
-      "expect_contains": "several times a day",
+      "expect_contains": "finance reports group",
       "response": {
         "runbook_id": "runbook.access_grant",
         "operations": [
@@ -117,7 +121,7 @@
             "integration_id": "integration.directory",
             "operation": "group.get",
             "payload": {
-              "group": "directory-readers"
+              "group": "finance-reports"
             },
             "write": false,
             "purpose": "read how much reach the group carries"
@@ -126,27 +130,26 @@
             "integration_id": "integration.access_control",
             "operation": "membership.grant",
             "payload": {
-              "username": "rsilva",
-              "group": "directory-readers"
+              "group": "finance-reports"
             },
             "write": true,
-            "purpose": "put the account into the group"
+            "purpose": "put the signed-in account into the group"
           }
         ],
         "missing": [],
-        "reply_intent": "report the directory-readers membership of rsilva"
+        "reply_intent": "report the finance-reports membership of the signed-in account"
       }
     },
     {
       "purpose": "reply writing",
       "expect_contains": "\"kind\": \"receipt\"",
       "response": {
-        "reply": "rsilva is now in directory-readers and the membership reads back active."
+        "reply": "tnovak is now in finance-reports and the membership reads back active."
       }
     },
     {
       "purpose": "router classification",
-      "expect_contains": "mfiore wants the finance reports group too",
+      "expect_contains": "billing admins group",
       "response": {
         "kind": "new_task",
         "runbook_id": "runbook.access_grant",
@@ -156,7 +159,7 @@
     },
     {
       "purpose": "plan",
-      "expect_contains": "finance reports group too",
+      "expect_contains": "billing admins group",
       "response": {
         "runbook_id": "runbook.access_grant",
         "operations": [
@@ -164,7 +167,7 @@
             "integration_id": "integration.directory",
             "operation": "group.get",
             "payload": {
-              "group": "finance-reports"
+              "group": "billing-admins"
             },
             "write": false,
             "purpose": "read how much reach the group carries"
@@ -173,28 +176,28 @@
             "integration_id": "integration.access_control",
             "operation": "membership.grant",
             "payload": {
-              "username": "mfiore",
-              "group": "finance-reports"
+              "group": "billing-admins"
             },
             "write": true,
-            "purpose": "put the account into the group"
+            "purpose": "put the signed-in account into the group"
           }
         ],
         "missing": [],
-        "reply_intent": "report whether mfiore was added to finance-reports"
+        "reply_intent": "report the billing-admins membership of the signed-in account"
       }
     },
     {
       "purpose": "reply writing",
       "expect_contains": "\"kind\": \"denied\"",
       "response": {
-        "reply": "mfiore was not added to finance-reports. This session has already used the three grants the policy allows it, so the request needs a session of its own or someone with a wider mandate."
+        "reply": "tnovak was not added to billing-admins. This session has already used the three grants the policy allows it, so the request needs a session of its own or someone with a wider mandate.",
+        "reply_intent": "report that the session has reached the grants it is allowed"
       }
     }
   ],
   "turns": [
     {
-      "user": "tnovak needs the support desk group, he is on the rota from this week",
+      "user": "I am on the support rota from this week, put me in the support desk group",
       "expect": {
         "kind": "new_task",
         "contains": [
@@ -225,7 +228,7 @@
       }
     },
     {
-      "user": "he also has to look accounts up, so the directory readers group as well",
+      "user": "I also have to look accounts up, so the directory readers group as well",
       "expect": {
         "kind": "new_task",
         "contains": [
@@ -256,11 +259,11 @@
       }
     },
     {
-      "user": "rsilva asks someone else to look accounts up several times a day, put him in that group too",
+      "user": "and the finance reports group, I am covering the monthly close this quarter",
       "expect": {
         "kind": "new_task",
         "contains": [
-          "{\"group\":\"directory-readers\",\"username\":\"rsilva\"}"
+          "{\"group\":\"finance-reports\",\"username\":\"tnovak\"}"
         ],
         "outcomes": [
           "read",
@@ -276,7 +279,7 @@
       "expect": {
         "kind": "approve",
         "contains": [
-          "directory-readers"
+          "finance-reports"
         ],
         "outcomes": [
           "receipt"
@@ -287,7 +290,7 @@
       }
     },
     {
-      "user": "mfiore wants the finance reports group too while we are at it",
+      "user": "the billing admins group too while we are at it",
       "expect": {
         "kind": "new_task",
         "contains": [

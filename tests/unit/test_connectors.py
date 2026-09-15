@@ -207,10 +207,10 @@ def test_a_missing_payload_field_is_an_error(registry: ConnectorRegistry) -> Non
 # Failure injection.
 
 
-def test_behaviours_from_the_registry_make_an_operation_fail(connectors_config: Path) -> None:
+def test_behaviors_from_the_registry_make_an_operation_fail(connectors_config: Path) -> None:
     registry = ConnectorRegistry.from_config(
         connectors_config,
-        behaviours={RUNTIME: {"service.restart": {"fail": True, "error": "runtime unreachable"}}},
+        behaviors={RUNTIME: {"service.restart": {"fail": True, "error": "runtime unreachable"}}},
     )
     result = registry.get(RUNTIME).execute("service.restart", {"service": "reporting"})
     assert (result.ok, result.error) == (False, "runtime unreachable")
@@ -220,7 +220,7 @@ def test_behaviours_from_the_registry_make_an_operation_fail(connectors_config: 
 
 def test_failure_without_a_message_still_reports_one(registry: ConnectorRegistry) -> None:
     runtime = registry.get(RUNTIME)
-    runtime.set_behaviour("service.restart", {"fail": True})
+    runtime.set_behavior("service.restart", {"fail": True})
     result = runtime.execute("service.restart", {"service": "reporting"})
     assert result.ok is False
     assert "service.restart" in (result.error or "")
@@ -228,31 +228,31 @@ def test_failure_without_a_message_still_reports_one(registry: ConnectorRegistry
 
 def test_override_replaces_the_lookup(registry: ConnectorRegistry) -> None:
     runtime = registry.get(RUNTIME)
-    runtime.set_behaviour("service.status", {"override": {"service": {"name": "made up"}}})
+    runtime.set_behavior("service.status", {"override": {"service": {"name": "made up"}}})
     data = ok(runtime.execute("service.status", {"service": "absent"}))
     assert data["service"]["name"] == "made up"
 
 
 def test_fail_after_lets_the_first_calls_through(registry: ConnectorRegistry) -> None:
     runtime = registry.get(RUNTIME)
-    runtime.set_behaviour("service.status", {"fail_after": 2, "error": "runtime gone"})
+    runtime.set_behavior("service.status", {"fail_after": 2, "error": "runtime gone"})
     assert runtime.execute("service.status", {"service": "search"}).ok is True
     assert runtime.execute("service.status", {"service": "search"}).ok is True
     third = runtime.execute("service.status", {"service": "search"})
     assert (third.ok, third.error) == (False, "runtime gone")
 
 
-def test_a_behaviour_can_be_removed_again(registry: ConnectorRegistry) -> None:
+def test_a_behavior_can_be_removed_again(registry: ConnectorRegistry) -> None:
     runtime = registry.get(RUNTIME)
-    runtime.set_behaviour("service.status", {"fail": True})
+    runtime.set_behavior("service.status", {"fail": True})
     assert runtime.execute("service.status", {"service": "search"}).ok is False
-    runtime.set_behaviour("service.status", None)
+    runtime.set_behavior("service.status", None)
     assert runtime.execute("service.status", {"service": "search"}).ok is True
 
 
 def test_reset_forgets_the_call_count(registry: ConnectorRegistry) -> None:
     runtime = registry.get(RUNTIME)
-    runtime.set_behaviour("service.status", {"fail_after": 1})
+    runtime.set_behavior("service.status", {"fail_after": 1})
     assert runtime.execute("service.status", {"service": "search"}).ok is True
     assert runtime.execute("service.status", {"service": "search"}).ok is False
     runtime.reset()

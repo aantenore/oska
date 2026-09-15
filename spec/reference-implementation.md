@@ -34,7 +34,7 @@ the lifecycle nor a connector nor the policy engine, which is what closes the
 rungs above the one it declares.
 
 `src/opsdeck/services.py` belongs to no layer of its own: it assembles one
-engine, one catalogue and one proposal store, and both channels are built over
+engine, one catalog and one proposal store, and both channels are built over
 that single assembly. `src/opsdeck/conformance/` sits outside the layer stack
 too: it drives a runtime through recorded sessions and reports the level
 reached, so it depends on everything and nothing depends on it.
@@ -47,7 +47,7 @@ names its domain reached for first. They denote the same thing.
 | Specification | Implementation |
 | --- | --- |
 | Procedure | Runbook (`runbook.*`, `SkillType.runbook`, `Plan.runbook_id`) |
-| Catalogue | Catalog (`opsdeck.catalog`, `SkillRegistry`) |
+| Catalog | Catalog (`opsdeck.catalog`, `SkillRegistry`) |
 | Operation registry | `governance/capabilities.py`, the view over declared operations |
 | Ontology graph | `ontology/graph.py` (`OntologyGraph`, `OntologyCache`), with the entity-facing wording in `catalog/resolver.py` |
 | Ontology queries | `ontology/queries.py` (`operations_on`, `writers_of`, `procedures_for`, `related`, `path`, `vocabulary`) |
@@ -55,7 +55,7 @@ names its domain reached for first. They denote the same thing.
 | Entity state and states | `state_field` and `states` on the entity frontmatter |
 | Entity lifecycle | `lifecycle`, `initial_state`, `final_states` and `state_read` on the entity frontmatter; `LifecycleTransition` in `contracts/skill.py` |
 | Lifecycle move | `LifecycleTransition`, and `move_for` / `legal_operations` in `governance/capabilities.py` |
-| Guardrail catalogue | `governance/guardrails.py` (`GuardrailCatalog`, `GuardrailChain`), over `configs/guardrails.json` |
+| Guardrail catalog | `governance/guardrails.py` (`GuardrailCatalog`, `GuardrailChain`), over `configs/guardrails.json` |
 | Routing example | Derived phrase (`catalog/enrichment.py`, written as `generated-examples.json` beside the skill) |
 | Per-turn model budget | `ModelBudget` and `BudgetedProvider` in `engine/engine.py`, wrapped once in `engine/factory.py` |
 | Autonomy ladder | `src/opsdeck/improvement/` and the level it renders in `improvement/report.py` |
@@ -79,11 +79,11 @@ names its domain reached for first. They denote the same thing.
    request to receipt to ledger replay, as an executable document.
 6. `examples/ops/scenarios/15_learning_lifecycle.json` — the same session
    turned into a candidate procedure, moved by a named reviewer and published
-   into the catalogue, as an executable document.
+   into the catalog, as an executable document.
 
 ## Running it
 
-The catalogue is validated and inspected without a model provider:
+The catalog is validated and inspected without a model provider:
 
 ```
 opsdeck validate
@@ -98,7 +98,7 @@ missing them and writes them beside the skill file; `opsdeck enrich run
 `opsdeck enrich show <procedure>` prints the declared and the derived phrases
 of one procedure. `opsdeck improve run` reads the audit trail and the write
 ledger, learns the phrasings that are reversible, tunes the routing thresholds
-inside their declared bounds, evaluates the labelled set and reports the gaps;
+inside their declared bounds, evaluates the labeled set and reports the gaps;
 `opsdeck improve show`, `opsdeck improve evaluate` and `opsdeck improve revert
 <procedure>` read the last report, re-run the evaluation without changing
 anything, and delete what was learned for one procedure. Nothing either command
@@ -110,8 +110,8 @@ opsdeck improve run
 ```
 
 The conformance suite runs offline against the scripted provider, and reports
-the level it reaches. There are two suites, one per reference catalogue, and
-each is run against its own catalogue and its own connector bindings:
+the level it reaches. There are two suites, one per reference catalog, and
+each is run against its own catalog and its own connector bindings:
 
 ```
 opsdeck conform

@@ -24,6 +24,9 @@ EventKind = Literal[
     "guardrail",
     "trace",
     "budget",
+    "revision",
+    "unavailable",
+    "retention",
 ]
 
 

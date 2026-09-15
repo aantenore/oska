@@ -4,6 +4,10 @@ Nothing here decides a state. `transition` is the only way a proposal moves,
 and it is called with the actor the caller named; a refused edge leaves the
 message the lifecycle gave and a non-zero status, the same answer the HTTP
 application returns as a conflict.
+
+A move to `published` writes a change request, not a skill file. What that
+request holds and where it can be installed is the business of the `change`
+commands; these commands say which request was composed and stop there.
 """
 
 from __future__ import annotations
@@ -17,7 +21,7 @@ import typer
 from opsdeck.cli.options import SkillsOption, fail, services_for, settings_for
 from opsdeck.config import RuntimeConfig, load_runtime_config
 from opsdeck.contracts.proposal import SkillProposal
-from opsdeck.learning import LifecycleError, draft_from_session, transition
+from opsdeck.learning import LifecycleError, draft_from_session, store_for, transition
 from opsdeck.planner.provider import ModelProvider
 from opsdeck.services import Services
 
@@ -97,6 +101,7 @@ def move(
 ) -> None:
     """Move one proposal to another state, recording who asked."""
     services = _services(skills)
+    changes = store_for(services.settings)
     try:
         proposal = transition(
             services.proposals,
@@ -105,7 +110,7 @@ def move(
             by,
             note,
             registry=services.engine.registry,
-            publish_root=services.publish_root,
+            changes=changes,
             schema_dir=services.settings.schemas_dir,
             provider=_provider_of(services),
             enrichment=_runtime_of(services).enrichment,
@@ -114,6 +119,12 @@ def move(
     except (KeyError, LifecycleError, ValueError) as exc:
         fail(str(exc))
     typer.echo(_line(proposal))
+    for composed in changes.list():
+        if composed.proposal_id == proposal.proposal_id:
+            typer.echo(
+                f"  change request {composed.request_id}  {composed.skill_id} "
+                f"v{composed.version}  {composed.state.value}"
+            )
 
 
 def _services(skills: list[Path] | None) -> Services:

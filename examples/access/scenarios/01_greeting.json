@@ -1,6 +1,6 @@
 {
   "name": "01_greeting",
-  "description": "An opening greeting is answered from this catalogue alone, with no model call and no vocabulary of its own.",
+  "description": "An opening greeting is answered from this catalog alone, with no model call and no vocabulary of its own.",
   "level": 1,
   "provider_script": [],
   "turns": [
@@ -11,7 +11,7 @@
         "contains": [
           "I can",
           "check what access a person has",
-          "add a person to a group",
+          "add yourself to a group",
           "remove a person from a group",
           "settle an open access request end to end"
         ],

@@ -1,11 +1,17 @@
 {
   "name": "03_grant_privileged",
-  "description": "A membership in a privileged group needs two approvals; the first one only records that it was given.",
+  "description": "A membership in a privileged group needs two approvals; the first one only records that it was given. The account comes from the signed-in identity either way.",
   "level": 2,
+  "principal": {
+    "subject": "mfiore",
+    "attributes": {
+      "department": "engineering"
+    }
+  },
   "provider_script": [
     {
       "purpose": "router classification",
-      "expect_contains": "mfiore is taking over the release rota",
+      "expect_contains": "taking over the release rota",
       "response": {
         "kind": "new_task",
         "runbook_id": "runbook.access_grant",
@@ -31,25 +37,22 @@
           {
             "integration_id": "integration.directory",
             "operation": "user.groups",
-            "payload": {
-              "username": "mfiore"
-            },
+            "payload": {},
             "write": false,
-            "purpose": "read what the account already belongs to"
+            "purpose": "read what the signed-in account already belongs to"
           },
           {
             "integration_id": "integration.access_control",
             "operation": "membership.grant",
             "payload": {
-              "username": "mfiore",
               "group": "release-managers"
             },
             "write": true,
-            "purpose": "put the account into the privileged group"
+            "purpose": "put the signed-in account into the privileged group"
           }
         ],
         "missing": [],
-        "reply_intent": "report whether mfiore is now in release-managers and whether the read-back confirmed it"
+        "reply_intent": "report whether the signed-in account is now in release-managers and whether the read-back confirmed it"
       }
     },
     {
@@ -62,7 +65,7 @@
   ],
   "turns": [
     {
-      "user": "mfiore is taking over the release rota from the next cycle, he needs to be in the release managers group",
+      "user": "I am taking over the release rota from the next cycle, I need to be in the release managers group",
       "expect": {
         "kind": "new_task",
         "contains": [

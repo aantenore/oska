@@ -15,7 +15,7 @@ from opsdeck.index.base import (
     TextSource,
     overlap_score,
     routing_source,
-    tokenise,
+    tokenize,
 )
 from opsdeck.router.base import RoutingContext
 
@@ -61,7 +61,7 @@ class FastPath:
         )
         self._index: SkillIndex | None = None
         self._fingerprint: str | None = None
-        self._greetings = [tokenise(route) for route in config.routes.greeting]
+        self._greetings = [tokenize(route) for route in config.routes.greeting]
 
     def routes(self) -> list[Skill]:
         """The procedures this layer can route to."""
@@ -100,7 +100,7 @@ class FastPath:
         return None
 
     def _greeting_score(self, text: str) -> float:
-        tokens = tokenise(text)
+        tokens = tokenize(text)
         if not tokens or not self._greetings:
             return 0.0
         return max(overlap_score(tokens, greeting) for greeting in self._greetings)

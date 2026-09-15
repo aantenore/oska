@@ -40,6 +40,19 @@ connector and expands `${NAME}` in addresses and headers from the environment.
 A connector receives an operation name and a payload. It never receives free
 text, and it never sees the conversation.
 
+Availability is part of what it answers, and `connectors/base.py` is where that
+lives. Every result says what kind of failure it was: `transport` for a call
+that did not reach the system or that the system did not complete, `refused`
+for a system that answered no, `rejected` for a request that was never well
+formed. Only `transport` is retryable, and only it counts toward the breaker,
+which sits in `BaseConnector` around every call. After
+`resilience.failures_before_open` consecutive transport failures the connector
+stops being called for `resilience.recovery_seconds`, then lets one attempt
+through, which either closes it or opens it again. An adapter implements
+`_perform` and says how a call failed; the timeout, the breaker and the health
+reporting belong to the base class, so a binding cannot forget them and a call
+the breaker refuses never reaches the adapter at all.
+
 ### L2 Ontology
 
 `opsdeck.ontology` builds a graph from the catalog: entity nodes with their
@@ -76,14 +89,46 @@ runtime says about itself: the declared scope, the phrase for one procedure,
 the actions available on an entity. Where the entity declares a lifecycle,
 `suggestions_for_entity` answers from the state the object is in rather than
 from the list of procedures that touch it, and leaves out a move the author
-marked as not offered.
+marked as not offered. An offer travels as a `SuggestedAction`: a key that
+names the action and the wording its author declared, which is what lets the
+reply writer return the wording in the language of the conversation without
+anything between the two being invented.
 
-`enrichment` is the one part of this layer that never runs during a turn. It
-paraphrases the declared triggers of a procedure into further languages and
+`enrichment` is one of three parts of this layer that never run during a turn.
+It paraphrases the declared triggers of a procedure into further languages and
 writes them to a file inside the skill's version directory, stamped with a hash
 of the triggers they came from. The index reads that file; a hash that no
 longer matches means the file is ignored rather than repaired. See
 [multilingual.md](multilingual.md).
+
+`evaluation` is the second. A skill may carry an `evaluation.json` beside it
+holding the requests that must reach it and the requests that must not, and
+`evaluate_catalog` runs every such set through the same ranking the runtime
+uses, handed in as a `Ranking` protocol rather than imported, so the catalog
+layer does not reach up into the layer that ranks it. `cases_from_neighbors` drafts the
+half of a set that is hard to write, from the declared triggers of the skills
+that rank closest; it prints and writes nothing.
+
+`revision` is the third, and it is what a deployment of more than one process
+serves from. `build_revision` reads the skill roots, validates them, refuses a
+catalog carrying an error, copies what held up into a directory that is never
+written again, and writes a manifest naming every skill with the hash of its
+content. The identifier is derived from the tenant and that map of hashes
+alone — not from when or where the build ran — so the same inputs always give
+the same identifier and two replicas building the same catalog agree on what to
+call it. `RevisionStore` holds the built revisions, one directory per tenant,
+and records in a `CURRENT` file beside them which one this deployment serves.
+
+`registry` has two shapes because of that. `SkillRegistry` over a directory
+fingerprints the files it discovers and reloads when they move; over a revision
+it reads once, because a revision cannot change. `ServedCatalog` is the second
+with the revision left open: it holds one registry per revision, and answers
+through whichever revision the turn under way is pinned to. The pin is a
+context variable, because one engine serves overlapping turns and the revision
+in force belongs to the turn rather than to the process. Which revision a turn
+that pins nothing reads is re-resolved rather than cached — the configured
+revision, failing that the one the store records, failing that the newest — so
+a deployment moved to another release is followed without a restart.
 
 ### L4 Governance
 
@@ -99,6 +144,13 @@ keeps it; nothing in that module carries a pattern, a threshold or a word list
 of its own. `opsdeck.audit` appends one typed event per step to a JSONL file,
 and `audit.trace` opens diagnostic spans that are off by default and are never
 read back by anything. See [governance.md](governance.md).
+
+Two more modules sit here. `identity` holds the `Principal` a channel
+authenticated and resolves the payload fields a procedure declares as taken
+from it; it authenticates nothing, because what the channel reported is the
+only thing it has. `retention` is the only place in the system that takes
+anything out of the record: it removes the receipts, the audit entries and the
+stored state of a session together, and writes one event saying that it did.
 
 ### L5 Cognition
 
@@ -142,12 +194,17 @@ replays recorded answers offline.
 
 `opsdeck.engine` runs the turn. `engine.py` is the algorithm below.
 `execution.py` runs the operations of a plan under the declarations that govern
-them. `goals.py` works a goal — one procedure, or the ordered procedures of a
-composite — forward until something stops it. `reply.py` builds the reply text,
-appending the deterministic line of every receipt and ledger hit to whatever a
-model wrote, so a write is always accounted for by its receipt.
-`session_store.py` keeps session state in SQLite. `factory.py` wires everything
-from settings.
+them, and it is where a field declared as a principal input is filled: after
+the model has finished proposing operations and before anything judges or
+performs one. `goals.py` works a goal — one procedure, or the ordered
+procedures of a composite — forward until something stops it. `reply.py` builds
+the reply text, appending the deterministic line of every receipt and ledger
+hit to whatever a model wrote, so a write is always accounted for by its
+receipt. `session_store.py` keeps session state in SQLite. `factory.py` wires
+everything from settings, including which catalog is in force: a `ServedCatalog`
+over the revision store when this deployment has built one, the configured
+skill roots read directly when it has not. The ledger is wrapped either way, so
+every receipt opened in a turn names the revision the turn was decided under.
 
 Three wrappers sit around that loop, all built in `factory.py` from the runtime
 configuration. `BudgetedProvider` counts the completions one turn makes and
@@ -164,26 +221,66 @@ terminal. Both call the same engine methods.
 ### L7 Evolution
 
 `opsdeck.learning` drafts a candidate procedure from what a session did, runs
-the quality checks, moves a proposal through its states with a named actor, and
-publishes an approved one into a catalog root the registry reads. See
-[learning.md](learning.md).
+the quality checks, and moves a proposal through its states with a named actor.
+Publishing one composes a change request in `changes.py` — the package, its
+origin and the quality report, under a root a person reads — and installing
+that package is a separate act by a person. See [learning.md](learning.md).
 
 `opsdeck.improvement` is the scheduled half of the same layer: it reads the
-audit trail and the ledger back as signals, keeps the phrasings people actually
-used in files it can delete again, proposes threshold changes inside declared
-bounds, routes a labelled set and reports how it went, and turns a cluster of
-unanswered requests into a proposal in `draft`. It imports neither the
-lifecycle that moves a proposal nor anything that writes a policy or a
-connector binding. See [improvement.md](improvement.md).
+audit trail and the ledger back as signals, reads the judgments people
+recorded against turns, keeps the phrasings they actually used in files it can
+delete again, proposes threshold changes inside declared bounds, routes a
+labeled set and reports how it went, and turns a cluster of unanswered
+requests into a proposal in `draft`. `preferences.py` is the narrowest thing it
+writes: a note about how one session likes its answers written, which reaches
+the reply writer and nothing else. It imports neither the lifecycle that moves
+a proposal nor anything that writes a policy or a connector binding. See
+[improvement.md](improvement.md).
 
 `opsdeck.conformance` replays scenario files against a fresh runtime and reports
 the level reached. See [conformance.md](conformance.md).
 
+### Beside the layers
+
+`opsdeck.observability` is in no layer, because it decides nothing. It reads
+back two records written for other reasons: the audit trail, which is typed,
+durable and required, and the traces, which are optional and off by default.
+From the trail it computes how often a deterministic template spoke because no
+model could, how often a read-back did not confirm a write, how often a
+guardrail refused, and how often a request matched nothing in the catalog; from
+the traces, the median and the tail of how long a turn takes. `Measure` is the
+type that makes this honest — a number the deployment did not record carries
+the reason it is missing rather than a zero — and `report.py` prints the same
+thing as prose or as JSON, naming what is absent either way.
+
 ## The turn algorithm
 
-`Engine.turn(session_id, text)` loads the session, resets the model budget,
-opens the `turn` span, runs the turn, and saves the state in a `finally` block,
-so a turn that fails halfway still leaves what it decided on disk.
+`Engine.turn(session_id, text, principal=...)` loads the session, binds the
+identity, opens the catalog on one revision, resets the model budget, opens the
+`turn` span, runs the turn, and saves the state in a `finally` block, so a turn
+that fails halfway still leaves what it decided on disk.
+
+Two things happen before step 1 and belong to the turn rather than to the
+engine, because one engine serves overlapping turns.
+
+**The identity is bound.** `principal` is what the channel authenticated. A
+session opened without one stays open to whoever arrives first; a session that
+holds one refuses a turn arriving under a different subject or under none,
+raising `PrincipalMismatch` before anything of the turn is run or recorded,
+because a session is one conversation with one person and a write bound to an
+identity halfway through would be bound to whichever one happened to be on that
+turn. Nothing here verifies anything: the runtime trusts the channel, and a
+principal the channel marked as not authenticated fills no declared field.
+
+**The revision is pinned.** A session that has never been served takes what the
+deployment serves now. A pinned session keeps what it was served by; a
+deployment with `catalog.pin_sessions` off still holds a session to its
+revision while an approval waits under it, because the sentence that was
+approved was composed from that revision. Only a turn that starts a new task
+adopts the newest, and the switch is recorded as a `revision` event naming what
+it moved from, what to, and why. When the catalog is read from a directory
+rather than a revision store, pinning is a no-op and the caller need not know
+which deployment it is talking to.
 
 1. **Open.** Increment the turn count, settle the language to the configured
    default if the session has none, run the input guardrails over the text,
@@ -252,6 +349,11 @@ operations in order. Reads run immediately and their records are collected for
 the policy and for the suggestions. A write stops the plan: see
 [governance.md](governance.md) for the checks it passes through.
 
+An operation whose connector reports that the call never arrived is neither a
+result nor a refusal, and is recorded as an `unavailable` outcome carrying the
+binding, the operation and when it may be tried again. The plan carries on past
+it: a binding that is down takes its own operations with it and nothing else.
+
 One of those checks is worth naming here, because of where it sits. When the
 write acts on an entity that declares a lifecycle, the engine reads the current
 state — from what the plan already read, or through the entity's declared read
@@ -318,15 +420,19 @@ rather than importing an adapter. It never sees the planner or the provider. A
 policy decision is a function of the declarations, the payload, the entities
 that were read and the ledger.
 
-**Evolution writes into the catalog and nowhere else.** `opsdeck.learning`
-parses, validates and renders skill files, and publishes into a directory that
-is a catalog root. It does not touch the engine, the ledger or the connectors.
-The runtime picks a published skill up the same way it picks up a hand-written
-one: the registry notices the fingerprint changed. `opsdeck.improvement` sits
-under a tighter rule again: it reads the ledger and the audit trail, writes
-only files under its own root and one report, and imports neither the proposal
-lifecycle nor anything that writes a policy or a connector binding. A test
-walks the syntax tree of every module in the package to keep it that way.
+**Evolution proposes and does not install.** `opsdeck.learning` parses,
+validates and renders skill files, and publication composes a change request: a
+package written under the change request root for a person to read.
+`transition` takes no catalog root and cannot be given one. Copying that
+package into a catalog root is `ChangeRequestStore.apply`, which takes the root
+from whoever calls it and is called from a terminal and from nowhere in the
+engine, the HTTP application or a job. So the process that answers people can
+propose a change to the catalog it answers from and can never make one.
+`opsdeck.improvement` sits under a tighter rule again: it reads the ledger and
+the audit trail, writes only files under its own roots and one report, and
+imports neither the proposal lifecycle nor anything that writes a policy or a
+connector binding. A test walks the syntax tree of every module in the package
+to keep it that way.
 
 The engine is the only place the layers meet, which is why it is the only place
 the order of the steps is written down.

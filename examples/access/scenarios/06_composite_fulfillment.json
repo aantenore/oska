@@ -1,21 +1,27 @@
 {
-  "name": "06_composite_fulfilment",
-  "description": "A composite runs its procedures in order; each write inside one still stops for its own approval, and the request is closed only after the membership reads back.",
+  "name": "06_composite_fulfillment",
+  "description": "A composite runs its procedures in order; each write inside one still stops for its own approval, and the request is closed only after the membership reads back. The grant inside it takes the account from the signed-in identity, not from the request.",
   "level": 2,
+  "principal": {
+    "subject": "tnovak",
+    "attributes": {
+      "department": "support"
+    }
+  },
   "provider_script": [
     {
       "purpose": "router classification",
-      "expect_contains": "settle request req-4001",
+      "expect_contains": "settle my request req-4001",
       "response": {
         "kind": "new_task",
-        "runbook_id": "composite.request_fulfilment",
+        "runbook_id": "composite.request_fulfillment",
         "confidence": 0.9,
         "language": "en"
       }
     },
     {
       "purpose": "plan step 1, access check",
-      "expect_contains": "settle request req-4001",
+      "expect_contains": "I am tnovak",
       "response": {
         "runbook_id": "runbook.access_check",
         "operations": [
@@ -44,7 +50,7 @@
     },
     {
       "purpose": "plan step 2, access grant",
-      "expect_contains": "settle request req-4001",
+      "expect_contains": "settle my request req-4001",
       "response": {
         "runbook_id": "runbook.access_grant",
         "operations": [
@@ -61,15 +67,14 @@
             "integration_id": "integration.access_control",
             "operation": "membership.grant",
             "payload": {
-              "username": "tnovak",
               "group": "support-desk"
             },
             "write": true,
-            "purpose": "grant the membership the request asks for"
+            "purpose": "grant the membership the request asks for, to the signed-in account"
           }
         ],
         "missing": [],
-        "reply_intent": "report the support-desk membership of tnovak"
+        "reply_intent": "report the support-desk membership of the signed-in account"
       }
     },
     {
@@ -112,7 +117,7 @@
   ],
   "turns": [
     {
-      "user": "settle request req-4001, it has been open since Monday and the person is on the rota already",
+      "user": "settle my request req-4001, I am tnovak and it has been open since Monday while I am on the rota already",
       "expect": {
         "kind": "new_task",
         "contains": [

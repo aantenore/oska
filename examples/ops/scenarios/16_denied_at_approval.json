@@ -70,7 +70,7 @@
     },
     {
       "user": "yes",
-      "connector_behaviours": {
+      "connector_behaviors": {
         "integration.container_runtime": {
           "service.status": {
             "override": {

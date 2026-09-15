@@ -1,0 +1,10 @@
+{
+  "cases": [
+    { "text": "mute the alert for the next 30 minutes", "expects": "this", "language": "en" },
+    { "text": "snooze the paging on checkout while we fix it", "expects": "this", "language": "en" },
+    { "text": "silenzia l allarme per mezz ora", "expects": "this", "language": "it" },
+    { "text": "the alert is firing because the service is down, restart it", "expects": "not this", "language": "en" },
+    { "text": "the alert says the last deployment broke it, roll it back", "expects": "not this", "language": "en" },
+    { "text": "note on the incident that the alert was paging", "expects": "not this", "language": "en" }
+  ]
+}

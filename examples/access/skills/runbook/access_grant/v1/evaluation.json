@@ -1,0 +1,10 @@
+{
+  "cases": [
+    { "text": "put me in the billing group please", "expects": "this", "language": "en" },
+    { "text": "I need access to the finance tools to do my job", "expects": "this", "language": "en" },
+    { "text": "mettimi nel gruppo dei report per favore", "expects": "this", "language": "it" },
+    { "text": "she has left the team, take the group away from her", "expects": "not this", "language": "en" },
+    { "text": "which groups am I already in", "expects": "not this", "language": "en" },
+    { "text": "record on the request that the access was given", "expects": "not this", "language": "en" }
+  ]
+}

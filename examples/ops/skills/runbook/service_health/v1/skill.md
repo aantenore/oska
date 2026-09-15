@@ -44,7 +44,7 @@ and costs nothing but a moment.
 1. Read `service.status` for the named service.
 2. Read `service.logs` for the same service, most recent 50 lines.
 3. Report status, version, replicas and restart count, then the lines that
-   carry an error or warning. Quote the log, do not summarise it away.
+   carry an error or warning. Quote the log, do not summarize it away.
 
 ## Verification
 

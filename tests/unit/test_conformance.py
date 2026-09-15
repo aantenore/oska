@@ -68,20 +68,20 @@ def test_the_examples_stamp_every_level(scenarios: list[ScenarioFile]) -> None:
     assert set(levels.values()) == {1, DEFAULT_LEVEL, ADAPTIVE}
 
 
-def test_the_examples_write_behaviours_at_the_turn_level(
+def test_the_examples_write_behaviors_at_the_turn_level(
     scenarios: list[ScenarioFile], scenario_dir: Path
 ) -> None:
-    behaviours = [
-        turn.connector_behaviours
+    behaviors = [
+        turn.connector_behaviors
         for scenario in scenarios
         for turn in scenario.turns
-        if turn.connector_behaviours
+        if turn.connector_behaviors
     ]
-    assert behaviours, "no example scenario injects a connector behaviour"
+    assert behaviors, "no example scenario injects a connector behavior"
     for path in sorted(scenario_dir.glob("*.json")):
         document = json.loads(path.read_text(encoding="utf-8"))
         for turn in document["turns"]:
-            assert "connector_behaviours" not in turn["expect"], path.name
+            assert "connector_behaviors" not in turn["expect"], path.name
 
 
 def test_suite_passes_and_reports_every_level(
