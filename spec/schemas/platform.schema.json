@@ -1,0 +1,174 @@
+{
+  "$defs": {
+    "ChannelSpec": {
+      "description": "Which channels a platform opens.",
+      "properties": {
+        "cli": {
+          "default": true,
+          "title": "Cli",
+          "type": "boolean"
+        },
+        "http": {
+          "default": true,
+          "title": "Http",
+          "type": "boolean"
+        }
+      },
+      "title": "ChannelSpec",
+      "type": "object"
+    },
+    "DomainSpec": {
+      "description": "One scope a platform answers in: its packs, its host and its tenants.\n\nA session belongs to one domain for its whole life. A skill of one domain is\nnever ranked, offered or executed in another.",
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "packs": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Packs",
+          "type": "array"
+        },
+        "host": {
+          "$ref": "#/$defs/HostIdentity"
+        },
+        "tenants": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Tenants",
+          "type": "array"
+        },
+        "presentation": {
+          "default": false,
+          "title": "Presentation",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "name",
+        "packs",
+        "host"
+      ],
+      "title": "DomainSpec",
+      "type": "object"
+    },
+    "HostIdentity": {
+      "description": "Who the runtime answers as in a domain. Declared, never inferred.",
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "voice": {
+          "default": "",
+          "title": "Voice",
+          "type": "string"
+        },
+        "languages": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Languages",
+          "type": "array"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "HostIdentity",
+      "type": "object"
+    },
+    "PackRef": {
+      "description": "A pack a platform deploys: where it is, and the version it expects.",
+      "properties": {
+        "path": {
+          "format": "path",
+          "title": "Path",
+          "type": "string"
+        },
+        "version": {
+          "default": "*",
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "title": "PackRef",
+      "type": "object"
+    },
+    "StorageSpec": {
+      "description": "Where sessions and receipts are kept. The address comes from the environment.",
+      "properties": {
+        "backend": {
+          "default": "sqlite",
+          "enum": [
+            "sqlite",
+            "postgres"
+          ],
+          "title": "Backend",
+          "type": "string"
+        },
+        "url_env": {
+          "default": "OSKA_DATABASE_URL",
+          "title": "Url Env",
+          "type": "string"
+        }
+      },
+      "title": "StorageSpec",
+      "type": "object"
+    }
+  },
+  "description": "Contents of `platform.yaml`: what an organization deploys.",
+  "properties": {
+    "name": {
+      "title": "Name",
+      "type": "string"
+    },
+    "packs": {
+      "additionalProperties": {
+        "$ref": "#/$defs/PackRef"
+      },
+      "title": "Packs",
+      "type": "object"
+    },
+    "domains": {
+      "items": {
+        "$ref": "#/$defs/DomainSpec"
+      },
+      "title": "Domains",
+      "type": "array"
+    },
+    "default_domain": {
+      "default": "",
+      "title": "Default Domain",
+      "type": "string"
+    },
+    "channels": {
+      "$ref": "#/$defs/ChannelSpec"
+    },
+    "storage": {
+      "$ref": "#/$defs/StorageSpec"
+    },
+    "target_level": {
+      "default": 2,
+      "maximum": 3,
+      "minimum": 1,
+      "title": "Target Level",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "name",
+    "packs",
+    "domains"
+  ],
+  "title": "PlatformManifest",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://oska.spec/schemas/platform.schema.json"
+}

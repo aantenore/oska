@@ -10,8 +10,12 @@ from pydantic import BaseModel, Field
 
 ReceiptStatus = Literal["pending", "executed", "error"]
 
-Classification = Literal["retryable", "terminal"]
-"""How a failed write may be treated: worth another attempt, or settled."""
+Classification = Literal["retryable", "ambiguous", "terminal"]
+"""How a failed write may be treated.
+
+`retryable` never reached the system, `ambiguous` left and was never
+answered, `terminal` was refused by the system and is settled.
+"""
 
 
 class VerificationStatus(StrEnum):

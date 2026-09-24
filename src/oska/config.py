@@ -206,6 +206,22 @@ class StorageConfig(BaseModel):
     """
 
     busy_timeout_seconds: float = DEFAULT_BUSY_TIMEOUT_SECONDS
+    backend: Literal["sqlite", "postgres"] = "sqlite"
+    url_env: str = "OSKA_DATABASE_URL"
+
+
+class SigningConfig(BaseModel):
+    """How a catalog revision is signed and checked.
+
+    `signer` names a registered signer; empty means revisions are not signed.
+    `key_env` names the environment variable that holds the key: the key itself
+    never appears in configuration. `required` refuses to serve an unsigned or
+    badly signed revision.
+    """
+
+    signer: str = ""
+    key_env: str = "OSKA_REVISION_KEY"
+    required: bool = False
 
 
 class CatalogConfig(BaseModel):
@@ -216,10 +232,12 @@ class CatalogConfig(BaseModel):
     serves more than one.
     """
 
+    mode: Literal["directory", "revision"] = "directory"
     revisions_root: Path = Path("state/revisions")
     revision: str = ""
     tenant: str = "default"
     pin_sessions: bool = True
+    signing: SigningConfig = Field(default_factory=SigningConfig)
 
 
 class ChangeRequestConfig(BaseModel):
@@ -238,6 +256,10 @@ class ResilienceConfig(BaseModel):
     timeout_seconds: float = 30.0
     failures_before_open: int = 3
     recovery_seconds: float = 30.0
+    retries: int = 0
+    backoff_seconds: float = 0.5
+    retry_statuses: list[int] = Field(default_factory=lambda: [502, 503, 504])
+    max_response_bytes: int = 1_000_000
 
 
 class RetentionConfig(BaseModel):
@@ -248,6 +270,41 @@ class RetentionConfig(BaseModel):
     """
 
     days: int = 0
+
+
+class IdentityConfig(BaseModel):
+    """How a caller's identity is read.
+
+    `mode` is `proxy` when an authenticated proxy sets headers the runtime
+    trusts, and `token` when the caller presents a signed session token the
+    runtime verifies itself. `key_env` names where the verification key lives.
+    """
+
+    mode: Literal["proxy", "token"] = "proxy"
+    key_env: str = "OSKA_SESSION_TOKEN_KEY"
+    required_claims: list[str] = Field(default_factory=lambda: ["sub", "sid", "exp"])
+    tenant_claim: str = "tenant"
+    leeway_seconds: int = 30
+
+
+class EvaluationConfig(BaseModel):
+    """What a catalog change must reach before it is accepted."""
+
+    min_precision: float = 1.0
+    min_recall: float = 1.0
+    require_sets: bool = False
+
+
+class MetricsConfig(BaseModel):
+    """Whether the runtime exposes numbers a monitoring system can scrape."""
+
+    enabled: bool = True
+
+
+class PlatformConfig(BaseModel):
+    """How many tenant and domain runtimes one process keeps warm at once."""
+
+    cache_size: int = 16
 
 
 class RuntimeConfig(BaseModel):
@@ -271,6 +328,10 @@ class RuntimeConfig(BaseModel):
     resilience: ResilienceConfig = Field(default_factory=ResilienceConfig)
     retention: RetentionConfig = Field(default_factory=RetentionConfig)
     storage: StorageConfig = Field(default_factory=StorageConfig)
+    identity: IdentityConfig = Field(default_factory=IdentityConfig)
+    evaluation: EvaluationConfig = Field(default_factory=EvaluationConfig)
+    metrics: MetricsConfig = Field(default_factory=MetricsConfig)
+    platform: PlatformConfig = Field(default_factory=PlatformConfig)
 
 
 class ModelConfig(BaseModel):

@@ -24,12 +24,13 @@ not about authenticity.
 
 from __future__ import annotations
 
-import json
 from typing import Any
 
 from fastapi import APIRouter, Request
 from pydantic import BaseModel, Field
 
+from oska.api.errors import ApiError
+from oska.api.identity import ATTRIBUTES_HEADER, SUBJECT_HEADER, resolve_principal
 from oska.config import load_runtime_config
 from oska.contracts.common import TurnResult
 from oska.contracts.proposal import SkillProposal
@@ -61,18 +62,6 @@ __all__ = [
 
 router = APIRouter()
 
-SUBJECT_HEADER = "X-Principal-Subject"
-ATTRIBUTES_HEADER = "X-Principal-Attributes"
-
-
-class ApiError(Exception):
-    """An error with the status and the wording the response carries."""
-
-    def __init__(self, status_code: int, error: str, detail: str) -> None:
-        super().__init__(detail)
-        self.status_code = status_code
-        self.error = error
-        self.detail = detail
 
 
 class TurnRequest(BaseModel):
@@ -284,32 +273,9 @@ def get_health(request: Request) -> Health:
 
 
 def _principal(request: Request) -> Principal | None:
-    """The identity the proxy put on this call, or nothing when it put none.
-
-    A subject alone is an identity; the attributes header is optional and is a
-    JSON object when it is there. Both are taken as given: this is the point
-    where a value the runtime did not establish becomes the value a write is
-    bound to, and it is worth saying that in one place rather than implying it
-    everywhere.
-    """
-    subject = request.headers.get(SUBJECT_HEADER, "").strip()
-    if not subject:
-        return None
-    raw = request.headers.get(ATTRIBUTES_HEADER, "").strip()
-    attributes: dict = {}
-    if raw:
-        try:
-            parsed = json.loads(raw)
-        except ValueError as exc:
-            raise ApiError(
-                400, "invalid_principal", f"{ATTRIBUTES_HEADER} is not JSON"
-            ) from exc
-        if not isinstance(parsed, dict):
-            raise ApiError(
-                400, "invalid_principal", f"{ATTRIBUTES_HEADER} is not a JSON object"
-            )
-        attributes = parsed
-    return Principal(subject=subject, attributes=attributes, authenticated=True)
+    """The identity this call carries, read the way the deployment is configured to read it."""
+    runtime = load_runtime_config(settings=_services(request).settings)
+    return resolve_principal(request, runtime.identity)
 
 
 def _services(request: Request) -> Any:

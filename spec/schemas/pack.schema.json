@@ -1,0 +1,138 @@
+{
+  "$defs": {
+    "HostIdentity": {
+      "description": "Who the runtime answers as in a domain. Declared, never inferred.",
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "voice": {
+          "default": "",
+          "title": "Voice",
+          "type": "string"
+        },
+        "languages": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Languages",
+          "type": "array"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "HostIdentity",
+      "type": "object"
+    },
+    "PackDependency": {
+      "description": "Another pack this one needs, and the versions it accepts.",
+      "properties": {
+        "pack": {
+          "title": "Pack",
+          "type": "string"
+        },
+        "version": {
+          "default": "*",
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "pack"
+      ],
+      "title": "PackDependency",
+      "type": "object"
+    },
+    "PackProvides": {
+      "description": "What a pack claims to declare; checked against its skills.",
+      "properties": {
+        "entities": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Entities",
+          "type": "array"
+        },
+        "procedures": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Procedures",
+          "type": "array"
+        }
+      },
+      "title": "PackProvides",
+      "type": "object"
+    }
+  },
+  "description": "Contents of `pack.yaml`: one business area, versioned and self-contained.\n\nThe layout under the manifest is fixed: `skills/`, `configs/connectors.json`,\n`fixtures/`, `scenarios/`, `evaluation/`, and an optional `guardrails.json`\nwhose entries are added to the platform catalog. `synonyms` maps how people\nsay a thing to how the catalog names it, so the runtime keeps no word list\nof its own.",
+  "properties": {
+    "name": {
+      "title": "Name",
+      "type": "string"
+    },
+    "version": {
+      "title": "Version",
+      "type": "string"
+    },
+    "description": {
+      "maxLength": 300,
+      "minLength": 10,
+      "title": "Description",
+      "type": "string"
+    },
+    "requires": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "title": "Requires",
+      "type": "object"
+    },
+    "depends_on": {
+      "items": {
+        "$ref": "#/$defs/PackDependency"
+      },
+      "title": "Depends On",
+      "type": "array"
+    },
+    "provides": {
+      "$ref": "#/$defs/PackProvides"
+    },
+    "host": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/HostIdentity"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "synonyms": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "title": "Synonyms",
+      "type": "object"
+    },
+    "level": {
+      "default": 1,
+      "maximum": 3,
+      "minimum": 1,
+      "title": "Level",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "name",
+    "version",
+    "description"
+  ],
+  "title": "PackManifest",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://oska.spec/schemas/pack.schema.json"
+}

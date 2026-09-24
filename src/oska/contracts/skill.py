@@ -109,6 +109,36 @@ class LifecycleTransition(BaseModel):
     offered: bool = True
 
 
+PresentationMomentName = Literal[
+    "on_results", "on_single_result", "on_selection", "on_verified_write", "on_completion"
+]
+
+
+class PresentationMoment(BaseModel):
+    """What a procedure asks a presentation surface to show at one moment of a turn.
+
+    `view` names the view; `bind` maps each directive field to evidence the
+    runtime holds (`$items.<field>`, `$item.<field>`, `$selection`,
+    `$inputs.<field>`, `$receipt.<field>`). Anything else is copied as written.
+    """
+
+    view: str
+    bind: dict[str, str] = Field(default_factory=dict)
+    fields: dict = Field(default_factory=dict)
+
+
+class SubjectSpec(BaseModel):
+    """What a procedure acts on, relative to what the conversation is about.
+
+    `joins: focus` lets a follow-up act on the object the runtime last showed
+    instead of asking for it again.
+    """
+
+    entity: str
+    cardinality: Literal["one", "many"] = "one"
+    joins: Literal["focus", "none"] = "none"
+
+
 class SkillFrontmatter(BaseModel):
     """Declarative header of a skill file."""
 
@@ -135,6 +165,14 @@ class SkillFrontmatter(BaseModel):
     human_inputs: list[str] = Field(default_factory=list)
     principal_inputs: dict[str, str] = Field(default_factory=dict)
     guardrails: list[str] = Field(default_factory=list)
+    presentation: dict[PresentationMomentName, PresentationMoment] = Field(
+        default_factory=dict
+    )
+    subject: SubjectSpec | None = None
+    noun: str | None = None
+    plural: str | None = None
+    display_fields: list[str] = Field(default_factory=list)
+    comparable_fields: list[str] = Field(default_factory=list)
     policy: str | None = None
 
     @field_validator("id")
@@ -174,6 +212,14 @@ class SkillFrontmatter(BaseModel):
                     raise ValueError(f"{self.id}: only an entity declares {name}")
         if self.human_inputs and self.type not in (SkillType.runbook, SkillType.composite):
             raise ValueError(f"{self.id}: only a procedure declares human inputs")
+        if (self.presentation or self.subject) and self.type not in (
+            SkillType.runbook,
+            SkillType.composite,
+        ):
+            raise ValueError(f"{self.id}: only a procedure declares presentation or a subject")
+        entity_only = (self.noun, self.plural, self.display_fields, self.comparable_fields)
+        if any(entity_only) and self.type is not SkillType.entity:
+            raise ValueError(f"{self.id}: only an entity declares how it is named and shown")
         if self.principal_inputs and self.type not in (SkillType.runbook, SkillType.composite):
             raise ValueError(f"{self.id}: only a procedure declares principal inputs")
         shared = set(self.human_inputs) & set(self.principal_inputs)

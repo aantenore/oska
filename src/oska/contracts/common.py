@@ -170,6 +170,20 @@ class PendingInfo(BaseModel):
     approval: PendingApproval | None = None
 
 
+class Directive(BaseModel):
+    """What a presentation surface may show after a turn, bound to verified evidence.
+
+    A directive is declared by a procedure for a moment of the turn and filled
+    only from what the runtime read or verified; a field the evidence cannot
+    answer drops the whole directive. A directive never writes anything.
+    """
+
+    procedure: str
+    moment: str
+    view: str
+    fields: dict = Field(default_factory=dict)
+
+
 class TurnResult(BaseModel):
     """Everything one turn produced."""
 
@@ -177,4 +191,5 @@ class TurnResult(BaseModel):
     outcomes: list[Outcome] = Field(default_factory=list)
     pending: PendingInfo | None = None
     events: list[AuditEvent] = Field(default_factory=list)
+    directives: list[Directive] = Field(default_factory=list)
 

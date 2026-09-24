@@ -26,6 +26,9 @@ class SessionState(BaseModel):
     language: str = ""
     revision: str = ""
     principal: dict = Field(default_factory=dict)
+    domain: str = ""
+    presented: dict = Field(default_factory=dict)
+    focus: dict = Field(default_factory=dict)
     pending_goal: PendingGoal | None = None
     pending_approval: PendingApproval | None = None
     last_entities: list[str] = Field(default_factory=list)

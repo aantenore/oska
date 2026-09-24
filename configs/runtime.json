@@ -138,7 +138,13 @@
     "revisions_root": "state/revisions",
     "revision": "",
     "tenant": "default",
-    "pin_sessions": true
+    "pin_sessions": true,
+    "mode": "directory",
+    "signing": {
+      "signer": "",
+      "key_env": "OSKA_REVISION_KEY",
+      "required": false
+    }
   },
   "changes": {
     "root": "state/changes"
@@ -146,12 +152,44 @@
   "resilience": {
     "timeout_seconds": 30.0,
     "failures_before_open": 3,
-    "recovery_seconds": 30.0
+    "recovery_seconds": 30.0,
+    "retries": 0,
+    "backoff_seconds": 0.5,
+    "retry_statuses": [
+      502,
+      503,
+      504
+    ],
+    "max_response_bytes": 1000000
   },
   "retention": {
     "days": 0
   },
   "storage": {
-    "busy_timeout_seconds": 10.0
+    "busy_timeout_seconds": 10.0,
+    "backend": "sqlite",
+    "url_env": "OSKA_DATABASE_URL"
+  },
+  "identity": {
+    "mode": "proxy",
+    "key_env": "OSKA_SESSION_TOKEN_KEY",
+    "required_claims": [
+      "sub",
+      "sid",
+      "exp"
+    ],
+    "tenant_claim": "tenant",
+    "leeway_seconds": 30
+  },
+  "evaluation": {
+    "min_precision": 1.0,
+    "min_recall": 1.0,
+    "require_sets": false
+  },
+  "metrics": {
+    "enabled": true
+  },
+  "platform": {
+    "cache_size": 16
   }
 }
