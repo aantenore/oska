@@ -21,6 +21,7 @@ from oska.catalog.registry import SkillRegistry
 from oska.catalog.validator import validate
 from oska.config import Settings
 from oska.contracts.common import TurnResult
+from oska.contracts.session import SessionState
 from oska.engine.factory import build_engine
 from oska.governance.identity import (
     IdentityError,
@@ -268,6 +269,10 @@ class _RecordingEngine:
         self.seen.append(principal)
         return TurnResult(reply=f"{session_id}: {text}")
 
+    def state(self, session_id: str) -> SessionState:
+        """A session nobody has opened yet."""
+        return SessionState(session_id=session_id)
+
 
 def test_the_identity_of_a_turn_comes_from_the_proxy_headers(
     example_settings: Settings,
@@ -323,7 +328,9 @@ def test_a_real_turn_over_http_records_the_identity_on_the_session(
         json={"text": "hello"},
         headers={SUBJECT_HEADER: "rsilva"},
     )
-    assert second.status_code == 409
+    assert second.status_code == 403
+    assert second.json()["error"] == "session_refused"
+    assert "tnovak" not in second.text
     assert engine.state(SESSION).turn_count == 1
 
 
@@ -337,5 +344,6 @@ def test_a_turn_under_a_second_identity_is_refused_by_the_surface(
         json={"text": "hello"},
         headers={SUBJECT_HEADER: "rsilva"},
     )
-    assert response.status_code == 409
-    assert response.json()["error"] == "principal_mismatch"
+    assert response.status_code == 403
+    assert response.json()["error"] == "session_refused"
+    assert "tnovak" not in response.text

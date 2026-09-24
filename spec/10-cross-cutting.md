@@ -112,16 +112,32 @@ ModelBudget:
 Work that genuinely needs more than one turn's budget belongs where it can be
 paid for once and read many times: at publication, or in a scheduled job.
 
+A draft from a session is a turn of its own for the budget: it opens a fresh
+count, its model calls are counted against the per-turn limit like any turn's,
+and a deployment whose turns may not call the model drafts from the recorded
+operations alone.
+
+Every cost bound has a floor, enforced where the configuration is read, a
+tenant fragment included, so a value that would mean nothing, or would read as
+no limit, is refused rather than served: the model budget, the conversation
+window, a connector's timeout and response size, the breaker, retries,
+backoff and recovery, the metrics interval and the platform's cache size.
+
 ### Identity
 
 Responsibility: carry the actor.
 
-OSKA assumes an authenticated channel. It does not authenticate anyone. What it
-requires is that the two human acts — approving a write and transitioning a
-proposal — carry an actor identifier that is recorded and never defaulted. A
-deployment that puts an unauthenticated channel in front of the engine has
-disabled the guarantees of L4 and L7 regardless of what the engine does, and the
-documentation of a conformant system must say so plainly.
+OSKA assumes an authenticated channel. The engine does not authenticate
+anyone; a channel either takes the identity an authenticating proxy sets or
+verifies a signed session token itself ([06-governance-layer.md](06-governance-layer.md)).
+What it requires is that the two human acts — approving a write and
+transitioning a proposal — carry an actor identifier that is recorded and never
+defaulted, together with where that identifier came from: the principal of the
+call, the operator at a terminal, or a name the call only stated, which is
+recorded as unverified. A deployment that puts an unauthenticated channel in
+front of the engine has disabled the guarantees of L4 and L7 regardless of what
+the engine does, and the documentation of a conformant system must say so
+plainly.
 
 ```text
 Approval and transition records:
@@ -147,6 +163,79 @@ reproducible.
 Scenarios are the primary conformance evidence. Unit tests prove module
 contracts; scenarios prove the architecture.
 
+### Metrics exposition
+
+Responsibility: render the service-level numbers in a format a monitoring
+system can scrape, without a client library to produce a handful of lines of
+text.
+
+```text
+GET /metrics -> Prometheus text exposition format (version 0.0.4)
+  oska_turns                      gauge, present while an audit trail exists
+  oska_latency_p50_ms             gauge, present only while traces exist
+  oska_latency_p95_ms             gauge, present only while traces exist
+  oska_fallback_rate              gauge
+  oska_verification_failure_rate  gauge
+  oska_guardrail_block_rate       gauge
+  oska_unsupported_rate           gauge
+```
+
+Every name carries the `oska_` prefix. Every number is a gauge over the report
+window, the turn count included: it is recomputed from the audit trail, and
+removing a session from the trail lowers it, so it is not a counter. A
+deployment serving one catalog labels nothing, having nothing to distinguish a
+series by; a platform labels every series with `tenant` and `domain`, one
+series per (tenant, domain), each computed from that pair's own trail. A
+computed report is served again for `metrics.cache_seconds` (15 seconds by
+default) before the trail is read anew, because the trail is read in full to
+compute one; zero reads it on every scrape. A report names every tenant a
+platform serves and how much each one does, so where an identity is required
+the route is a reviewer's read, like the proposals, unless the configuration
+marks it public (`metrics.public`) for a scraper that reaches the runtime over
+a private network and presents no identity; where no identity is required it
+stays open, as every other read there is. A measure the deployment
+cannot compute -- the same `Measure` the service report already carries -- is
+left out of the body rather than exported as zero, for the reason the service
+report gives that rule everywhere else it applies: a rate reported as zero
+because nothing recorded it reads exactly like a rate that is genuinely zero,
+and a scrape cannot tell the two apart from a number alone. Its `# HELP` line
+still prints, naming why.
+
+`ops/slo.md` sets one target per metric, with the reasoning behind it in two
+sentences; `ops/alerts.yml` carries one alerting rule per target, against the
+same metric names. The names the exposition renders, the names `ops/slo.md`
+sets targets for, and the names `ops/alerts.yml` watches are the same set,
+which a test checks so that changing one without the others fails the build
+rather than a page nobody sends.
+
+### Catalog precision and recall
+
+Responsibility: gate a catalog change on whether it still routes correctly,
+not only on whether the cases it was given happen to pass.
+
+An evaluation set beside a skill is a list of cases, each a request and
+whether it must reach that skill (`this`) or must not (`not this`). Run
+against a ranking, every case becomes one of three counts: a `this` case that
+held is a true positive; a `this` case that did not is a false negative,
+whatever it lost the request to; a `not this` case that did not hold is a
+false positive, because the skill was ranked first for a request that must
+not reach it. Precision is true positives over true positives and false
+positives; recall is true positives over true positives and false negatives.
+Both are computed per skill and over the whole catalog run.
+
+```text
+EvaluationConfig:
+  min_precision: float   # default 1.0
+  min_recall: float      # default 1.0
+  require_sets: bool     # default false
+```
+
+A catalog evaluation fails when precision or recall falls below the
+configured floor. When `require_sets` is set, it also fails on any published
+procedure -- a skill that declares triggers, so a conversation can be routed
+to it -- that carries no evaluation set of its own, naming every one it
+finds.
+
 ### Retention
 
 Responsibility: keep the record for as long as it is needed and no longer, and
@@ -156,7 +245,8 @@ A conversation is personal data. The record of one is spread over as many
 artifacts as the deployment keeps — the receipts of what was written, the audit
 events of how it was decided, the session state that carried it from turn to
 turn, the judgments a person left on its answers, the preferences learned from
-those judgments and, where tracing is on, the spans naming it — and anything
+those judgments, where tracing is on the spans naming it, and the proposals
+drafted from it with the change requests composed from those — and anything
 said about retention has to be true of all of them at once. A window that
 expires the events and leaves the receipts has retained the conversation, and so
 has one that leaves the feedback file.
@@ -164,7 +254,10 @@ has one that leaves the feedback file.
 The first three are the account itself and are always there. The others belong
 to layers above retention, so a removal takes them as stores the caller hands
 in: each answers to a session identifier and reports how much went, and one
-nobody hands in is one this deployment does not keep.
+nobody hands in is one this deployment does not keep. A proposal, and a change
+request composed from it, is not always removed outright: one whose change was
+applied is part of the catalog, so its package and the fields drafted from the
+conversation are removed or redacted and the record of the decision stays.
 
 Two operations are required, and they are not the same operation.
 
@@ -196,6 +289,17 @@ every future writer of every future event; not writing is a property of the
 record. Retention exists for what is stored because the account genuinely needs
 it, and says how long that is.
 
+On a platform ([14-platform-blueprint.md](14-platform-blueprint.md)) the state
+of each (tenant, domain) lives apart, and a session id is not known in advance
+to belong to one pair. A request to be forgotten concerns a person, not a
+domain, so on a platform both operations reach every pair the platform serves
+unless the operator narrows the reach to a domain or a tenant. Each pair is
+opened exactly as the runtime opens it, with its own settings and its own
+storage namespace, and the report sums the counts over the pairs reached and
+names the pairs that held anything. The improvement job, which reads what
+retention removes, runs the same way: once per pair, learning from that pair's
+signals alone and writing only into that pair's state.
+
 ## Invariants
 
 - No threshold, path, limit, token list, model name or port appears as a
@@ -222,6 +326,14 @@ it, and says how long that is.
 - A removal leaves a typed event naming counts per store and nothing that was
   said, and that event survives the removal it records.
 - An append-only trail is replaced whole: a new file, renamed over the old one.
+- A metric the exposition cannot compute is omitted from the scraped body,
+  never exported as zero; every exposed name carries the `oska_` prefix.
+- The metric names the exposition renders, the targets in `ops/slo.md` and the
+  alerting rules in `ops/alerts.yml` are the same set.
+- A catalog evaluation reports precision and recall separately: a request
+  stolen from the procedure that must answer it and a procedure wrongly
+  claiming a request it must not answer are different failures, not one
+  blended score.
 
 ## Requirements
 
@@ -280,6 +392,11 @@ it, and says how long that is.
   OSKA-XC-23. That event MUST NOT carry any content
   of the removed record, and MUST NOT itself be removed by the removal it
   records or by a later one.
+- **OSKA-XC-32** — Forget and expire MUST remove, or redact the
+  history-derived fields of, proposals drafted from the session and the change
+  requests composed from them. An applied change request MUST keep the record
+  of its decision. Both MUST be counted in the report and in the retention
+  event.
 - **OSKA-XC-18** — Rewriting an append-only record MUST be atomic from a
   reader's point of view: the replacement MUST be written to a new file and
   renamed over the original, and an entry that cannot be parsed MUST be kept
@@ -298,6 +415,49 @@ it, and says how long that is.
 - **OSKA-XC-22** — These numbers MUST be derived from the audit trail and the
   traces alone, MUST NOT require any additional recording in the path of a turn,
   and reading them MUST NOT write to either source.
+- **OSKA-XC-24** — A conformant deployment MUST be able to expose the numbers
+  of OSKA-XC-20 in Prometheus text exposition format, on a route gated by
+  configuration. Where an identity is required, the route MUST require a
+  reviewer principal unless configuration explicitly marks it public.
+- **OSKA-XC-25** — Every exposed metric name MUST be prefixed `oska_`. A
+  metric the deployment could not compute MUST be omitted from the scraped
+  body rather than exported as a zero value, and its `# HELP` line MUST still
+  print, naming why.
+- **OSKA-XC-26** — A platform exposition MUST label every series with
+  `tenant` and `domain`, one series per (tenant, domain), leaving out only a
+  pair whose tenant turns metrics off; a single-catalog deployment's samples
+  MUST carry no label.
+- **OSKA-XC-27** — The metric names the exposition renders, the targets
+  declared for them and the alerting rules watching them MUST be the same
+  set, and a conformant deployment's test suite MUST fail when they are not.
+- **OSKA-XC-28** — A catalog evaluation MUST compute precision and recall
+  separately, per skill and over the catalog as a whole, from true positive,
+  false positive and false negative counts as defined under Catalog precision
+  and recall.
+- **OSKA-XC-29** — A catalog evaluation MUST fail when precision or recall
+  falls below the configured floor, and, when configured to require a set of
+  every procedure, MUST also fail on any published procedure that carries
+  none, naming each one it finds.
+- **OSKA-XC-30** — A conformant deployment's continuous integration MUST run,
+  on every change proposed against it: static checks, the unit and scenario
+  suites, catalog validation, the catalog evaluation gate of OSKA-XC-29, and
+  conformance, all offline and without secrets.
+- **OSKA-XC-31** — On a platform, forgetting a session and expiring the window
+  MUST reach every (tenant, domain) the platform serves unless the operator
+  narrows the reach to a domain or a tenant: a request to be forgotten concerns
+  a person, not a domain. Each pair MUST be opened with its own settings and
+  storage namespace, exactly as the runtime opens it. The report MUST sum the
+  counts across the pairs reached and name the pairs that held anything. The
+  improvement job run on a platform MUST run once per (tenant, domain) reached,
+  learn only from that pair's signals, and write its learned files, preferences
+  and report only into that pair's state.
+- **OSKA-XC-33** — The turn count MUST be a gauge over the report window
+  (`oska_turns`), omitted with a note when there is no audit trail.
+- **OSKA-XC-34** — The interval a computed service report is served again MUST
+  come from configuration (`metrics.cache_seconds`, default 15 s); zero MUST
+  recompute on every scrape.
+- **OSKA-XC-35** — Every cost bound MUST have a floor enforced where
+  configuration is read, tenant fragments included.
 
 ## Rationale
 
@@ -344,6 +504,26 @@ is a count that a new caller silently escapes. The turn answering anyway,
 deterministically, is the other half — a bound that turns a turn into an error
 would simply be removed the first time it fired.
 
+A number scraped by a monitoring system is read the same way a number printed
+by a person is read, and the zero-or-absent distinction that governs the
+service report governs its exposition for the same reason: a dashboard that
+cannot tell "nothing happened" from "nothing was recorded" pages the wrong
+person or nobody at all. Writing the exposition by hand rather than importing
+a client library keeps that rule visible at the one place it has to hold,
+instead of trusting a dependency to have made the same choice. Keeping the
+target and the alert beside the metric name, and failing the build when the
+three drift, is the same discipline OSKA-XC-3 already applies to a threshold
+in code: a number nobody is watching is not being monitored, whatever the
+exposition says.
+
+Splitting a catalog evaluation into precision and recall rather than one pass
+rate makes two different mistakes visible as two different numbers. A
+procedure that steals a request lowers the recall of the one it stole from,
+not its own precision; a procedure that wrongly answers a request that is not
+its own lowers its own precision, not anyone's recall. A blended score can
+sit still while one axis degrades and the other improves to compensate, which
+is exactly the failure a gate exists to catch.
+
 ## In the reference implementation
 
 - `src/oska/config.py`, `configs/runtime.json`, `configs/model.json` —
@@ -353,14 +533,41 @@ would simply be removed the first time it fired.
 - `src/oska/audit/sink.py` — memory, file and fan-out sinks.
 - `src/oska/audit/trace.py` — the diagnostic span sinks: none, memory and
   file, with the null sink in force whenever tracing is off.
-- `src/oska/engine/engine.py` — the per-turn model budget and the provider
-  wrapper that counts every call through it.
+- `src/oska/engine/budget.py` — the per-turn model budget and the provider
+  wrapper that counts every call through it, held by `src/oska/engine/engine.py`
+  for the length of a turn.
 - `src/oska/governance/ledger.py` — durable receipts, and the one operation
   that takes a session's receipts out of them.
-- `src/oska/governance/retention.py` — `forget` and `expire`, over the three
-  stores together, and the event each of them leaves.
+- `src/oska/governance/retention.py` — `forget` and `expire`, over the
+  receipts, the audit trail and the session state together and every other
+  store the caller hands in, and the event each of them leaves.
+- `src/oska/learning/forgetting.py` — the proposals drafted from a session and
+  the change requests composed from them, as retention removes them: deleted,
+  or, for an applied change, redacted with the record of the decision kept
+  (`tests/unit/test_retention.py`).
 - `src/oska/cli/commands_forget.py` — the two commands an operator runs, and
-  what each of them reports having removed.
+  what each of them reports having removed; with `--platform` they reach every
+  (tenant, domain), narrowed by `--domain` and `--tenant`, and
+  `src/oska/cli/commands_improve.py` runs the improvement job per pair the same
+  way (`tests/unit/test_retention.py`, `tests/unit/test_improvement.py`).
 - `src/oska/contracts/` — the shared types, owned by no layer.
 - `tests/scenarios/test_scenarios.py` — the scenario runner, including the check
   that the scripted model calls were consumed in the recorded order.
+- `src/oska/observability/exposition.py` — the Prometheus text exposition,
+  hand-written, and the metric name set the other two files are checked
+  against.
+- `src/oska/api/metrics.py` — the `GET /metrics` route, gated by
+  `MetricsConfig.enabled` and mounted by `oska.api.app`, one labeled series per
+  (tenant, domain) on a platform, each report kept for
+  `MetricsConfig.cache_seconds`.
+- `ops/slo.md`, `ops/alerts.yml` — the target and the alerting rule for each
+  metric the exposition renders.
+- `src/oska/catalog/evaluation.py` — precision and recall per skill and over
+  the catalog, and the gate `EvaluationConfig` sets on both.
+- `src/oska/cli/commands_evaluate.py` — `oska evaluate catalog`, which applies
+  that gate and leaves a non-zero status when it does not clear.
+- `tests/unit/test_metrics.py` — checks the exposition, `ops/slo.md` and
+  `ops/alerts.yml` name the same metrics.
+- `.github/workflows/ci.yml` — lint, the unit and scenario suites, catalog
+  validation, the evaluation gate and conformance, run on every push and pull
+  request against both reference catalogs.

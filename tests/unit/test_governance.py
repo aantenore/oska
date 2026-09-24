@@ -208,6 +208,19 @@ def test_an_operation_the_catalog_does_not_declare_is_denied(
     assert decision.rule is None
 
 
+def test_a_write_whose_policy_file_cannot_be_read_is_denied(
+    sample_policy: Callable[..., tuple[PolicyEngine, Skill]],
+) -> None:
+    engine, skill = sample_policy({"operation": "thing.write", "effect": "allow"})
+    (skill.path.parent / "policy.json").write_text("{ not json", encoding="utf-8")
+
+    decision = engine.evaluate(skill, "thing.write", {"thing": "one"}, {}, "session")
+
+    assert decision.effect == "deny"
+    assert decision.rule is None
+    assert "policy" in decision.reason
+
+
 def test_a_write_without_a_policy_is_denied(
     engine: PolicyEngine, registry: SkillRegistry
 ) -> None:

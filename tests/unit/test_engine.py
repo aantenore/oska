@@ -413,5 +413,144 @@ def test_the_summary_never_calls_an_unconfirmed_write_verified() -> None:
         "service.restart ran, but the read-back contradicted it. "
         "Receipt r-7 is not verified."
     )
-    assert "already done in this session, receipt r-7" in lines[1]
+    assert "already done" not in lines[1]
+    assert "not confirmed: receipt r-7" in lines[1]
+    assert "It is not sent again." in lines[1]
     assert "no such operation" in lines[2]
+
+
+def test_a_confirmed_write_found_in_the_ledger_is_reported_as_done() -> None:
+    """Only a receipt that is executed and verified may be called done."""
+    receipt = WriteReceipt(
+        receipt_id="r-8",
+        session_id="s",
+        ledger_key="k",
+        integration_id="integration.container_runtime",
+        operation="service.restart",
+        payload={"service": "search"},
+        status="executed",
+        verification=VerificationStatus.verified,
+        created_at=datetime.now(UTC),
+    )
+    lines = outcome_summary([build.ledger_hit_outcome(receipt)])
+    assert lines == ["service.restart was already done in this session, receipt r-8."]
+
+
+# What the reply writer may say about a write
+
+
+def _written(text: str, fact: str) -> dict:
+    """A written reply, asserting the brief told the writer whether the write landed."""
+    return {"expect_contains": fact, "response": {"reply": text}}
+
+
+class _Briefs(ScriptedModelProvider):
+    """A scripted provider that keeps the last user message of every call it answers."""
+
+    def __init__(self, script: list[dict]) -> None:
+        super().__init__(script)
+        self.briefs: list[str] = []
+
+    def complete_json(
+        self, system: str, messages: list[Message], schema: dict, *, temperature: float = 0.0
+    ) -> dict:
+        said = [message.content for message in messages if message.role == "user"]
+        self.briefs.append(said[-1] if said else "")
+        return super().complete_json(system, messages, schema, temperature=temperature)
+
+
+def test_a_written_reply_is_set_aside_when_a_write_did_not_land(
+    repo_root: Path, tmp_path: Path
+) -> None:
+    """The writer claims success; the read-back contradicted the write, so the template speaks."""
+    claim = "Done: reporting was restarted and is running again."
+    provider = _Briefs(
+        [
+            _route("new_task", "runbook.service_restart"),
+            _restart_plan("reporting"),
+            {"response": {"reply": claim}},
+        ]
+    )
+    engine = build_engine(
+        _settings(repo_root, tmp_path), provider=provider, audit_sink=MemorySink()
+    )
+    engine.turn("s", "reporting in staging is down again, restart it")
+    stopped = {
+        "name": "reporting",
+        "environment": "staging",
+        "status": "stopped",
+        "version": "4.0.0",
+        "replicas": 1,
+        "restarts": 7,
+    }
+    engine.connectors.get(CONTAINER_RUNTIME).set_behavior(
+        "service.status", {"override": {"service": stopped}}
+    )
+
+    result = engine.turn("s", "yes")
+
+    assert [outcome.kind for outcome in result.outcomes] == ["receipt"]
+    assert provider.remaining() == 0  # the reply call was made
+    assert claim not in result.reply
+    assert "the read-back contradicted it" in result.reply
+    assert "did not land or is not confirmed. Do not say it was done." in provider.briefs[-1]
+
+
+def test_a_written_reply_is_kept_when_every_write_landed(
+    repo_root: Path, tmp_path: Path
+) -> None:
+    claim = "Done: search was restarted and is running again."
+    engine = _engine(
+        repo_root,
+        tmp_path,
+        [
+            _route("new_task", "runbook.service_restart"),
+            _restart_plan("search"),
+            _written(claim, "landed, confirmed by its read-back."),
+        ],
+    )
+    engine.turn("s", RESTART_REQUEST)
+
+    result = engine.turn("s", "yes")
+
+    assert result.reply.startswith(claim)
+    assert "Receipt" in result.reply  # the deterministic receipt line still follows
+
+
+# The policy at approval judges only the state it could read again
+
+
+def test_an_approval_whose_state_cannot_be_read_again_sends_nothing(
+    repo_root: Path, tmp_path: Path
+) -> None:
+    """The production rule is conditioned on the environment the status read reports.
+
+    Two approvals stand. When the status read before the write does not come
+    back, the policy would judge the restart without the environment it is
+    conditioned on; the write is refused as unavailable instead, and nothing
+    is sent.
+    """
+    engine = _engine(
+        repo_root,
+        tmp_path,
+        [_route("new_task", "runbook.service_restart"), _restart_plan("checkout")],
+    )
+    engine.turn("prod", "the checkout service in production needs a restart")
+    engine.turn("prod", "yes")
+    engine.connectors.get(CONTAINER_RUNTIME).set_behavior(
+        "service.status", {"unreachable": True, "error": "the runtime did not answer"}
+    )
+
+    result = engine.turn("prod", "yes")
+
+    assert [outcome.kind for outcome in result.outcomes] == ["unavailable"]
+    assert result.outcomes[0].operation == "service.restart"
+    assert "could not be confirmed" in result.reply
+    assert "Nothing was sent" in result.reply
+    assert engine.receipts("prod") == []
+    assert not [
+        event
+        for event in result.events
+        if event.kind == "execute" and event.data.get("operation") == "service.restart"
+    ]
+    assert engine.state("prod").pending_approval is None

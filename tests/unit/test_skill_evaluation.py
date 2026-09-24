@@ -143,7 +143,13 @@ def test_a_new_skill_that_steals_another_s_requests_fails_the_evaluation(
 
     stolen = [result for result in report.failures if result.text == STOLEN]
     assert stolen and stolen[0].skill_id == "runbook.service_restart"
-    assert report.precision < 1.0
+    assert stolen[0].expects == "this"
+    # A `this` case losing its top rank to the new skill is a false negative:
+    # recall drops because service_restart no longer answers a request it
+    # must. Precision, which counts only `not this` cases turning false
+    # positive, is untouched.
+    assert report.recall < 1.0
+    assert report.precision == 1.0
     assert not report.ok
 
 
@@ -279,6 +285,73 @@ def test_the_command_passes_over_both_reference_catalogs(repo_root: Path) -> Non
 
         assert result.exit_code == 0, result.stdout
         assert "precision 1.0" in result.stdout
+        assert "recall 1.0" in result.stdout
+
+
+def test_the_report_carries_precision_and_recall_per_skill(
+    ops_registry: SkillRegistry, repo_root: Path
+) -> None:
+    report = evaluate_catalog(ops_registry, _discovery(ops_registry, repo_root))
+
+    restart = next(
+        entry for entry in report.per_skill if entry.skill_id == "runbook.service_restart"
+    )
+    assert restart.precision == 1.0
+    assert restart.recall == 1.0
+
+
+def test_a_procedure_without_a_set_is_named_when_sets_are_required(
+    ops_registry: SkillRegistry, repo_root: Path
+) -> None:
+    discovery = _discovery(ops_registry, repo_root)
+
+    lenient = evaluate_catalog(ops_registry, discovery)
+    strict = evaluate_catalog(ops_registry, discovery, require_sets=True)
+
+    assert lenient.ok
+    assert "runbook.service_health" in strict.missing_sets
+    assert not strict.ok
+
+
+def test_the_gate_is_configurable_by_precision_and_recall_floor(
+    catalog_copy: Path,
+    repo_root: Path,
+    write_skill: Callable[..., Path],
+    runbook_frontmatter: Callable[..., dict],
+) -> None:
+    write_skill(
+        runbook_frontmatter(
+            id="runbook.service_reboot",
+            description="Reboots the host a service runs on, which is not a restart of it.",
+            triggers=[STOLEN, "restart the payments service", "restart payments"],
+            entities=["entity.service"],
+        ),
+        root=catalog_copy,
+    )
+    registry = SkillRegistry([catalog_copy])
+    discovery = _discovery(registry, repo_root)
+
+    assert not evaluate_catalog(registry, discovery).ok
+    assert evaluate_catalog(registry, discovery, min_recall=0.5).ok
+
+
+def test_the_command_fails_when_configuration_requires_every_procedure_to_carry_a_set(
+    skills_root: Path,
+    repo_root: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runtime = json.loads((repo_root / "configs" / "runtime.json").read_text(encoding="utf-8"))
+    runtime["evaluation"]["require_sets"] = True
+    runtime_path = tmp_path / "runtime.json"
+    runtime_path.write_text(json.dumps(runtime), encoding="utf-8")
+    monkeypatch.setenv("OSKA_RUNTIME_CONFIG", str(runtime_path))
+
+    result = runner.invoke(app, ["catalog", "--skills", str(skills_root)])
+
+    assert result.exit_code == 1
+    assert "no evaluation set: " in result.stdout
+    assert "runbook.service_health" in result.stdout
 
 
 def test_the_command_stops_with_a_non_zero_status_on_a_failing_case(

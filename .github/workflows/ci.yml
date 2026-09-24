@@ -1,0 +1,43 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install
+        run: pip install -e '.[dev,api]'
+
+      - name: Lint
+        run: ruff check src tests
+
+      - name: Test
+        run: pytest -q
+
+      - name: Validate the catalog
+        run: oska validate
+
+      - name: Evaluate the operational catalog
+        run: oska evaluate catalog --skills examples/ops/skills
+
+      - name: Evaluate the access catalog
+        run: oska evaluate catalog --skills examples/access/skills
+
+      - name: Conform the operational catalog
+        run: oska conform
+
+      - name: Conform the access catalog
+        run: >-
+          oska conform
+          --skills examples/access/skills
+          --scenarios examples/access/scenarios
+          --connectors examples/access/configs/connectors.json

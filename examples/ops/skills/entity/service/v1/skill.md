@@ -42,6 +42,10 @@ relations:
     target: entity.alert
     cardinality: many
     description: Alerts whose rule watches this service.
+noun: service
+plural: services
+display_fields: [name, environment, status, version]
+comparable_fields: [environment, status]
 ---
 
 ## Purpose

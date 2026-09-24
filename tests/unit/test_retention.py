@@ -20,12 +20,21 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
+import yaml
+from typer.testing import CliRunner
 
 from oska.audit.events import new_event
 from oska.audit.sink import JsonlSink, rewrite_jsonl
 from oska.audit.trace import JsonlTraceSink
+from oska.cli.commands_forget import app as forget_app
 from oska.config import Settings, load_runtime_config, state_path
 from oska.contracts.events import AuditEvent
+from oska.contracts.proposal import (
+    ProposalState,
+    ProposalTransition,
+    QualityReport,
+    SkillProposal,
+)
 from oska.engine.factory import build_engine
 from oska.engine.session_store import SessionStore
 from oska.engine.state import SessionState
@@ -39,6 +48,16 @@ from oska.improvement.preferences import (
     preferences_root,
     write_preferences,
 )
+from oska.learning.changes import (
+    ChangeRequestState,
+    ChangeRequestStore,
+    new_request,
+)
+from oska.learning.forgetting import FORGOTTEN, ChangeRequestRecords, ProposalRecords
+from oska.learning.proposals import ProposalStore
+from oska.platform import Platform
+from oska.services import PROPOSALS_DIRNAME
+from oska.storage import open_sessions
 
 GONE = "session-to-forget"
 KEPT = "session-to-keep"
@@ -160,6 +179,8 @@ def test_forget_leaves_no_trace_of_what_was_said(
         "feedback": 0,
         "preferences": 0,
         "trace_spans": 0,
+        "proposals": 0,
+        "change_requests": 0,
     }
 
 
@@ -299,6 +320,8 @@ def test_the_event_names_the_counts_of_every_store_and_no_content(
         "feedback": 2,
         "preferences": 1,
         "trace_spans": 2,
+        "proposals": 0,
+        "change_requests": 0,
     }
     assert "keep it shorter" not in audit_path.read_text(encoding="utf-8")
     assert "Keep it short." not in audit_path.read_text(encoding="utf-8")
@@ -410,10 +433,376 @@ def test_what_a_turn_must_not_keep_is_never_written_to_the_record(
 
 def _backdate(store: SessionStore, session_id: str, moment: datetime) -> None:
     """Move when a session was last written, the way the passage of time would."""
-    connection = sqlite3.connect(store.path)
+    _backdate_path(store.path, session_id, moment)
+
+
+def _backdate_path(store_path: Path, session_id: str, moment: datetime) -> None:
+    """The same move, by the path of the sessions file rather than a store object."""
+    connection = sqlite3.connect(store_path)
     with connection:
         connection.execute(
             "UPDATE sessions SET updated_at = ? WHERE session_id = ?",
             (moment.isoformat(), session_id),
         )
     connection.close()
+
+
+# --- forget and expire from the terminal, reaching a platform -----------------
+#
+# `oska forget session` and `oska forget expired` open one deployment's stores
+# by default. Given `--platform` and no `--domain` or `--tenant`, they reach
+# every (tenant, domain) the platform serves, because a request to be
+# forgotten is about a person, not about one domain: these tests hold a
+# platform of two domains and two tenants and check that a removal touches the
+# (tenant, domain) pairs it should and none of the others.
+
+runner = CliRunner()
+
+
+def _platform_manifest(examples: Path, tenants: list[str]) -> dict:
+    """A platform of two domains, each serving the given tenants."""
+    return {
+        "name": "trial",
+        "packs": {
+            "ops": {"path": str(examples / "ops")},
+            "access": {"path": str(examples / "access")},
+        },
+        "domains": [
+            {
+                "name": "operations",
+                "packs": ["ops"],
+                "host": {"name": "the operations desk"},
+                "tenants": tenants,
+            },
+            {
+                "name": "access",
+                "packs": ["access"],
+                "host": {"name": "the access desk"},
+                "tenants": tenants,
+            },
+        ],
+    }
+
+
+def _write_platform(directory: Path, document: dict) -> Path:
+    path = directory / "platform.yaml"
+    path.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+    return path
+
+
+@pytest.fixture
+def platform_env(monkeypatch: pytest.MonkeyPatch, repo_root: Path, tmp_path: Path) -> Settings:
+    """Settings of a platform process, with state under `tmp_path` for the CLI too.
+
+    `oska forget` reads its settings from the environment through
+    `load_settings`, so the state directory it opens has to be the one these
+    tests open directly, or a test could not tell whether the command reached
+    the right files.
+    """
+    state = tmp_path / "state"
+    for name, value in (
+        ("RUNTIME_CONFIG", repo_root / "configs" / "runtime.json"),
+        ("MODEL_CONFIG", repo_root / "configs" / "model.json"),
+        ("SCHEMAS_DIR", repo_root / "schemas"),
+        ("STATE_DIR", state),
+    ):
+        monkeypatch.setenv(f"OSKA_{name}", str(value))
+    monkeypatch.setenv("OSKA_PROVIDER", "none")
+    return Settings(
+        runtime_config=repo_root / "configs" / "runtime.json",
+        model_config_path=repo_root / "configs" / "model.json",
+        schemas_dir=repo_root / "schemas",
+        state_dir=state,
+        provider="none",
+    )
+
+
+@pytest.fixture
+def two_domains_two_tenants(
+    examples: Path, tmp_path: Path, platform_env: Settings
+) -> tuple[Path, Platform]:
+    """A platform of two domains (`operations`, `access`) and two tenants (`default`, `acme`)."""
+    path = _write_platform(tmp_path, _platform_manifest(examples, ["default", "acme"]))
+    return path, Platform.from_file(path, platform_env)
+
+
+def _sessions_path(held: Platform, tenant: str, domain: str) -> Path:
+    runtime = held.runtime_for(tenant)
+    settings = held.settings_for(domain, tenant)
+    return state_path(settings.state_dir, runtime.sessions.path)
+
+
+def _exists(held: Platform, tenant: str, domain: str, session_id: str) -> bool:
+    """Whether one (tenant, domain)'s own session store still holds this session."""
+    store = open_sessions(held.runtime_for(tenant), held.settings_for(domain, tenant))
+    return store.exists(session_id)
+
+
+def _seed(held: Platform, domain: str, tenant: str, session_id: str) -> None:
+    """One turn of this session in one (tenant, domain), through that pair's own engine.
+
+    A platform binds a session to the tenant of its first turn, so the same id
+    under two tenants cannot arrive through `Platform.turn`. Each pair's store
+    can still hold it independently, and that is what a forget request across a
+    platform has to reach.
+    """
+    held.engine(domain, tenant).turn(session_id, "hello")
+
+
+def test_forget_session_on_a_platform_with_no_domain_reaches_every_pair(
+    two_domains_two_tenants: tuple[Path, Platform],
+) -> None:
+    path, held = two_domains_two_tenants
+    _seed(held, "operations", "acme", "s1")
+    _seed(held, "access", "default", "s1")
+
+    result = runner.invoke(forget_app, ["session", "s1", "--platform", str(path), "--json"])
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["session_states"] == 2
+    assert payload["reached"] == ["acme/operations", "default/access"]
+    assert _exists(held, "acme", "operations", "s1") is False
+    assert _exists(held, "default", "access", "s1") is False
+
+
+def test_forget_session_with_a_named_domain_and_tenant_reaches_only_that_pair(
+    two_domains_two_tenants: tuple[Path, Platform],
+) -> None:
+    path, held = two_domains_two_tenants
+    _seed(held, "operations", "acme", "s1")
+    _seed(held, "operations", "default", "s1")
+
+    result = runner.invoke(
+        forget_app,
+        [
+            "session",
+            "s1",
+            "--platform",
+            str(path),
+            "--domain",
+            "operations",
+            "--tenant",
+            "acme",
+            "--json",
+        ],
+    )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["session_states"] == 1
+    assert payload["reached"] == ["acme/operations"]
+    assert _exists(held, "acme", "operations", "s1") is False
+    assert _exists(held, "default", "operations", "s1") is True
+
+
+def test_forget_session_with_a_named_domain_reaches_both_its_tenants(
+    two_domains_two_tenants: tuple[Path, Platform],
+) -> None:
+    path, held = two_domains_two_tenants
+    _seed(held, "operations", "acme", "s1")
+    _seed(held, "operations", "default", "s1")
+    _seed(held, "access", "default", "unrelated")
+
+    result = runner.invoke(
+        forget_app,
+        ["session", "s1", "--platform", str(path), "--domain", "operations", "--json"],
+    )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["session_states"] == 2
+    assert payload["reached"] == ["acme/operations", "default/operations"]
+    assert _exists(held, "default", "access", "unrelated") is True
+
+
+def test_forget_expired_on_a_platform_reaches_every_pair(
+    two_domains_two_tenants: tuple[Path, Platform],
+) -> None:
+    path, held = two_domains_two_tenants
+    _seed(held, "operations", "acme", "old-in-ops")
+    _seed(held, "access", "default", "old-in-access")
+    long_ago = datetime.now(UTC) - timedelta(days=400)
+    _backdate_path(_sessions_path(held, "acme", "operations"), "old-in-ops", long_ago)
+    _backdate_path(_sessions_path(held, "default", "access"), "old-in-access", long_ago)
+
+    result = runner.invoke(
+        forget_app, ["expired", "--days", "30", "--platform", str(path), "--json"]
+    )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert sorted(payload["sessions"]) == ["old-in-access", "old-in-ops"]
+    assert payload["reached"] == ["acme/operations", "default/access"]
+    assert _exists(held, "acme", "operations", "old-in-ops") is False
+    assert _exists(held, "default", "access", "old-in-access") is False
+
+
+# --- what the evolution layer drafted from a session -------------------------
+
+DRAFTED = f"## Purpose\n\nRepeats what was asked: {SECRET}.\n"
+
+
+def _proposal(proposal_id: str, session_id: str) -> SkillProposal:
+    return SkillProposal(
+        proposal_id=proposal_id,
+        state=ProposalState.published,
+        source_session_id=session_id,
+        skill_markdown=f"---\nid: runbook.{proposal_id}\n---\n{DRAFTED}",
+        quality=QualityReport(issues=[f"triggers: {SECRET!r} already belongs to x"], score=0.9),
+        history=[
+            ProposalTransition(
+                state=ProposalState.draft,
+                at=datetime.now(UTC),
+                by=session_id,
+                note="drafted from the session",
+            ),
+            ProposalTransition(
+                state=ProposalState.approved, at=datetime.now(UTC), by="reviewer"
+            ),
+        ],
+    )
+
+
+def _request(changes: ChangeRequestStore, proposal_id: str) -> str:
+    request = new_request(proposal_id, f"runbook.{proposal_id}", 1, "operator", QualityReport())
+    changes.save(request, skill_markdown=DRAFTED, policy={"note": SECRET})
+    return request.request_id
+
+
+def _drafted(state_dir: Path, changes_root: Path, catalog: Path) -> dict[str, str]:
+    """Proposals and change requests drafted from two sessions, one change applied.
+
+    For the session to forget: a draft with no request, one with an open
+    request, one with a rejected request and one whose request was applied.
+    For the session to keep: one with an open request.
+    """
+    proposals = ProposalStore(state_dir / PROPOSALS_DIRNAME)
+    changes = ChangeRequestStore(changes_root)
+    for proposal_id, session_id in (
+        ("drafted", GONE),
+        ("opened", GONE),
+        ("refused", GONE),
+        ("applied", GONE),
+        ("other", KEPT),
+    ):
+        proposals.save(_proposal(proposal_id, session_id))
+    ids = {name: _request(changes, name) for name in ("opened", "refused", "applied", "other")}
+    changes.reject(ids["refused"], by="reviewer", note="not now")
+    changes.apply(ids["applied"], catalog, by="reviewer")
+    return ids
+
+
+def test_forget_removes_what_was_drafted_and_keeps_an_applied_decision(
+    ledger: WriteLedger, sessions: SessionStore, audit_path: Path, tmp_path: Path
+) -> None:
+    state_dir, changes_root = tmp_path / "state", tmp_path / "changes"
+    ids = _drafted(state_dir, changes_root, tmp_path / "catalog")
+    proposals = ProposalStore(state_dir / PROPOSALS_DIRNAME)
+    changes = ChangeRequestStore(changes_root)
+
+    report = forget(
+        GONE,
+        ledger=ledger,
+        audit_path=audit_path,
+        sessions=sessions,
+        proposals=ProposalRecords(proposals, changes),
+        change_requests=ChangeRequestRecords(proposals, changes),
+    )
+
+    assert (report.proposals, report.change_requests) == (4, 3)
+    assert [proposal.proposal_id for proposal in proposals.list()] == ["applied", "other"]
+    kept = proposals.get("applied")
+    assert kept.source_session_id == FORGOTTEN
+    assert kept.skill_markdown == ""
+    assert kept.quality.issues == []
+    assert [entry.by for entry in kept.history] == [FORGOTTEN, "reviewer"]
+    assert proposals.get("other").source_session_id == KEPT
+
+    held = {request.request_id: request for request in changes.list()}
+    assert set(held) == {ids["applied"], ids["other"]}
+    applied = held[ids["applied"]]
+    assert applied.state is ChangeRequestState.applied
+    assert (applied.decided_by, applied.applied_to) == ("reviewer", str(tmp_path / "catalog"))
+    assert not (changes.directory(ids["applied"]) / applied.package).exists()
+    assert (changes.directory(ids["other"]) / held[ids["other"]].package).is_dir()
+    for path in [*(state_dir / PROPOSALS_DIRNAME).rglob("*"), *changes_root.rglob("*")]:
+        if path.is_file() and ids["other"] not in str(path) and path.name != "other.json":
+            assert SECRET not in path.read_text(encoding="utf-8"), path
+
+    recorded = [event for event in _events(audit_path) if event.kind == "retention"]
+    assert (recorded[0].data["proposals"], recorded[0].data["change_requests"]) == (4, 3)
+    again = forget(
+        GONE,
+        ledger=ledger,
+        audit_path=audit_path,
+        sessions=sessions,
+        proposals=ProposalRecords(proposals, changes),
+        change_requests=ChangeRequestRecords(proposals, changes),
+    )
+    assert (again.proposals, again.change_requests) == (0, 0)
+
+
+def test_forget_on_a_platform_reaches_what_each_pair_drafted(
+    two_domains_two_tenants: tuple[Path, Platform], tmp_path: Path
+) -> None:
+    path, held = two_domains_two_tenants
+    settings = held.settings_for("access", "acme")
+    runtime = held.runtime_for("acme")
+    _drafted(
+        Path(settings.state_dir),
+        state_path(settings.state_dir, runtime.changes.root),
+        tmp_path / "catalog",
+    )
+
+    result = runner.invoke(forget_app, ["session", GONE, "--platform", str(path), "--json"])
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert (payload["proposals"], payload["change_requests"]) == (4, 3)
+    assert payload["reached"] == ["acme/access"]
+    left = ProposalStore(Path(settings.state_dir) / PROPOSALS_DIRNAME).list()
+    assert [proposal.proposal_id for proposal in left] == ["applied", "other"]
+
+
+def test_expire_removes_what_was_drafted_and_keeps_an_applied_decision(
+    ledger: WriteLedger, sessions: SessionStore, audit_path: Path, tmp_path: Path
+) -> None:
+    """The window reaches what was drafted from an expired session, as a request does."""
+    state_dir, changes_root = tmp_path / "state", tmp_path / "changes"
+    ids = _drafted(state_dir, changes_root, tmp_path / "catalog")
+    proposals = ProposalStore(state_dir / PROPOSALS_DIRNAME)
+    changes = ChangeRequestStore(changes_root)
+    _backdate(sessions, GONE, datetime.now(UTC) - timedelta(days=40))
+
+    report = expire(
+        30,
+        ledger=ledger,
+        audit_path=audit_path,
+        sessions=sessions,
+        proposals=ProposalRecords(proposals, changes),
+        change_requests=ChangeRequestRecords(proposals, changes),
+    )
+
+    assert report.sessions == [GONE]
+    assert (report.proposals, report.change_requests) == (4, 3)
+    assert [proposal.proposal_id for proposal in proposals.list()] == ["applied", "other"]
+    kept = proposals.get("applied")
+    assert (kept.source_session_id, kept.skill_markdown) == (FORGOTTEN, "")
+    assert [entry.by for entry in kept.history] == [FORGOTTEN, "reviewer"]
+    assert proposals.get("other").source_session_id == KEPT
+
+    held = {request.request_id: request for request in changes.list()}
+    assert set(held) == {ids["applied"], ids["other"]}
+    applied = held[ids["applied"]]
+    assert applied.state is ChangeRequestState.applied
+    assert (applied.decided_by, applied.applied_to) == ("reviewer", str(tmp_path / "catalog"))
+    assert not (changes.directory(ids["applied"]) / applied.package).exists()
+    assert (changes.directory(ids["other"]) / held[ids["other"]].package).is_dir()
+    for path in [*(state_dir / PROPOSALS_DIRNAME).rglob("*"), *changes_root.rglob("*")]:
+        if path.is_file() and ids["other"] not in str(path) and path.name != "other.json":
+            assert SECRET not in path.read_text(encoding="utf-8"), path
+
+    recorded = [event for event in _events(audit_path) if event.kind == "retention"]
+    assert [event.data["operation"] for event in recorded] == ["expire"]
+    assert (recorded[0].data["proposals"], recorded[0].data["change_requests"]) == (4, 3)

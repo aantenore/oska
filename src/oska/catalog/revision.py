@@ -12,6 +12,12 @@ same catalog agree on what to call it.
 Nothing here serves a revision; the registry does that. Nothing here decides
 which revision is served either, beyond recording the choice a deployment made
 in a file the runtime reads back.
+
+A revision may be signed. The build signs the exact bytes of the manifest and
+writes the signature beside it; the manifest records the hash of every file the
+revision holds, so the signature vouches for the files through it. A store
+opened with a `RevisionTrust` checks both before a revision is served, and
+refuses one that does not hold up. `signing.py` says who may sign.
 """
 
 from __future__ import annotations
@@ -31,6 +37,13 @@ from oska.catalog.loader import (
     fill_composite_capabilities,
     load_skill,
 )
+from oska.catalog.signing import (
+    SIGNATURE_FILENAME,
+    RevisionSigner,
+    RevisionTrust,
+    RevisionTrustError,
+    signature_document,
+)
 from oska.catalog.validator import CatalogError, ValidationIssue, validate_all
 from oska.config import Settings
 from oska.contracts.skill import Skill
@@ -41,6 +54,8 @@ __all__ = [
     "Manifest",
     "RevisionStore",
     "build_revision",
+    "file_hashes",
+    "manifest_bytes",
     "revision_id",
 ]
 
@@ -57,8 +72,10 @@ class Manifest(BaseModel):
     two manifests can be compared without reading either catalog. `report` is
     the validation report that let the revision through, kept because a warning
     that was accepted at build time is part of the record of what was served.
-    `source_roots` and `created_at` describe the build, not the content, and so
-    take no part in the identifier.
+    `files` maps every file the revision holds to the hash of its bytes, which
+    is what a signature over the manifest vouches for. `source_roots`,
+    `created_at` and `files` describe the build, not the catalog, and so take no
+    part in the identifier.
     """
 
     revision: str
@@ -67,6 +84,26 @@ class Manifest(BaseModel):
     skills: dict[str, str] = Field(default_factory=dict)
     report: list[str] = Field(default_factory=list)
     source_roots: list[str] = Field(default_factory=list)
+    files: dict[str, str] = Field(default_factory=dict)
+
+
+def manifest_bytes(manifest: Manifest) -> bytes:
+    """The canonical bytes of a manifest: what is written, and what is signed."""
+    document = json.dumps(manifest.model_dump(mode="json"), indent=2, sort_keys=True)
+    return document.encode("utf-8")
+
+
+def file_hashes(directory: Path) -> dict[str, str]:
+    """The hash of every file a revision directory holds, beside its manifest and signature."""
+    held: dict[str, str] = {}
+    for path in sorted(directory.rglob("*")):
+        if not path.is_file():
+            continue
+        relative = path.relative_to(directory).as_posix()
+        if relative in (MANIFEST_FILENAME, SIGNATURE_FILENAME):
+            continue
+        held[relative] = hashlib.sha256(path.read_bytes()).hexdigest()
+    return held
 
 
 def revision_id(manifest: Manifest) -> str:
@@ -91,6 +128,7 @@ def build_revision(
     *,
     tenant: str,
     settings: Settings | None = None,
+    signer: RevisionSigner | None = None,
 ) -> Manifest:
     """Validate the skill roots and write what they hold as an immutable revision.
 
@@ -99,6 +137,11 @@ def build_revision(
     revision the store already holds is not written either; the manifest that is
     already there is returned, so building twice from the same files leaves one
     identifier and one directory.
+
+    With a signer, the manifest is signed and the signature written beside it.
+    A revision already held keeps its manifest and files; it gains a signature
+    when the one it carries does not verify under this signer, which is how a
+    released revision is signed after the fact or under a new key.
     """
     skills, issues = _read(roots, settings)
     blocking = [issue for issue in issues if issue.severity == "error"]
@@ -116,8 +159,10 @@ def build_revision(
     store = RevisionStore(store_root)
     held = store.get(tenant, manifest.revision)
     if held is not None:
+        if signer is not None:
+            _sign_held(store.path(tenant, held.revision), held, signer)
         return held
-    _write(store.path(tenant, manifest.revision), manifest, skills)
+    _write(store.path(tenant, manifest.revision), manifest, skills, signer)
     return manifest
 
 
@@ -129,13 +174,19 @@ class RevisionStore:
     revision and is ignored, so a build interrupted halfway is never served.
     """
 
-    def __init__(self, root: Path | str) -> None:
+    def __init__(self, root: Path | str, *, trust: RevisionTrust | None = None) -> None:
         self._root = Path(root)
+        self._trust = trust
 
     @property
     def root(self) -> Path:
         """Directory the revisions of every tenant are kept under."""
         return self._root
+
+    @property
+    def requires_signatures(self) -> bool:
+        """Whether this store refuses a revision nobody signed."""
+        return self._trust is not None and self._trust.required
 
     def list(self, tenant: str) -> list[str]:
         """Every revision this tenant holds, oldest build first."""
@@ -174,6 +225,26 @@ class RevisionStore:
         if held is None:
             raise KeyError(f"unknown revision: {tenant}/{revision}")
         return held
+
+    def verify(self, tenant: str, revision: str) -> bool:
+        """Raise unless this revision may be served; say whether it was signed.
+
+        A store opened without a trust checks nothing and says so by answering
+        false. With one, an unsigned revision is refused when signatures are
+        required, and a signed one is refused unless its signature holds and
+        every file it holds is the file its manifest names.
+        """
+        if self._trust is None:
+            return False
+        directory = self.path(tenant, revision)
+        try:
+            raw = (directory / MANIFEST_FILENAME).read_bytes()
+        except OSError as exc:
+            raise KeyError(f"unknown revision: {tenant}/{revision}") from exc
+        if not self._trust.check(directory, raw):
+            return False
+        _check_files(directory, Manifest.model_validate_json(raw).files)
+        return True
 
     def path(self, tenant: str, revision: str) -> Path:
         """Where a revision of a tenant lives, whether or not it has been built."""
@@ -231,7 +302,12 @@ def _read(
     return skills, issues
 
 
-def _write(target: Path, manifest: Manifest, skills: Sequence[Skill]) -> None:
+def _write(
+    target: Path,
+    manifest: Manifest,
+    skills: Sequence[Skill],
+    signer: RevisionSigner | None,
+) -> None:
     """Assemble the revision beside its place and move it there in one step.
 
     Nothing reads a half-written revision: the files are copied into a directory
@@ -249,10 +325,11 @@ def _write(target: Path, manifest: Manifest, skills: Sequence[Skill]) -> None:
                 pending / skill.type.value / source.parent.name / source.name,
                 dirs_exist_ok=True,
             )
-        (pending / MANIFEST_FILENAME).write_text(
-            json.dumps(manifest.model_dump(mode="json"), indent=2, sort_keys=True),
-            encoding="utf-8",
-        )
+        manifest.files = file_hashes(pending)
+        written = manifest_bytes(manifest)
+        (pending / MANIFEST_FILENAME).write_bytes(written)
+        if signer is not None:
+            (pending / SIGNATURE_FILENAME).write_bytes(signature_document(signer, written))
         _move(pending, target)
     except OSError:
         shutil.rmtree(pending, ignore_errors=True)
@@ -272,3 +349,47 @@ def _move(pending: Path, target: Path) -> None:
         if not (target / MANIFEST_FILENAME).is_file():
             raise
         shutil.rmtree(pending, ignore_errors=True)
+
+
+def _sign_held(directory: Path, manifest: Manifest, signer: RevisionSigner) -> None:
+    """Sign a revision already released, unless it already carries this signer's signature.
+
+    The manifest is signed as it lies on disk, byte for byte. A manifest from
+    before file hashes were recorded cannot vouch for its files and is refused.
+    """
+    raw = (directory / MANIFEST_FILENAME).read_bytes()
+    if not manifest.files:
+        raise RevisionTrustError(
+            f"revision {manifest.revision} records no file hashes and cannot be signed; "
+            "build it again from its sources under a new store"
+        )
+    try:
+        held = json.loads((directory / SIGNATURE_FILENAME).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        held = None
+    if (
+        isinstance(held, dict)
+        and held.get("signer") == signer.name
+        and isinstance(held.get("signature"), str)
+        and signer.verify(raw, held["signature"])
+    ):
+        return
+    pending = directory.parent / f"{_PENDING_PREFIX}{directory.name}.sig"
+    pending.write_bytes(signature_document(signer, raw))
+    pending.replace(directory / SIGNATURE_FILENAME)
+
+
+def _check_files(directory: Path, recorded: dict[str, str]) -> None:
+    """Refuse a revision whose files are not the files its signed manifest names."""
+    if not recorded:
+        raise RevisionTrustError(
+            f"the manifest of revision {directory.name} records no file hashes to vouch for"
+        )
+    found = file_hashes(directory)
+    changed = [name for name in sorted(recorded) if found.get(name) != recorded[name]]
+    added = [name for name in sorted(found) if name not in recorded]
+    if changed or added:
+        listed = ", ".join([*changed, *added][:5])
+        raise RevisionTrustError(
+            f"the files of revision {directory.name} differ from its signed manifest: {listed}"
+        )

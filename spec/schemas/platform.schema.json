@@ -18,7 +18,7 @@
       "type": "object"
     },
     "DomainSpec": {
-      "description": "One scope a platform answers in: its packs, its host and its tenants.\n\nA session belongs to one domain for its whole life. A skill of one domain is\nnever ranked, offered or executed in another.",
+      "description": "One scope a platform answers in: its packs, its host and its tenants.\n\nA session belongs to one domain for its whole life. A skill of one domain is\nnever ranked, offered or executed in another. `environment` is what the\nbindings of the domain's packs may read from the environment.",
       "properties": {
         "name": {
           "title": "Name",
@@ -45,6 +45,9 @@
           "default": false,
           "title": "Presentation",
           "type": "boolean"
+        },
+        "environment": {
+          "$ref": "#/$defs/EnvironmentSpec"
         }
       },
       "required": [
@@ -53,6 +56,25 @@
         "host"
       ],
       "title": "DomainSpec",
+      "type": "object"
+    },
+    "EnvironmentSpec": {
+      "description": "Which environment variables a set of bindings may read with `${NAME}`.\n\n`names` admits each variable it lists; `prefix`, when set, admits every\nvariable whose name starts with it. A platform binding that reads any other\nvariable is refused when the platform is assembled. Nothing declared means\nnothing may be read.",
+      "properties": {
+        "names": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Names",
+          "type": "array"
+        },
+        "prefix": {
+          "default": "",
+          "title": "Prefix",
+          "type": "string"
+        }
+      },
+      "title": "EnvironmentSpec",
       "type": "object"
     },
     "HostIdentity": {
@@ -121,9 +143,19 @@
       },
       "title": "StorageSpec",
       "type": "object"
+    },
+    "TenantSpec": {
+      "description": "What a platform manifest declares about one tenant.\n\n`environment` is what the tenant's own binding changes may read: the\n`base_url` and `headers` its overlay puts on a binding a pack declares.",
+      "properties": {
+        "environment": {
+          "$ref": "#/$defs/EnvironmentSpec"
+        }
+      },
+      "title": "TenantSpec",
+      "type": "object"
     }
   },
-  "description": "Contents of `platform.yaml`: what an organization deploys.",
+  "description": "Contents of `platform.yaml`: what an organization deploys.\n\n`tenants` declares, per tenant a domain serves, what that tenant may read\nfrom the environment; a tenant it does not name reads nothing.",
   "properties": {
     "name": {
       "title": "Name",
@@ -160,6 +192,13 @@
       "minimum": 1,
       "title": "Target Level",
       "type": "integer"
+    },
+    "tenants": {
+      "additionalProperties": {
+        "$ref": "#/$defs/TenantSpec"
+      },
+      "title": "Tenants",
+      "type": "object"
     }
   },
   "required": [

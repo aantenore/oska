@@ -5,12 +5,22 @@ layer and keeps only conversation state, receipts, audit and proposals. Putting
 it on top of something you already run is a matter of declaring what is
 there, not of moving anything.
 
+[docs/building-a-platform.md](building-a-platform.md) is the main path now:
+`oska new pack` generates the shape this document builds by hand, already
+passing `oska pack check`, and continues into a platform, signed revisions,
+token identity and PostgreSQL. Read this document instead when you want to
+understand each declaration from nothing, one at a time, or when you are
+adopting oska on top of a system without starting from the generated shape —
+the two arrive at the same catalog either way, and
+[docs/packs-and-platforms.md](packs-and-platforms.md) is the contract that
+governs what either of them produces once it is a pack.
+
 Work through seven steps, in order. Each is testable on its own and useful
-before the next is done. The fragments below are drawn from the reference
-domain under `examples/ops/`: services, deployments, incidents and alerts. The
-second domain under `examples/access/` is the smaller template to copy from —
-three entities, three integrations, four procedures and a composite, which is
-about the least that still exercises the whole write path.
+before the next is done. The fragments below are drawn from the reference pack
+under `examples/ops/`: services, deployments, incidents and alerts. The second
+pack under `examples/access/` is the smaller template to copy from — three
+entities, three integrations, four procedures and a composite, which is about
+the least that still exercises the whole write path.
 
 ## 1. Declare the ontology
 
@@ -272,7 +282,13 @@ decisions can put that service behind the interface the engine already
 calls: a decision on an operation and a payload, back as an effect and a
 reason.
 
-The HTTP application itself has no authentication; it assumes an
-authenticated proxy decides who may reach it, and the actor recorded on an
-approval or a proposal transition is exactly what the proxy said it was. See
-[governance.md](governance.md#identity).
+In `proxy` mode — the default — the HTTP application authenticates nobody
+itself; it assumes an authenticated proxy decides who may reach it, and the
+actor recorded on an approval or a proposal transition is exactly what the
+proxy said it was. In `token` mode the runtime verifies a signed session token
+itself instead of trusting a header. See
+[governance.md#who-may-do-what-over-http](governance.md#who-may-do-what-over-http).
+
+Running `oska new platform` generates a deployment from the packaged
+defaults, and those defaults start single-user: read "Who can talk to it" in
+the generated `README.md` before serving anyone but yourself from it.

@@ -27,7 +27,7 @@ Read in order on a first pass:
 | Document | What it covers |
 | --- | --- |
 | [00-overview.md](00-overview.md) | The problem, the thesis, scope and non-goals |
-| [01-principles.md](01-principles.md) | The eight principles the layers implement |
+| [01-principles.md](01-principles.md) | The ten principles the layers implement |
 | [02-layers.md](02-layers.md) | The layered model and the dependency rule |
 | [03-integration-layer.md](03-integration-layer.md) | L1: declared operations and connectors |
 | [04-ontology-layer.md](04-ontology-layer.md) | L2: entities, relations, bindings, vocabulary |
@@ -40,6 +40,7 @@ Read in order on a first pass:
 | [11-deployment-topologies.md](11-deployment-topologies.md) | Overlay, standalone, multi-agent, trust boundaries |
 | [12-conformance.md](12-conformance.md) | Levels, scenario format, requirement checklist |
 | [13-glossary.md](13-glossary.md) | Terms, with the one meaning each carries here |
+| [14-platform-blueprint.md](14-platform-blueprint.md) | Packs, manifests, domains and tenants: building a platform on OSKA |
 | [reference-implementation.md](reference-implementation.md) | Layer-to-package map |
 | [schemas/README.md](schemas/README.md) | The normative machine-readable schemas |
 
@@ -51,7 +52,8 @@ with the requirements nothing yet proves gathered under "Open items".
 Each layer document has the same shape: purpose, modules, invariants, a
 numbered requirement list, a rationale, and a pointer into the reference
 implementation. Requirement identifiers are `OSKA-<LAYER>-<n>`, where `<LAYER>`
-is `INT`, `ONT`, `SKL`, `GOV`, `COG`, `IXN`, `EVO` or `XC`.
+is `INT`, `ONT`, `SKL`, `GOV`, `COG`, `IXN`, `EVO` or `XC`, or `PLT` for the
+platform requirements of document 14.
 
 ## Conformance in one paragraph
 
@@ -60,7 +62,10 @@ capability copy is derived and it runs offline against a scripted model
 provider. At Level 2 (Governed) it also satisfies the whole write path and
 passes the governed scenario categories. At Level 3 (Adaptive) it also
 satisfies the evolution requirements. Conformance is demonstrated by running a
-scenario suite, not by inspection.
+scenario suite, not by inspection. Requirements about how a system is deployed
+— revisions, identity, storage, publication, the operations surface and
+platforms — are required of the deployment that has them rather than of a
+level, and are checked by the unit suite.
 
 ## Reference implementation
 
@@ -73,7 +78,11 @@ There are two reference suites, and a level is attained per suite. Run against
 `examples/ops/scenarios`, the operational suite attains Level 3 (Adaptive).
 Run against `examples/access/scenarios`, the access suite attains Level 2
 (Governed): it declares no scenario of level 3, so it claims none. Every
-scenario of both suites passes, as `oska conform` reports for each.
+scenario of both suites passes, as `oska conform` reports for each: 26 of 26
+in the operational suite, 8 of 8 in the access suite. Run together as the
+reference platform, `oska conform --platform examples/platform.yaml` reports
+the domain `operations` at Level 3 and the domain `access` at Level 2, so the
+platform attains its target of Level 2.
 
 ## How to cite
 

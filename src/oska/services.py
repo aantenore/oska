@@ -10,12 +10,19 @@ factory: a built revision of the configured tenant when the revision store holds
 one, and the configured skill roots otherwise. Whichever it is, it is the same
 catalog for every channel, and `Services.revision` names it so a channel can
 report what it is serving without reaching into the engine.
+
+A platform is the other assembly: several domains, each for several tenants,
+declared by a manifest. `build_platform` reads the manifest and returns a
+`Platform`, which hands out one `Services` per (tenant, domain), so a channel
+serving a platform works against the same service set as one serving a single
+catalog, chosen per request.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from oska.config import Settings, load_runtime_config, load_settings, state_path
 from oska.engine.engine import Engine
@@ -23,7 +30,10 @@ from oska.engine.factory import build_engine
 from oska.learning.proposals import ProposalStore
 from oska.planner.provider import ModelProvider
 
-__all__ = ["PROPOSALS_DIRNAME", "Services", "build_services"]
+if TYPE_CHECKING:
+    from oska.platform.runtime import Platform
+
+__all__ = ["PROPOSALS_DIRNAME", "Services", "build_platform", "build_services"]
 
 PROPOSALS_DIRNAME = "proposals"
 
@@ -60,3 +70,15 @@ def build_services(
         settings=resolved,
         publish_root=state_path(state_dir, runtime.learning.publish_root),
     )
+
+
+def build_platform(
+    manifest: Path | str,
+    settings: Settings | None = None,
+    *,
+    provider: ModelProvider | None = None,
+) -> Platform:
+    """Assemble a platform from its manifest. Each domain's runtime is built on first use."""
+    from oska.platform.runtime import Platform
+
+    return Platform.from_file(manifest, settings or load_settings(), provider=provider)

@@ -2,9 +2,17 @@
 
 Every reply has a deterministic form built from the catalog and the outcomes of
 the turn. A model, when one is configured, only rephrases the outcome summary;
-what the runtime says about itself (the scope, the question it asks, the exact
-payload it is asking approval for) is never handed to a model, because that
-text has to match the declarations word for word.
+what the runtime says about itself (the question it asks, the exact payload it
+is asking approval for) is never handed to a model, because that text has to
+match the declarations word for word.
+
+The answer to a request outside the catalog is the one exception, and a narrow
+one. It says two things: that the request cannot be done here, and what can.
+Both are derived from the catalog, and a person who wrote in another language
+should read them in that language. So when a model is configured, the scope is
+handed to the reply writer as a fact, in the one reply call the turn makes
+anyway, and the deterministic form is what the turn answers with whenever that
+call does not return text. No call is added for it.
 
 What the turn wrote is in the same category. Every reply carries the
 deterministic receipt line of every write the turn performed or replayed,
@@ -12,6 +20,13 @@ appended after its own text, so the rule that a reply states writes only from
 receipts holds by construction rather than by instruction. That includes a turn
 that wrote and then stopped for something else: the approval it asks for next
 does not excuse it from naming what it has already done.
+
+A written reply may not claim what the receipts do not. The reply writer is
+handed, per write of the turn, whether it landed; and when any write of the
+turn did not land — refused, never sent, not confirmed by its read-back, or
+unknown — the text it returns is not used and the deterministic form speaks
+instead. The call is still made, because it is also the call that puts the
+offered actions into the language of the turn; only its text is set aside.
 
 The guardrails the skills of the turn declare at the output point reach the
 model the same way, as a system message in the conversation handed to the reply
@@ -36,6 +51,12 @@ facts, and to nothing else. A preference may change how an answer reads. It may
 never change what the runtime does: it is not in the planning prompt, it is not
 in a policy, it is not in a payload, and there is no path from here to any of
 the three.
+
+Who the runtime answers as reaches the reply writer the same way. Where the
+serving domain declares a host, its name, its voice and the languages it is
+declared in go with every written reply as facts, in the call the turn makes
+anyway; nothing is added for them and nothing else reads them. Where no host is
+declared, the reply writer is told nothing about one.
 """
 
 from __future__ import annotations
@@ -47,7 +68,14 @@ from typing import Literal
 from oska.catalog.resolver import CapabilityResolver, SuggestedAction
 from oska.config import ReplyConfig
 from oska.contracts.common import Message, Outcome, PendingInfo
-from oska.engine.outcomes import outcome_summary, receipt_lines, unavailable_instruction
+from oska.contracts.platform import HostIdentity
+from oska.engine.outcomes import (
+    landing_facts,
+    outcome_summary,
+    receipt_lines,
+    unavailable_instruction,
+    writes_all_landed,
+)
 from oska.engine.state import SessionState
 from oska.governance.guardrails import instruction_block
 from oska.governance.ledger import canonical_json
@@ -55,7 +83,7 @@ from oska.improvement.preferences import read_preferences
 from oska.planner.planner import Planner
 from oska.planner.provider import ModelProviderError
 
-__all__ = ["ReplyBuilder", "ReplyKind", "guided", "offered_lines"]
+__all__ = ["ReplyBuilder", "ReplyKind", "guided", "host_facts", "offered_lines"]
 
 ReplyKind = Literal[
     "greeting",
@@ -68,6 +96,10 @@ ReplyKind = Literal[
 
 _GREETING = "Hello."
 _OFF_SCOPE = "That is not something I can do here."
+_UNSUPPORTED_INTENT = (
+    "The request is outside what this installation does. Say that it cannot be done here"
+    " and state what can be done, from the facts and nothing else."
+)
 _NOTHING_TO_REPORT = "Nothing happened in this turn."
 _NO_PLANNER = (
     "Planning a procedure needs a model provider, and none is configured. "
@@ -79,6 +111,9 @@ _STATES_ITS_OUTCOMES: tuple[str, ...] = ("outcomes",)
 
 _APPROVAL_HEAD = "This changes something, so it needs your approval first."
 _APPROVAL_TAIL = "Reply yes to approve it, or no to leave it alone."
+_HOST_NAME = "You answer as {name}."
+_HOST_VOICE = "Your voice is {voice}."
+_HOST_LANGUAGES = "You are declared to answer in: {languages}."
 _FIRST_OF_TWO = "Two approvals are required: this is approval 1 of 2."
 _SECOND_OF_TWO = (
     "1 of 2 approvals recorded. A second approval is required before anything runs."
@@ -94,11 +129,13 @@ class ReplyBuilder:
         resolver: CapabilityResolver,
         config: ReplyConfig,
         preferences_root: Path | None = None,
+        host: HostIdentity | None = None,
     ) -> None:
         self._planner = planner
         self._resolver = resolver
         self._config = config
         self._preferences_root = None if preferences_root is None else Path(preferences_root)
+        self._host_facts = host_facts(host)
 
     def build(
         self,
@@ -131,6 +168,19 @@ class ReplyBuilder:
         instructions: list[str] | None,
     ) -> list[str]:
         """What the turn says about itself, before anything it offers."""
+        trusted = writes_all_landed(outcomes)
+        if kind == "off_scope" and self._planner is not None:
+            written = self._write(
+                state,
+                [],
+                [],
+                _UNSUPPORTED_INTENT,
+                language,
+                list(instructions or []),
+                facts=[self._resolver.declared_scope()],
+            )
+            if written and trusted:
+                return [written, *receipt_lines(outcomes)]
         if kind == "outcomes" and self._planner is not None:
             written = self._write(
                 state,
@@ -139,8 +189,9 @@ class ReplyBuilder:
                 reply_intent,
                 language,
                 [*(instructions or []), *unavailable_instruction(outcomes)],
+                facts=landing_facts(outcomes),
             )
-            if written:
+            if written and trusted:
                 return [written, *receipt_lines(outcomes)]
         text = self.template(kind, outcomes, pending)
         if kind in _STATES_ITS_OUTCOMES:
@@ -175,6 +226,8 @@ class ReplyBuilder:
         reply_intent: str,
         language: str,
         instructions: list[str],
+        *,
+        facts: list[str] | None = None,
     ) -> str | None:
         """The written reply, with the offered actions relabeled by the same call."""
         planner = self._planner
@@ -188,6 +241,7 @@ class ReplyBuilder:
                 language or state.language or self._config.default_language,
                 guided(state.history[-self._config.conversation_window :], instructions),
                 self.preferences(state.session_id),
+                [*(facts or ()), *self._host_facts],
             )
         except ModelProviderError:
             return None
@@ -205,6 +259,18 @@ class ReplyBuilder:
             preference.text
             for preference in read_preferences(self._preferences_root, session_id)
         ]
+
+
+def host_facts(host: HostIdentity | None) -> list[str]:
+    """Who the reply is written as, stated as facts; nothing when no host is declared."""
+    if host is None:
+        return []
+    facts = [_HOST_NAME.format(name=host.name)]
+    if host.voice:
+        facts.append(_HOST_VOICE.format(voice=host.voice))
+    if host.languages:
+        facts.append(_HOST_LANGUAGES.format(languages=", ".join(host.languages)))
+    return facts
 
 
 def offered_lines(actions: Sequence[SuggestedAction]) -> list[str]:

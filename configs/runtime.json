@@ -179,7 +179,10 @@
       "exp"
     ],
     "tenant_claim": "tenant",
-    "leeway_seconds": 30
+    "tenant_header": "",
+    "leeway_seconds": 30,
+    "reviewer_role": "reviewer",
+    "single_user": true
   },
   "evaluation": {
     "min_precision": 1.0,
@@ -187,7 +190,9 @@
     "require_sets": false
   },
   "metrics": {
-    "enabled": true
+    "enabled": true,
+    "cache_seconds": 15.0,
+    "public": false
   },
   "platform": {
     "cache_size": 16

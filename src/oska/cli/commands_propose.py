@@ -1,7 +1,8 @@
 """The proposal lifecycle from a terminal: draft, list, show, move.
 
 Nothing here decides a state. `transition` is the only way a proposal moves,
-and it is called with the actor the caller named; a refused edge leaves the
+and it is called with the actor the caller named, recorded as the operator at
+this terminal rather than as an identity a channel verified; a refused edge leaves the
 message the lifecycle gave and a non-zero status, the same answer the HTTP
 application returns as a conflict.
 
@@ -20,7 +21,7 @@ import typer
 
 from oska.cli.options import SkillsOption, fail, services_for, settings_for
 from oska.config import RuntimeConfig, load_runtime_config
-from oska.contracts.proposal import SkillProposal
+from oska.contracts.proposal import ActorSource, SkillProposal
 from oska.learning import LifecycleError, draft_from_session, store_for, transition
 from oska.planner.provider import ModelProvider
 from oska.services import Services
@@ -115,6 +116,7 @@ def move(
             provider=_provider_of(services),
             enrichment=_runtime_of(services).enrichment,
             languages=_runtime_of(services).discovery.languages,
+            actor_source=ActorSource.operator,
         )
     except (KeyError, LifecycleError, ValueError) as exc:
         fail(str(exc))

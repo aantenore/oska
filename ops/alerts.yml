@@ -1,0 +1,93 @@
+# Prometheus alerting rules for the targets in ops/slo.md.
+#
+# One rule per target, against the same metric name the exposition renders
+# and the target is written against. tests/unit/test_metrics.py checks the
+# three files name the same set of metrics, so a name added here without a
+# matching target in slo.md, or a metric renamed in the exposition without
+# updating this file, fails the build instead of a paging gap.
+#
+# Load into Prometheus with `rule_files`, or into Alertmanager's evaluator of
+# choice; the group has no product- or vendor-specific fields.
+groups:
+  - name: oska.slo
+    rules:
+      - alert: OskaNoTurnsRecorded
+        expr: changes(oska_turns[30m]) == 0
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "No turn recorded in the last 30 minutes"
+          description: >-
+            oska_turns has not moved in 30m. Either nothing is using this
+            deployment or nothing is reaching it; see ops/slo.md#oska_turns.
+
+      - alert: OskaLatencyP95High
+        expr: oska_latency_p95_ms > 2000
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "95th percentile turn latency above target"
+          description: >-
+            oska_latency_p95_ms has been above 2000ms for 15m; see
+            ops/slo.md#oska_latency_p95_ms.
+
+      - alert: OskaLatencyP50High
+        expr: oska_latency_p50_ms > 800
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Median turn latency above target"
+          description: >-
+            oska_latency_p50_ms has been above 800ms for 15m, which usually
+            means a systemic slowdown rather than one slow call; see
+            ops/slo.md#oska_latency_p50_ms.
+
+      - alert: OskaFallbackRateHigh
+        expr: oska_fallback_rate > 0.05
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Fallback rate above target"
+          description: >-
+            oska_fallback_rate has been above 0.05 for 15m, which points at a
+            failing or timing-out model provider; see
+            ops/slo.md#oska_fallback_rate.
+
+      - alert: OskaVerificationFailureRateHigh
+        expr: oska_verification_failure_rate > 0.01
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Verification failure rate above target"
+          description: >-
+            oska_verification_failure_rate has been above 0.01 for 5m: a
+            write's read-back is not confirming it. See
+            ops/slo.md#oska_verification_failure_rate.
+
+      - alert: OskaGuardrailBlockRateHigh
+        expr: oska_guardrail_block_rate > 0.10
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Guardrail block rate above target"
+          description: >-
+            oska_guardrail_block_rate has been above 0.10 for 15m; see
+            ops/slo.md#oska_guardrail_block_rate.
+
+      - alert: OskaUnsupportedRateHigh
+        expr: oska_unsupported_rate > 0.15
+        for: 1h
+        labels:
+          severity: info
+        annotations:
+          summary: "Unsupported rate above target"
+          description: >-
+            oska_unsupported_rate has been above 0.15 for 1h. Not an error --
+            the product signal that the catalog is missing something; see
+            ops/slo.md#oska_unsupported_rate.

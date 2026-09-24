@@ -14,7 +14,7 @@ import hashlib
 import json
 from collections.abc import Iterator
 from contextlib import contextmanager
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -23,10 +23,13 @@ from typer.testing import CliRunner
 
 from oska.api.app import create_app
 from oska.audit.sink import MemorySink
+from oska.catalog.registry import SkillRegistry
 from oska.cli.commands_change import app as change_app
 from oska.config import Settings
 from oska.conformance import load_scenarios
-from oska.contracts.proposal import QualityReport
+from oska.contracts.common import Message
+from oska.contracts.proposal import ProposalState, QualityReport
+from oska.contracts.receipt import WriteReceipt
 from oska.engine.factory import build_engine
 from oska.improvement.job import run_job
 from oska.learning.changes import (
@@ -37,7 +40,8 @@ from oska.learning.changes import (
     package_of,
     store_for,
 )
-from oska.learning.proposals import ProposalStore
+from oska.learning.lifecycle import transition
+from oska.learning.proposals import ProposalStore, draft_from_session
 from oska.planner.scripted import ScriptedModelProvider
 
 SESSION = "changes-session"
@@ -377,3 +381,84 @@ def test_nothing_the_runtime_runs_writes_into_the_catalog_it_serves(
 
 def _request_text() -> str:
     return "the search service in staging needs a restart, it is wedged again"
+
+
+class _Recording:
+    """A publisher that records what it was handed, or refuses when told to."""
+
+    name = "recording"
+
+    def __init__(self, *, refuse: bool = False) -> None:
+        self.refuse = refuse
+        self.seen: list[str] = []
+
+    def publish(self, request, store):  # type: ignore[no-untyped-def]
+        self.seen.append(request.request_id)
+        if self.refuse:
+            raise ChangeRequestError("the repository is not there")
+        request.branch, request.commit = f"change/{request.request_id}", "abc123"
+        store.save(request)
+        return request
+
+
+def _publish(
+    tmp_path: Path, skills_root: Path, schemas_dir: Path, publisher: _Recording
+) -> tuple[str, ChangeRequestStore]:
+    """Draft one procedure and move it to `published` with the given publisher."""
+    registry = SkillRegistry([skills_root])
+    proposals = ProposalStore(tmp_path / "proposals")
+    changes = ChangeRequestStore(tmp_path / "changes")
+    receipt = WriteReceipt(
+        receipt_id="receipt-1",
+        session_id=SESSION,
+        ledger_key="key",
+        integration_id="integration.container_runtime",
+        operation="service.restart",
+        payload={"service": "checkout"},
+        status="executed",
+        created_at=datetime.now(UTC),
+    )
+    proposal = draft_from_session(
+        SESSION,
+        [Message(role="user", content="the checkout service is stuck")],
+        [receipt],
+        registry,
+        None,
+        runbook_id_hint="service_bounce",
+        schema_dir=schemas_dir,
+    )
+    proposals.save(proposal)
+    for state in (ProposalState.submitted, ProposalState.approved, ProposalState.published):
+        moved = transition(
+            proposals,
+            proposal.proposal_id,
+            state,
+            "a reviewer",
+            registry=registry,
+            changes=changes,
+            schema_dir=schemas_dir,
+            publisher=publisher,
+        )
+    assert moved.state is ProposalState.published
+    return moved.history[-1].note, changes
+
+
+def test_publication_hands_the_request_to_its_publisher(
+    tmp_path: Path, skills_root: Path, schemas_dir: Path
+) -> None:
+    publisher = _Recording()
+    note, changes = _publish(tmp_path, skills_root, schemas_dir, publisher)
+    (request,) = changes.list()
+    assert publisher.seen == [request.request_id]
+    assert request.branch == f"change/{request.request_id}"
+    assert f"branch change/{request.request_id} at abc123" in note
+
+
+def test_a_publisher_that_fails_leaves_the_request_open_and_says_so(
+    tmp_path: Path, skills_root: Path, schemas_dir: Path
+) -> None:
+    note, changes = _publish(tmp_path, skills_root, schemas_dir, _Recording(refuse=True))
+    (request,) = changes.list()
+    assert request.state is ChangeRequestState.open
+    assert request.branch == ""
+    assert "the recording publisher did not publish it" in note

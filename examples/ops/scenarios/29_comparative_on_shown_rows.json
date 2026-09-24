@@ -1,0 +1,191 @@
+{
+  "name": "29_comparative_on_shown_rows",
+  "description": "Four alerts are shown and they differ on their state, which the list read accepts as a filter, so the comparative that follows is handed exactly that refinement and the values the shown rows hold. The rule and the service differ too, but the read cannot filter on the one and takes any text for the other, so neither is offered. Once the list is narrowed, one alert is picked by what is shown about it and stops for approval.",
+  "level": 2,
+  "presentation": true,
+  "provider_script": [
+    {
+      "purpose": "router classification",
+      "expect_contains": "list every alert you can see, I may need to silence one",
+      "response": {
+        "kind": "new_task",
+        "runbook_id": "runbook.alert_silence",
+        "confidence": 0.9,
+        "language": "en"
+      }
+    },
+    {
+      "purpose": "plan",
+      "expect_contains": "list every alert",
+      "response": {
+        "runbook_id": "runbook.alert_silence",
+        "operations": [
+          {
+            "integration_id": "integration.alerting",
+            "operation": "alert.list",
+            "payload": {},
+            "write": false,
+            "purpose": "list the alerts to choose from"
+          }
+        ],
+        "missing": [],
+        "reply_intent": "list the alerts so one can be chosen"
+      }
+    },
+    {
+      "purpose": "reply writing",
+      "expect_contains": "alt-9003",
+      "response": {
+        "reply": "Four alerts: alt-9001 and alt-9002 on payments are firing, alt-9003 on notifications is silenced, alt-9004 on checkout is firing."
+      }
+    },
+    {
+      "purpose": "router classification",
+      "expect_contains": "which of those are still firing",
+      "response": {
+        "kind": "new_task",
+        "runbook_id": "runbook.alert_silence",
+        "confidence": 0.9,
+        "language": "en"
+      }
+    },
+    {
+      "purpose": "plan, handed the one refinement the shown rows allow",
+      "expect_contains": "Refinements the shown records allow: [{\"field\": \"state\", \"operation\": \"alert.list\", \"values\": [\"firing\", \"silenced\"]}]",
+      "response": {
+        "runbook_id": "runbook.alert_silence",
+        "operations": [
+          {
+            "integration_id": "integration.alerting",
+            "operation": "alert.list",
+            "payload": {
+              "state": "firing"
+            },
+            "write": false,
+            "purpose": "narrow the shown alerts to the firing ones"
+          }
+        ],
+        "missing": [],
+        "reply_intent": "say which of the shown alerts are still firing"
+      }
+    },
+    {
+      "purpose": "reply writing",
+      "expect_contains": "alt-9004",
+      "response": {
+        "reply": "Three are still firing: alt-9001 and alt-9002 on payments, and alt-9004 on checkout."
+      }
+    },
+    {
+      "purpose": "plan, with the alert picked by what is shown about it",
+      "expect_contains": "silence the checkout one",
+      "response": {
+        "runbook_id": "runbook.alert_silence",
+        "operations": [
+          {
+            "integration_id": "integration.alerting",
+            "operation": "alert.list",
+            "payload": {
+              "alert_id": "alt-9004"
+            },
+            "write": false,
+            "purpose": "read the alert picked from the list"
+          },
+          {
+            "integration_id": "integration.alerting",
+            "operation": "alert.silence",
+            "payload": {
+              "alert_id": "alt-9004",
+              "minutes": 30
+            },
+            "write": true,
+            "purpose": "silence it for thirty minutes"
+          }
+        ],
+        "missing": [],
+        "reply_intent": "silence the checkout alert for thirty minutes"
+      }
+    }
+  ],
+  "turns": [
+    {
+      "user": "list every alert you can see, I may need to silence one",
+      "expect": {
+        "kind": "new_task",
+        "contains": [
+          "Four alerts"
+        ],
+        "outcomes": [
+          "read"
+        ],
+        "pending": null,
+        "receipts": 0,
+        "verification": null,
+        "directives": [
+          {
+            "procedure": "runbook.alert_silence",
+            "moment": "on_results",
+            "view": "alert_list",
+            "fields": {
+              "alerts": [
+                "alt-9001",
+                "alt-9002",
+                "alt-9003",
+                "alt-9004"
+              ],
+              "states": [
+                "firing",
+                "firing",
+                "silenced",
+                "firing"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "user": "which of those are still firing",
+      "expect": {
+        "kind": "new_task",
+        "contains": [
+          "Three are still firing"
+        ],
+        "outcomes": [
+          "read"
+        ],
+        "pending": null,
+        "receipts": 0,
+        "verification": null
+      }
+    },
+    {
+      "user": "silence the checkout one for 30 minutes",
+      "expect": {
+        "kind": "new_task",
+        "contains": [
+          "approval",
+          "alert.silence",
+          "{\"alert_id\":\"alt-9004\",\"minutes\":30}"
+        ],
+        "outcomes": [
+          "read",
+          "approval_pending"
+        ],
+        "pending": "approval",
+        "receipts": 0,
+        "verification": null,
+        "directives": [
+          {
+            "procedure": "runbook.alert_silence",
+            "moment": "on_selection",
+            "view": "alert_selected",
+            "fields": {
+              "alert": "alt-9004"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

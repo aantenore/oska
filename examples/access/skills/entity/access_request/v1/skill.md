@@ -41,6 +41,10 @@ lifecycle:
     to: revoked
     operation: request.close
     offered: false
+noun: access request
+plural: access requests
+display_fields: [id, user, group, state]
+comparable_fields: [state]
 ---
 
 ## Purpose

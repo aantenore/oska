@@ -162,8 +162,11 @@ transition(proposal, to_state, by, note) -> SkillProposal
 
 Allowed edges: `draft -> submitted`, `submitted -> approved`,
 `approved -> published`, and any state to `rejected`. Every transition carries
-an actor and is appended to the history. There is no transition that the system
-performs on its own, and none that skips a state.
+an actor and is appended to the history, with where that actor came from: the
+principal of the call, the operator at a terminal, or a name the call only
+stated, which is recorded as unverified (`OSKA-GOV-48` in
+[06-governance-layer.md](06-governance-layer.md)). There is no transition that
+the system performs on its own, and none that skips a state.
 
 ### Publication
 
@@ -207,6 +210,41 @@ the HTTP application or a scheduled job has one to pass.
 Applying is not serving. A catalog root that has gained a version is a source;
 what a runtime answers from is a revision built from that source. The command
 that applies says so, and names the build step, so the two are never confused.
+
+### Publication as a branch
+
+Responsibility: put a change request in front of its reviewer where the
+catalog's sources already live.
+
+A catalog kept in a version-controlled repository is reviewed there, not in a
+directory under the state root. A publisher takes a composed change request and
+puts it in front of a person; which publisher is used is a choice, and the
+change request root remains the record every decision is read from.
+
+```text
+ChangePublisher:
+  name: string
+  publish(request, store) -> request       # records how it was published
+
+PullRequestOpener:
+  open(branch, title, cwd) -> answer       # what the hosting provider said
+```
+
+`directory` is the default and writes nothing beyond the change request. `git`
+writes the package into a new branch of a repository the operator names, under
+the catalog path the operator names, as one commit authored by the actor who
+approved the publication. The branch is made in a worktree of its own, so the
+checkout a person works in is never touched. A version the base already holds
+is refused, as `apply` refuses it. The branch and the commit are recorded on the
+change request, which stays open: merging the branch is the review, and it is
+a person's act in the repository, not the runtime's.
+
+Nothing is pushed unless the caller asks for it, and nothing is ever forced. A
+pull request is a hosting provider's notion and stays outside the runtime: the
+operator configures a command, the branch and the title are substituted into
+its arguments, and it runs without a shell. A branch that cannot be made
+during a transition does not undo the transition; the note says so, and the
+request can be published again from a terminal.
 
 ### Signals
 
@@ -412,6 +450,8 @@ is a change that happens to be small.
 - A change request is decided once, never overwrites an existing version, and
   records who decided it.
 - No HTTP operation applies a change request. The surface reads them.
+- A change request published as a branch stays open. The runtime never pushes
+  unless asked, never forces, and never merges.
 - Publication re-validates against the live catalog and refuses on any issue.
 - A published proposal becomes an ordinary skill, governed like any other. It
   receives no privilege from having been learned.
@@ -556,6 +596,26 @@ is a change that happens to be small.
   under review where one exists and where a ranking is available, and MUST
   refuse a proposal whose own cases fail. A skill that carries no evaluation set
   MUST NOT be refused for that reason.
+- **OSKA-EVO-36** — Publishing a change request for review MUST go through a
+  publisher selected by name. The default publisher MUST leave the change
+  request under the change request root and write nothing else.
+- **OSKA-EVO-37** — A publisher that writes into a version-controlled
+  repository MUST write the package into a new branch of a repository its
+  caller names, in a working tree separate from any checkout a person uses, as
+  one commit whose author is the actor who approved the publication, and MUST
+  record the repository, the branch and the commit on the change request. It
+  MUST refuse a version the base of the branch already holds, and MUST NOT move
+  the change request out of `open`.
+- **OSKA-EVO-38** — A publisher MUST NOT push a branch unless its caller asks
+  for the push explicitly, and MUST NOT force a push, a branch or a worktree in
+  any case. The serving process MUST NOT merge a branch it published.
+- **OSKA-EVO-39** — Opening a pull request MUST be done by a command the
+  operator configures, run with its arguments as a vector and never through a
+  shell, with the branch and the title substituted into those arguments. What
+  the command answers MUST be recorded on the change request.
+- **OSKA-EVO-40** — A publisher that fails during a transition MUST NOT undo
+  the transition or the composed change request. The failure MUST be recorded
+  in the transition note.
 
 ## Rationale
 
@@ -639,6 +699,20 @@ source only says what is written today; it runs a turn, a draft and a whole
 lifecycle with every write into the catalog raised as an error, and hashes
 the tree before and after.
 
+### Why a branch, and why never a push by default
+
+A change request in a directory is reviewed by whoever thinks to look there.
+The people who own a catalog kept in a repository already review changes as
+branches, with the history, the diff and the tools they trust. Publishing a
+request as a branch meets them there without giving the runtime any new power:
+a branch is a proposal, and merging it is still a person's act.
+
+The push is withheld by default because it is the step that leaves the
+machine. A branch in a local repository can be read, amended or deleted by the
+operator before anyone else sees it; a pushed branch is already in front of an
+audience. The operator decides when that happens, and the runtime never forces
+anything, so a branch a person has already touched is never overwritten.
+
 ### Why learned phrasings are files and not edits
 
 A learned phrasing could be appended to the triggers of the skill it belongs to.
@@ -678,9 +752,17 @@ catalog got worse or the labeled set got old.
   `changes.py` (the change request, its store, and the only function that
   writes into a catalog root).
 - `configs/runtime.json` — the change request root under `changes`.
+- `src/oska/learning/publishers.py` — `ChangePublisher` with the `directory`
+  and `git` publishers, and `PullRequestOpener` with `CommandOpener`, which
+  runs the operator's command as an argument vector.
 - `src/oska/cli/commands_change.py` — `change list`, `change show`,
-  `change apply --into ROOT --by NAME` and `change reject`; applying names the
-  root and then says that serving it means building a revision.
+  `change apply --into ROOT --by NAME`, `change reject`, and
+  `change publish ID --repo PATH [--path DIR] [--base REF] [--push]
+  [--open-pr COMMAND]`; applying names the root and then says that serving it
+  means building a revision.
+- `tests/unit/test_publishers.py` — a branch in a temporary repository with
+  the package and the actor as author, no push by default, a push to a bare
+  repository on disk when asked, and the command run without a shell.
 - `tests/unit/test_changes.py` — the store, and the invariant as an executable
   document: a turn, a draft and a full lifecycle to `published` run with every
   write into the example catalog raised as an error, and the tree hashed
@@ -691,9 +773,13 @@ catalog got worse or the labeled set got old.
 - `configs/runtime.json` — the publish root under `learning`.
 - `src/oska/cli/commands_propose.py` and the `/proposals` routes of
   `src/oska/api/routes.py` — the two surfaces that draft a candidate and
-  move it, both calling the same `transition` with the actor the caller named,
-  and both reporting the change request the move composed. `GET /changes` and
-  `GET /changes/{id}` read those requests; there is no route that applies one,
+  move it, both calling the same `transition`, the command line with the
+  operator at the terminal as its actor and the HTTP routes with the caller's
+  principal, or, with no identity where none is required, the name the call
+  stated; both report the change request the move composed. `GET /changes`
+  and `GET /changes/{id}` read those requests; reading proposals and change
+  requests and moving a proposal need the reviewer role
+  (`tests/unit/test_channel_identity.py`); there is no route that applies one,
   and `tests/unit/test_api.py` lists what the application declares to prove it.
 - `examples/ops/scenarios/15_learning_lifecycle.json` — the lifecycle as an
   executable document: a session, a drafted candidate, a move without an actor

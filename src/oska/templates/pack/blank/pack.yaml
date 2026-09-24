@@ -1,0 +1,15 @@
+name: ${pack}
+version: 0.1.0
+description: A starting pack for a new business area, one entity and one governed write deep.
+requires:
+  oska: ">=0.1"
+provides:
+  entities:
+    - entity.${entity}
+  procedures:
+    - runbook.${entity}_status
+    - runbook.${entity}_archive
+host:
+  name: ${host}
+  voice: plain and direct; names only what a read-back has confirmed
+level: 2

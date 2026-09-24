@@ -19,12 +19,23 @@ the reply text, and that is not audited today — the reply is written, the turn
 succeeds, and nothing records which of the two wrote it. The fallback rate
 therefore carries a note saying what it does not cover, and the way to close
 that gap is an audit event, not a trace.
+
+The turn count is a number like the others. A trail that exists and holds no
+turn says the window was quiet; a deployment with no trail at all says nothing,
+and its count is reported missing rather than zero.
+
+Reading the whole trail is not free, and a monitoring system asks every few
+seconds. `ReportCache` keeps the report it computed for a short interval,
+`DEFAULT_REPORT_INTERVAL_SECONDS` unless its caller says otherwise, and answers
+from it until the interval is over.
 """
 
 from __future__ import annotations
 
 import json
-from collections.abc import Iterable, Sequence
+import threading
+import time
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from math import ceil
@@ -37,12 +48,17 @@ from oska.contracts.receipt import VerificationStatus
 from oska.improvement.signals import read_events
 
 __all__ = [
+    "DEFAULT_REPORT_INTERVAL_SECONDS",
     "Measure",
+    "ReportCache",
     "ServiceReport",
     "Window",
     "read_spans",
     "service_report",
 ]
+
+DEFAULT_REPORT_INTERVAL_SECONDS = 15.0
+"""How long a computed report is served again before the trail is read anew."""
 
 TURN_SPAN = "turn"
 BLOCKED = "blocked"
@@ -50,6 +66,7 @@ NO_MODEL_REPLY = "unavailable"
 OFF_SCOPE_REPLY = "off_scope"
 
 _NO_TURNS = "no turn was recorded in this window"
+_NO_TRAIL = "this deployment has no audit trail, so no turn could be counted"
 _NO_WRITES = "no write was read back in this window"
 _TRACING_OFF = (
     "tracing is off in this deployment, so no turn duration was recorded; "
@@ -96,6 +113,7 @@ class ServiceReport(BaseModel):
     """What one deployment can say about itself over one window."""
 
     turns: int = 0
+    turns_missing: str = ""
     latency_p50: Measure = Field(default_factory=Measure)
     latency_p95: Measure = Field(default_factory=Measure)
     fallback_rate: Measure = Field(default_factory=Measure)
@@ -157,7 +175,8 @@ def service_report(
     records traces says in the audit event of every turn where they go.
     """
     moment = _aware(now)
-    events = read_events(Path(audit_path))
+    trail = Path(audit_path)
+    events = read_events(trail)
     since = moment - timedelta(days=since_days) if since_days is not None else None
     kept = [event for event in events if since is None or _aware(event.at) >= since]
     turns = _turns(kept)
@@ -173,6 +192,7 @@ def service_report(
     durations = _durations(trace_path or _traced_to(kept), window)
     return ServiceReport(
         turns=len(turns),
+        turns_missing="" if trail.is_file() else _NO_TRAIL,
         latency_p50=_percentile(durations, 0.50),
         latency_p95=_percentile(durations, 0.95),
         fallback_rate=_rate(
@@ -197,6 +217,45 @@ def service_report(
         ),
         window=window,
     )
+
+
+class ReportCache:
+    """The last report computed for a trail, served again for a short interval.
+
+    The interval is a parameter and not configuration here: the caller that
+    owns the configuration decides where it comes from. A report is kept per
+    trail and trace file, so two deployments read through one cache never
+    answer with each other's numbers.
+    """
+
+    def __init__(
+        self,
+        interval_seconds: float = DEFAULT_REPORT_INTERVAL_SECONDS,
+        *,
+        clock: Callable[[], float] = time.monotonic,
+    ) -> None:
+        self._interval = max(0.0, float(interval_seconds))
+        self._clock = clock
+        self._held: dict[tuple[str, str], tuple[float, ServiceReport]] = {}
+        self._lock = threading.Lock()
+
+    @property
+    def interval_seconds(self) -> float:
+        """How long a computed report is served again."""
+        return self._interval
+
+    def report(self, audit_path: Path, *, trace_path: Path | None = None) -> ServiceReport:
+        """The report of this trail, computed at most once per interval."""
+        key = (str(audit_path), "" if trace_path is None else str(trace_path))
+        now = self._clock()
+        with self._lock:
+            held = self._held.get(key)
+            if held is not None and now - held[0] < self._interval:
+                return held[1]
+        computed = service_report(audit_path, trace_path=trace_path)
+        with self._lock:
+            self._held[key] = (now, computed)
+        return computed
 
 
 def read_spans(trace_path: Path) -> list[dict]:

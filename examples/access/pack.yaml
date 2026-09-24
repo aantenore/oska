@@ -1,0 +1,24 @@
+name: access
+version: 0.1.0
+description: >-
+  Access management: what a person can reach, granting and revoking group
+  membership, and settling access requests over a directory, an access
+  control system and a request tracker.
+requires:
+  oska: ">=0.1.0,<1.0.0"
+provides:
+  entities:
+    - entity.access_request
+    - entity.group
+    - entity.user
+  procedures:
+    - composite.request_fulfillment
+    - runbook.access_check
+    - runbook.access_grant
+    - runbook.access_revoke
+    - runbook.request_close
+host:
+  name: the access desk
+  voice: careful and plain
+  languages: [en]
+level: 2

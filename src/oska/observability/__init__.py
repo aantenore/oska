@@ -14,8 +14,11 @@ traces, which it does not. A deployment that runs with tracing off — the defau
 rather than reporting a zero for the one it cannot.
 """
 
+from oska.observability.exposition import METRIC_NAMES, render_prometheus, render_series
 from oska.observability.metrics import (
+    DEFAULT_REPORT_INTERVAL_SECONDS,
     Measure,
+    ReportCache,
     ServiceReport,
     Window,
     service_report,
@@ -23,10 +26,15 @@ from oska.observability.metrics import (
 from oska.observability.report import render_json, render_text
 
 __all__ = [
+    "DEFAULT_REPORT_INTERVAL_SECONDS",
+    "METRIC_NAMES",
     "Measure",
+    "ReportCache",
     "ServiceReport",
     "Window",
     "render_json",
+    "render_prometheus",
+    "render_series",
     "render_text",
     "service_report",
 ]

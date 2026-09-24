@@ -11,6 +11,7 @@ from collections.abc import Sequence
 
 from oska.contracts.common import Hydrated
 from oska.contracts.skill import Skill
+from oska.ontology.naming import noun_of, plural_of
 
 PLANNER_RULES = (
     "Use only the operations listed above; nothing else exists.",
@@ -26,11 +27,20 @@ PLANNER_RULES = (
     "A field listed as coming from the signed-in identity is not yours to fill and not"
     " yours to ask for: leave it out of every payload and out of `missing`. The runtime"
     " fills it once you have planned, and a plan that supplies it is refused.",
+    "A comparative about records already shown refines only on a field listed under"
+    " `Refinements the shown records allow`, with a value listed there; it never refines"
+    " on another field or invents a value.",
     "`reply_intent` is one short line telling the reply writer what this turn is about.",
 )
 
+REFINEMENTS_HEADING = "Refinements the shown records allow"
+FOCUS_HEADING = (
+    "Inputs taken from the record the conversation is about; use them unless the request"
+    " names another record"
+)
+
 REPLY_RULES = (
-    "State only facts present in the outcome list.",
+    "State only facts present in the outcome list or in the facts list.",
     "Suggest only what the suggestion list holds, and only when it is not empty.",
     "Do not claim that anything was verified unless an outcome says so.",
     "Keep it to a few plain sentences.",
@@ -136,13 +146,22 @@ def _principal_inputs(runbook: Skill, members: Sequence[Skill]) -> str:
 def _entities(entities: Sequence[Skill]) -> str:
     lines = []
     for entity in entities:
-        fields = []
+        fields = [f"  {_naming(entity)}"]
         for field in entity.frontmatter.fields:
             mark = ", identifier" if field.identifier else ""
             head = f"  {field.name} ({field.type}{mark})"
             fields.append(f"{head}: {field.description}" if field.description else head)
         lines.append(f"{entity.id}\n" + "\n".join(fields))
     return "\n".join(lines)
+
+
+def _naming(entity: Skill) -> str:
+    """How one record and several records of the entity are named, and shown."""
+    frontmatter = entity.frontmatter
+    line = f"one is a {noun_of(frontmatter)}, several are {plural_of(frontmatter)}"
+    if frontmatter.display_fields:
+        line += f"; shown by {', '.join(frontmatter.display_fields)}"
+    return line
 
 
 def _ontology(entities: Sequence[Skill], ontology: dict) -> str:

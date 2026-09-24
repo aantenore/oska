@@ -37,6 +37,10 @@ relations:
     target: entity.service
     cardinality: one
     description: Service this incident was raised against.
+noun: incident
+plural: incidents
+display_fields: [id, service, severity, state]
+comparable_fields: [severity, state]
 ---
 
 ## Purpose

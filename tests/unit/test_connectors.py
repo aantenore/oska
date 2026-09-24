@@ -8,8 +8,9 @@ from pathlib import Path
 import httpx
 import pytest
 
+from oska.config import ResilienceConfig
 from oska.connectors.base import Connector, ConnectorError, timed
-from oska.connectors.http import HttpConnector
+from oska.connectors.http import IDEMPOTENCY_HEADER, HttpConnector
 from oska.connectors.mock import MockConnector
 from oska.connectors.registry import ConnectorRegistry
 from oska.connectors.shell import ShellConnector
@@ -341,6 +342,49 @@ def test_http_templates_the_path_and_sends_the_headers() -> None:
     connector.close()
 
 
+@pytest.mark.parametrize(
+    ("value", "segment"),
+    [
+        ("../admin", "..%2Fadmin"),
+        ("a/b", "a%2Fb"),
+        ("x?debug=1", "x%3Fdebug%3D1"),
+        ("x#fragment", "x%23fragment"),
+        ("100%", "100%25"),
+    ],
+)
+def test_http_puts_a_payload_value_into_the_path_as_one_encoded_segment(
+    value: str, segment: str
+) -> None:
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, json={"ok": True})
+
+    connector = http_connector(handler)
+    ok(connector.execute("service.status", {"service": value}))
+    assert seen[0].url.raw_path == f"/api/v1/services/{segment}".encode()
+    assert seen[0].url.query == b""
+    assert seen[0].url.fragment == ""
+    connector.close()
+
+
+@pytest.mark.parametrize("value", ["..", ".", ""])
+def test_http_refuses_a_value_that_is_no_path_segment_before_sending(value: str) -> None:
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, json={"ok": True})
+
+    connector = http_connector(handler)
+    result = connector.execute("service.status", {"service": value})
+    assert not result.ok
+    assert "not a path segment" in (result.error or "")
+    assert seen == []
+    connector.close()
+
+
 def test_http_sends_only_the_declared_query_fields() -> None:
     seen: list[httpx.Request] = []
 
@@ -422,6 +466,128 @@ def test_http_reports_a_transport_failure() -> None:
     result = connector.execute("service.status", {"service": "payments"})
     assert result.ok is False
     assert "refused" in (result.error or "")
+    connector.close()
+
+
+# What happened to the request, and what may be done about it.
+
+
+def raising(error: type[httpx.TransportError]):
+    """A handler that fails the way a transport fails."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise error("simulated", request=request)
+
+    return handler
+
+
+@pytest.mark.parametrize(
+    ("error", "classification"),
+    [
+        (httpx.ConnectError, "retryable"),
+        (httpx.ConnectTimeout, "retryable"),
+        (httpx.PoolTimeout, "retryable"),
+        (httpx.ReadTimeout, "ambiguous"),
+        (httpx.WriteTimeout, "ambiguous"),
+        (httpx.ReadError, "ambiguous"),
+        (httpx.RemoteProtocolError, "ambiguous"),
+    ],
+)
+def test_http_says_whether_the_request_left(
+    error: type[httpx.TransportError], classification: str
+) -> None:
+    connector = http_connector(raising(error))
+    result = connector.execute("service.scale", {"service": "search", "replicas": 2})
+    assert (result.failure, result.classification) == ("transport", classification)
+    connector.close()
+
+
+def test_http_calls_a_conflict_a_refusal() -> None:
+    connector = http_connector(lambda request: httpx.Response(409, json={"detail": "taken"}))
+    result = connector.execute("service.scale", {"service": "search", "replicas": 2})
+    assert (result.failure, result.classification, result.status_code) == (
+        "refused",
+        "terminal",
+        409,
+    )
+    connector.close()
+
+
+def test_http_refuses_an_answer_larger_than_the_budget() -> None:
+    connector = http_connector(
+        lambda request: httpx.Response(200, text="x" * 100),
+        resilience=ResilienceConfig(max_response_bytes=10),
+    )
+    result = connector.execute("service.status", {"service": "search"})
+    assert (result.ok, result.classification) == (False, "terminal")
+    assert "budget of 10 bytes" in (result.error or "")
+    connector.close()
+
+
+def test_http_refuses_a_streamed_answer_larger_than_the_budget() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=iter([b"x" * 8, b"x" * 8]))
+
+    connector = http_connector(handler, resilience=ResilienceConfig(max_response_bytes=10))
+    result = connector.execute("service.status", {"service": "search"})
+    assert (result.ok, result.classification) == (False, "terminal")
+    connector.close()
+
+
+def test_http_reads_an_answer_within_the_budget() -> None:
+    connector = http_connector(
+        lambda request: httpx.Response(200, json={"service": {}}),
+        resilience=ResilienceConfig(max_response_bytes=64),
+    )
+    assert ok(connector.execute("service.status", {"service": "search"})) == {"service": {}}
+    connector.close()
+
+
+def test_http_tries_a_read_again_for_a_listed_status() -> None:
+    codes = iter([503, 200])
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(next(codes), json={"service": {}})
+
+    connector = http_connector(
+        handler,
+        resilience=ResilienceConfig(retries=1, failures_before_open=10),
+        sleep=lambda seconds: None,
+    )
+    assert ok(connector.execute("service.status", {"service": "search"})) == {"service": {}}
+    assert len(seen) == 2
+    connector.close()
+
+
+def test_http_sends_the_idempotency_key_it_is_given_on_an_unsafe_call() -> None:
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, json={})
+
+    connector = http_connector(handler)
+    connector.execute("service.scale", {"service": "search", "replicas": 2}, idempotency_key="k1")
+    connector.execute("service.status", {"service": "search"})
+    assert seen[0].headers[IDEMPOTENCY_HEADER] == "k1"
+    assert IDEMPOTENCY_HEADER not in seen[1].headers
+    connector.close()
+
+
+def test_http_derives_a_stable_key_for_an_unsafe_call_given_none() -> None:
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, json={})
+
+    connector = http_connector(handler)
+    for replicas in (2, 2, 3):
+        connector.execute("service.scale", {"service": "search", "replicas": replicas})
+    keys = [request.headers[IDEMPOTENCY_HEADER] for request in seen]
+    assert keys[0] == keys[1] != keys[2]
     connector.close()
 
 

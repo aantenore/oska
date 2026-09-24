@@ -45,14 +45,26 @@ app = typer.Typer(
 
 @app.command("catalog")
 def catalog(skills: SkillsOption = None, as_json: JsonOption = False) -> None:
-    """Run every evaluation set in the catalog. A failing case stops with a non-zero status."""
+    """Run every evaluation set in the catalog.
+
+    Fails with a non-zero status when precision or recall falls below the
+    configured floor, or, where the configuration requires every procedure to
+    carry a set, when one does not.
+    """
     settings = settings_for(skills)
     registry = SkillRegistry(settings.skills_roots)
+    gate = load_runtime_config(settings=settings).evaluation
     try:
-        report = evaluate_catalog(registry, _discovery(settings, registry))
+        report = evaluate_catalog(
+            registry,
+            _discovery(settings, registry),
+            min_precision=gate.min_precision,
+            min_recall=gate.min_recall,
+            require_sets=gate.require_sets,
+        )
     except EvaluationSetError as exc:
         fail(str(exc))
-    typer.echo(report.model_dump_json(indent=2) if as_json else _text(report, registry))
+    typer.echo(report.model_dump_json(indent=2) if as_json else _text(report))
     if not report.ok:
         raise typer.Exit(code=1)
 
@@ -85,25 +97,21 @@ def _discovery(settings: Settings, registry: Catalog) -> Discovery:
     return Discovery(registry, KeywordIndex(), runtime.discovery, runtime.enrichment, learned)
 
 
-def _text(report: CatalogEvaluation, registry: Catalog) -> str:
-    covered = {entry.skill_id for entry in report.per_skill}
-    without = [
-        skill.id
-        for skill in registry.published()
-        if skill.id not in covered and skill.frontmatter.triggers
-    ]
+def _text(report: CatalogEvaluation) -> str:
     lines = [
         f"{report.cases} case(s) over {len(report.per_skill)} skill(s), "
-        f"precision {report.precision}"
+        f"precision {report.precision}, recall {report.recall}"
     ]
     lines.extend(
-        f"  {entry.skill_id}: {entry.passed}/{entry.cases}" for entry in report.per_skill
+        f"  {entry.skill_id}: {entry.passed}/{entry.cases}, "
+        f"precision {entry.precision}, recall {entry.recall}"
+        for entry in report.per_skill
     )
     lines.extend(
         f"  failed: {result.skill_id} expects {result.expects!r} of "
         f"{result.text!r} -- {result.reason}"
         for result in report.failures
     )
-    if without:
-        lines.append(f"no evaluation set: {', '.join(without)}")
+    if report.missing_sets:
+        lines.append(f"no evaluation set: {', '.join(report.missing_sets)}")
     return "\n".join(lines)

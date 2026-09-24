@@ -9,20 +9,37 @@ not right now" are different statements, and the connector is the only place
 that knows which one it is making. Every result therefore says what kind of
 failure it was:
 
-`transport`  the call did not reach the system, or the system did not complete
-             it: a timeout, a refused connection, a host that is not there, a
-             server reporting that it is broken, or a breaker that is open.
-             Retryable, and the only kind that counts towards the breaker.
+`transport`  the call did not reach the system, or it reached it and no usable
+             answer came back: a refused connection, a host that is not there,
+             a timeout, a connection lost after the request went out, a server
+             reporting that it is broken, or a breaker that is open. The only
+             kind that counts towards the breaker.
 `refused`    the system answered and the answer was no: a record that does not
-             exist, a value it would not take, a permission denied. Terminal,
-             and never an outage — a record that is missing is not a system
-             that is down.
+             exist, a value it would not take, a permission denied, a conflict.
+             Terminal, and never an outage — a record that is missing is not a
+             system that is down.
 `rejected`   the request was never sent, because it was not well formed: an
              operation the binding does not declare, a payload missing a field
              the call needs. Terminal, and it counts for nothing, because it
              says nothing about the system at all.
 
-The breaker follows from that distinction. After `failures_before_open`
+A transport failure is split once more by what may be done about it, and the
+split is about the request, not the system:
+
+`retryable`  the request provably never left: the connection was refused, the
+             name did not resolve, the pool had no connection to send it on, or
+             the breaker kept it in. Nothing can have happened over there.
+`ambiguous`  the request left and no usable answer came back: a read that timed
+             out, a connection reset after the request was sent, a server error.
+             The system may have applied it. A write in this state is settled
+             by reading it back, never by sending it again.
+
+A read may be tried again inside the same call, up to `retries` times with a
+growing pause, when its failure is `retryable` or its status is one the binding
+lists in `retry_statuses`. A write never is: a `retryable` write is left to the
+ledger, which keeps its key open, and an `ambiguous` one goes to the read-back.
+
+The breaker follows from the first distinction. After `failures_before_open`
 consecutive transport failures a connector stops being called: calls are
 refused here, without reaching the system, for `recovery_seconds`. One attempt
 is then let through, and it either closes the breaker or opens it again. A
@@ -33,9 +50,12 @@ nothing else in a conversation changes.
 from __future__ import annotations
 
 import functools
+import hashlib
+import json
 import math
 import time
 from collections.abc import Callable
+from dataclasses import dataclass
 from typing import Literal, ParamSpec, Protocol, runtime_checkable
 
 from pydantic import BaseModel
@@ -47,6 +67,7 @@ from oska.contracts.receipt import Classification
 __all__ = [
     "BaseConnector",
     "BreakerState",
+    "CallOptions",
     "CircuitBreaker",
     "Connector",
     "ConnectorError",
@@ -56,12 +77,16 @@ __all__ = [
     "as_outcome",
     "classification_of",
     "health_of",
+    "idempotency_key",
+    "invoke",
+    "is_ambiguous",
     "is_unavailable",
     "refused",
     "rejected",
     "succeeded",
     "timed",
     "transport_failure",
+    "unanswered",
 ]
 
 P = ParamSpec("P")
@@ -100,6 +125,21 @@ class ConnectorOutcome(ConnectorResult):
     failure: FailureKind | None = None
     classification: Classification | None = None
     health: ConnectorHealth | None = None
+    status_code: int | None = None
+
+
+@dataclass(frozen=True)
+class CallOptions:
+    """What the caller knows about one call that the connector cannot see for itself.
+
+    `write` says the catalog declares the operation a write, so the call is
+    never repeated inside `execute`. `idempotency_key` is the key a system that
+    collapses repeated requests may use to recognize this one; see
+    `idempotency_key` below for where it comes from.
+    """
+
+    write: bool = False
+    idempotency_key: str | None = None
 
 
 @runtime_checkable
@@ -118,19 +158,70 @@ class Connector(Protocol):
         ...
 
 
+def idempotency_key(session_id: str, ledger_key: str) -> str:
+    """The idempotency key a write carries, derived from its ledger key.
+
+    The key is derived here, locally, from the session and the ledger key of
+    the write, so every attempt at the same intent in the same session carries
+    the same key and no other intent ever does. Deriving it guarantees nothing
+    by itself: it is useful only where the system downstream honors the key
+    and collapses a request it has already seen.
+    """
+    material = json.dumps(["idempotency", session_id, ledger_key], separators=(",", ":"))
+    return hashlib.sha256(material.encode("utf-8")).hexdigest()
+
+
+def invoke(
+    connector: Connector,
+    operation: str,
+    payload: dict,
+    *,
+    write: bool = False,
+    idempotency_key: str | None = None,
+) -> ConnectorResult:
+    """Call a connector, telling it what it cannot know when it can be told.
+
+    A connector built on `BaseConnector` takes whether the operation is a write
+    and the key it may carry; any other object satisfying `Connector` is called
+    with the operation and the payload alone.
+    """
+    if isinstance(connector, BaseConnector):
+        return connector.execute(
+            operation, payload, write=write, idempotency_key=idempotency_key
+        )
+    return connector.execute(operation, payload)
+
+
 def succeeded(data: dict | None = None) -> ConnectorOutcome:
     """The system answered, and the answer is the data."""
     return ConnectorOutcome(ok=True, data=dict(data or {}))
 
 
 def transport_failure(error: str) -> ConnectorOutcome:
-    """The call did not reach the system, or the system did not complete it."""
+    """The request never left, so nothing can have happened over there."""
     return ConnectorOutcome(ok=False, error=error, failure="transport", classification="retryable")
 
 
-def refused(error: str) -> ConnectorOutcome:
+def unanswered(error: str, status_code: int | None = None) -> ConnectorOutcome:
+    """The request left and no usable answer came back: it may have been applied."""
+    return ConnectorOutcome(
+        ok=False,
+        error=error,
+        failure="transport",
+        classification="ambiguous",
+        status_code=status_code,
+    )
+
+
+def refused(error: str, status_code: int | None = None) -> ConnectorOutcome:
     """The system answered, and the answer was no."""
-    return ConnectorOutcome(ok=False, error=error, failure="refused", classification="terminal")
+    return ConnectorOutcome(
+        ok=False,
+        error=error,
+        failure="refused",
+        classification="terminal",
+        status_code=status_code,
+    )
 
 
 def rejected(error: str) -> ConnectorOutcome:
@@ -160,13 +251,23 @@ def as_outcome(result: ConnectorResult) -> ConnectorOutcome:
 
 def is_unavailable(result: ConnectorResult) -> bool:
     """Whether this result is a capability that is down rather than one that said no."""
-    return not result.ok and getattr(result, "classification", None) == "retryable"
+    return not result.ok and getattr(result, "classification", None) in (
+        "retryable",
+        "ambiguous",
+    )
+
+
+def is_ambiguous(result: ConnectorResult) -> bool:
+    """Whether the request left and no usable answer came back."""
+    return not result.ok and getattr(result, "classification", None) == "ambiguous"
 
 
 def classification_of(result: ConnectorResult) -> Classification | None:
     """How this result says its failure should be treated, when it says."""
     classification = getattr(result, "classification", None)
-    return classification if classification in ("retryable", "terminal") else None
+    return (
+        classification if classification in ("retryable", "ambiguous", "terminal") else None
+    )
 
 
 def health_of(result: ConnectorResult) -> ConnectorHealth:
@@ -242,11 +343,12 @@ class CircuitBreaker:
 
 
 class BaseConnector:
-    """What every connector shares: its identity, its timeout and its breaker.
+    """What every connector shares: its identity, its timeout, its breaker and its retries.
 
     The whole of the availability behavior is here, so an implementation only
     has to say what one call does, in `_perform`, and how it failed when it did.
-    A call the breaker refuses never reaches `_perform`.
+    A call the breaker refuses never reaches `_perform`. A read whose failure
+    allows it is tried again here, and a write never is.
     """
 
     def __init__(
@@ -255,12 +357,14 @@ class BaseConnector:
         resilience: ResilienceConfig | None = None,
         *,
         clock: Callable[[], float] = time.monotonic,
+        sleep: Callable[[float], None] = time.sleep,
     ) -> None:
         self.id = id
         self.resilience = resilience or ResilienceConfig()
         self._breaker = CircuitBreaker(
             self.resilience.failures_before_open, self.resilience.recovery_seconds, clock
         )
+        self._sleep = sleep
 
     @property
     def timeout(self) -> float:
@@ -272,17 +376,60 @@ class BaseConnector:
         """Whether this connector is being called at all, and when it may next be tried."""
         return self._breaker.health()
 
-    def execute(self, operation: str, payload: dict) -> ConnectorOutcome:
-        """Run one operation under the breaker and report what happened."""
+    def execute(
+        self,
+        operation: str,
+        payload: dict,
+        *,
+        write: bool = False,
+        idempotency_key: str | None = None,
+    ) -> ConnectorOutcome:
+        """Run one operation under the breaker and report what happened.
+
+        A read is tried again, after a pause that doubles each time, while its
+        failure allows it and the configured retries last. A write, by the
+        caller's word or by what the binding knows of the call, is tried once.
+        """
         if not self._breaker.allows():
             return self._refuse_without_calling()
+        options = CallOptions(write=write, idempotency_key=idempotency_key)
+        once = self._is_write(operation, options)
         started = time.perf_counter()
-        outcome = as_outcome(self._perform(operation, payload))
-        self._breaker.observe(outcome)
+        attempt = 0
+        while True:
+            outcome = as_outcome(self._perform_call(operation, payload, options))
+            self._breaker.observe(outcome)
+            if once or attempt >= self.resilience.retries or not self._may_retry(outcome):
+                break
+            self._sleep(self.resilience.backoff_seconds * (2**attempt))
+            attempt += 1
+            if not self._breaker.allows():
+                break
         elapsed = (time.perf_counter() - started) * 1000
         return outcome.model_copy(
             update={"latency_ms": int(round(elapsed)), "health": self._breaker.health()}
         )
+
+    def _is_write(self, operation: str, options: CallOptions) -> bool:
+        """Whether this call may change something, so it is never repeated here."""
+        return options.write
+
+    def _may_retry(self, outcome: ConnectorOutcome) -> bool:
+        """Whether a read that ended this way may be tried again inside the call."""
+        if outcome.ok:
+            return False
+        if outcome.classification == "retryable":
+            return True
+        return outcome.status_code in self.resilience.retry_statuses
+
+    def _perform_call(
+        self, operation: str, payload: dict, options: CallOptions
+    ) -> ConnectorResult:
+        """Run the call with what the caller said about it.
+
+        A binding that has no use for the options implements `_perform` alone.
+        """
+        return self._perform(operation, payload)
 
     def _perform(self, operation: str, payload: dict) -> ConnectorResult:
         """Run the call. Every binding implements it; the breaker decides whether it runs."""

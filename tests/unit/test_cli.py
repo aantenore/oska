@@ -323,3 +323,34 @@ def test_serve_listens_where_the_configuration_says(
 
     assert runner.invoke(app, ["serve", "--port", "8123"]).exit_code == 0
     assert served["port"] == 8123
+
+
+def test_run_takes_turns_in_the_named_domain_of_a_platform(
+    cli_env: Path, examples: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("OSKA_PLATFORM", raising=False)
+    manifest = str(examples / "platform.yaml")
+
+    session = ["--session", "c", "--text", "hi"]
+    platform = ["run", "--platform", manifest, "--domain"]
+    answered = runner.invoke(app, [*platform, "access", *session])
+    refused = runner.invoke(app, [*platform, "operations", *session])
+    alone = runner.invoke(app, ["run", "--domain", "access", "--text", "hi"])
+
+    assert answered.exit_code == 0, answered.output
+    assert "the access desk" in answered.stdout
+    assert (cli_env / "default" / "access" / "sessions.sqlite").is_file()
+    assert refused.exit_code == 1 and "belongs to domain access" in refused.stderr
+    assert alone.exit_code == 1 and "--platform" in alone.stderr
+
+
+def test_conform_reports_a_platform_domain_by_domain(cli_env: Path, examples: Path) -> None:
+    result = runner.invoke(
+        app, ["conform", "--platform", str(examples / "platform.yaml"), "--json"]
+    )
+
+    assert result.exit_code == 0, result.output
+    report = json.loads(result.stdout)
+    assert report["passed"] is True
+    assert report["domains"]["operations"]["level"] == 3
+    assert report["domains"]["access"]["level"] == 2

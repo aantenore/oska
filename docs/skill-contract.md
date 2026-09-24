@@ -40,6 +40,11 @@ version, or the highest version of all when none is published.
 | `principal_inputs` | runbook, composite | Payload fields taken from the authenticated identity, as field to attribute |
 | `guardrails` | all | Identifiers of the promises this skill keeps |
 | `runbooks` | composite | The member runbooks, in order |
+| `subject` | runbook, composite | The entity a follow-up in this procedure refers to, and whether it joins the conversation's focus |
+| `presentation` | runbook, composite | What to show at a named moment of the turn, bound to this turn's own evidence |
+| `noun`, `plural` | entity | How one record and several are named in a reply |
+| `display_fields` | entity | Which fields a person may refer to a record by, other than its identifier |
+| `comparable_fields` | entity | Which fields a comparative question may refine on |
 
 The body is split on H2 headings. `purpose`, `preconditions`, `steps`,
 `verification` and `rollback` are read into named sections; any other heading is
@@ -129,6 +134,27 @@ ever put the object there.
 
 What the runtime does with all this is in
 [governance.md](governance.md#the-lifecycle-of-an-object).
+
+### Naming and comparison
+
+```yaml
+noun: alert
+plural: alerts
+display_fields: [id, service, rule, state]
+comparable_fields: [state, service]
+```
+
+All four are legal only on an entity; a runbook or a composite declaring any
+of them is an error. `noun` defaults to the entity's short id segment
+(`entity.alert` → `alert`) and `plural` to `noun` with `s` appended when not
+given — there is no irregular-plural support, so an entity whose plural is not
+its noun plus `s` declares `plural` itself. `display_fields` are the fields a
+person may refer to a record by other than its identifier — "the one in
+finance" — and `comparable_fields` are the fields a comparative question may
+refine on, when the records on screen actually differ on them. Both are read
+by the subject engine rather than validated against anything beyond being
+fields the entity declares; the semantics are in
+[presentation.md](presentation.md#subject-what-the-conversation-is-about).
 
 ## Integration
 
@@ -344,6 +370,42 @@ input and a principal input: it is either asked of the person or taken from the
 identity. What the write path does with all this is in
 [governance.md](governance.md#identity).
 
+### Subject and presentation
+
+```yaml
+subject:
+  entity: entity.service
+  cardinality: one
+  joins: focus
+presentation:
+  on_selection:
+    view: service_selected
+    bind:
+      service: $selection
+  on_verified_write:
+    view: service_restarted
+    bind:
+      service: $receipt.service
+      receipt: $receipt.receipt_id
+      verification: $receipt.verification
+```
+
+Both are legal only on a runbook or a composite; an entity declaring either is
+an error. `subject.entity` names what a follow-up in this procedure refers to;
+`cardinality` is `one` or `many`; `joins: focus` means this procedure accepts
+the record the conversation's focus already resolved to as a collected input,
+rather than only what the person names this turn. `presentation` is one entry
+per named moment — `on_verified_write`, `on_selection`, `on_results`,
+`on_single_result`, `on_completion` — each a `view` name your own client
+switches on and a `bind` map of field to a binding expression resolved against
+this turn's evidence alone. Neither field is validated beyond its own shape by
+the schema; the deeper checks — a binding whose field does not exist, a
+`joins: focus` procedure whose entity has no `subject_field` an operation
+accepts — are the `presentation_*` and `subject_*` codes below, raised by
+`oska.ontology.naming` and run as part of `oska validate`. What either
+declaration does at runtime, the binding grammar, and the precedence between
+moments are in [presentation.md](presentation.md).
+
 ### The evaluation set beside it
 
 A ranking threshold that is a hand-set number is a guess, and a guess ages. What
@@ -504,6 +566,17 @@ command exits non-zero when there is at least one.
 | `ontology_conflicting_required_move` | entity | One state declares more than one required move |
 | `principal_input_not_declared` | runbook, composite | A field taken from the identity is not a field any operation of this procedure accepts |
 | `principal_input_shadows_human_input` | runbook, composite | A field is declared both a human input and a principal input |
+| `presentation_unknown_display_field` | entity | `display_fields` names a field the entity does not declare |
+| `presentation_unknown_comparable_field` | entity | `comparable_fields` names a field the entity does not declare |
+| `subject_unknown_entity` | runbook, composite | `subject.entity` is not an entity in the catalog |
+| `subject_unlisted_entity` | runbook | `subject.entity` is not one of the entities the runbook lists |
+| `subject_unjoinable` | runbook, composite | `subject.joins: focus`, and no operation of this procedure accepts a field naming a record of that entity |
+| `presentation_unknown_evidence` | runbook, composite | A binding names a kind other than `items`, `item`, `selection` or `receipt` |
+| `presentation_malformed_binding` | runbook, composite | A binding that takes no field names one, or a binding that needs one names none |
+| `presentation_unknown_field` | runbook, composite | An `items`/`item` binding's field is not a field of the subject's entity or of an entity this procedure reads |
+| `presentation_unverified_input` | runbook, composite | A binding is `$inputs.<field>` — what a person typed, which is not evidence until a verified write carries it |
+| `presentation_receipt_without_write` | runbook, composite | A `receipt` binding is declared and this procedure writes nothing. Printed with severity `warning`, the only code that is — `oska validate` still exits non-zero when it appears, the same as any other issue |
+| `presentation_unknown_receipt_field` | runbook, composite | A `receipt` binding's field is neither a standard receipt field nor a field of a payload this procedure writes |
 | `missing_runtime` | runbook, composite | No `runtime` block |
 | `too_few_triggers` | runbook, composite | Fewer than three triggers |
 | `duplicate_triggers` | runbook, composite | The same trigger twice |

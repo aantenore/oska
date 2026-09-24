@@ -18,6 +18,9 @@ fields:
   - name: status
     type: string
     description: "Current account state: active or suspended."
+  - name: groups
+    type: list
+    description: Groups the account belongs to, as the directory lists them.
 state_field: status
 states:
   - active
@@ -27,6 +30,10 @@ relations:
     target: entity.group
     cardinality: many
     description: Groups this account currently belongs to.
+noun: account
+plural: accounts
+display_fields: [username, display_name, department, groups]
+comparable_fields: [department, status]
 ---
 
 ## Purpose

@@ -4,27 +4,36 @@ One turn prints three things in the same order every time: the reply, then what
 the session is waiting for, then one line per outcome. A write held at the gate
 prints the exact payload that was frozen, so what is approved in a terminal is
 the same text the ledger keys on.
+
+With `--platform`, turns run in one domain of the platform, as one tenant, and
+a session that already belongs to another domain is refused.
 """
 
 from __future__ import annotations
 
 import json
 import sys
+from collections.abc import Callable
 from enum import StrEnum
 from pathlib import Path
 from typing import Annotated
 
 import typer
 
+from oska.catalog.validator import CatalogError
 from oska.cli.options import (
+    DomainOption,
     JsonOption,
+    PlatformOption,
     SessionOption,
     SkillsOption,
+    TenantOption,
     fail,
+    platform_for,
     services_for,
     settings_for,
 )
-from oska.config import ProviderName, Settings, load_model_config
+from oska.config import ProviderName, Settings, load_model_config, load_settings
 from oska.contracts.common import Outcome, TurnResult
 from oska.contracts.receipt import WriteReceipt
 from oska.engine.engine import Engine
@@ -32,6 +41,7 @@ from oska.planner.openai_compatible import OpenAICompatibleProvider
 from oska.planner.provider import ModelProvider, ModelProviderError
 from oska.planner.recording import RecordingProvider, ReplayProvider
 from oska.planner.scripted import ScriptedModelProvider
+from oska.platform import Platform, PlatformError
 
 __all__ = ["receipts", "register", "run"]
 
@@ -85,29 +95,77 @@ def run(
     record: RecordOption = None,
     replay: ReplayOption = None,
     skills: SkillsOption = None,
+    platform: PlatformOption = None,
+    domain: DomainOption = None,
+    tenant: TenantOption = None,
 ) -> None:
     """Run one turn, or read turns from standard input until it ends."""
-    settings = settings_for(skills)
-    chosen = _provider(settings, provider, script, record, replay)
-    engine = services_for(settings, provider=chosen).engine
+    if platform is None:
+        settings = settings_for(skills, domain=domain, tenant=tenant)
+        chosen = _provider(settings, provider, script, record, replay)
+        turn: Turn = services_for(settings, provider=chosen).engine.turn
+    else:
+        if skills:
+            fail("--platform names the catalog; drop --skills")
+        chosen = _provider(load_settings(), provider, script, record, replay)
+        turn = _platform_turn(platform, domain, tenant, chosen)
     if text is not None:
-        _turn(engine, session, text)
+        _turn(turn, session, text)
         return
-    _repl(engine, session)
+    _repl(turn, session)
 
 
 def receipts(
     session: SessionOption,
     as_json: JsonOption = False,
     skills: SkillsOption = None,
+    platform: PlatformOption = None,
+    domain: DomainOption = None,
+    tenant: TenantOption = None,
 ) -> None:
     """Print every write receipt of one session, oldest first."""
-    held = services_for(settings_for(skills)).engine.receipts(session)
+    if platform is None:
+        engine = services_for(settings_for(skills, domain=domain, tenant=tenant)).engine
+    else:
+        engine = _platform_engine(platform, domain, tenant)
+    held = engine.receipts(session)
     if as_json:
         typer.echo(json.dumps([receipt.model_dump(mode="json") for receipt in held], indent=2))
         return
     for receipt in held:
         typer.echo(_receipt_line(receipt))
+
+
+Turn = Callable[[str, str], TurnResult]
+
+
+def _platform_turn(
+    platform: Path, domain: str | None, tenant: str | None, provider: ModelProvider | None
+) -> Turn:
+    """Turns of one domain of a platform, as one tenant, held to the session's domain."""
+    held = platform_for(platform, provider=provider)
+    _platform_engine(platform, domain, tenant, held=held)
+
+    def turn(session: str, text: str) -> TurnResult:
+        try:
+            return held.turn(domain, tenant, session, text)
+        except PlatformError as exc:
+            fail(str(exc))
+
+    return turn
+
+
+def _platform_engine(
+    platform: Path, domain: str | None, tenant: str | None, *, held: Platform | None = None
+) -> Engine:
+    """The engine of one (tenant, domain); one that cannot be built stops here."""
+    built = held or platform_for(platform)
+    try:
+        return built.engine(domain, tenant)
+    except PlatformError as exc:
+        fail(str(exc))
+    except CatalogError as exc:
+        fail(f"the catalog does not hold up: {exc}")
 
 
 def _provider(
@@ -156,7 +214,7 @@ def _configured_provider(
         fail(f"the model provider could not be built: {exc}")
 
 
-def _repl(engine: Engine, session: str) -> None:
+def _repl(turn: Turn, session: str) -> None:
     """Read one request per line until the input ends or the reader asks to stop."""
     while True:
         typer.echo(PROMPT, nl=False, err=True)
@@ -168,12 +226,12 @@ def _repl(engine: Engine, session: str) -> None:
             continue
         if text == QUIT:
             return
-        _turn(engine, session, text)
+        _turn(turn, session, text)
 
 
-def _turn(engine: Engine, session: str, text: str) -> None:
+def _turn(turn: Turn, session: str, text: str) -> None:
     try:
-        result = engine.turn(session, text)
+        result = turn(session, text)
     except ModelProviderError as exc:
         fail(f"the model provider failed: {exc}")
     _print(result)

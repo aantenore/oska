@@ -9,7 +9,9 @@ system behind it. The mapping keys are:
 `payload_field`   the payload field carrying that identifier.
 `where`           extra equality conditions the record must meet, each a
                   literal or `$field` taken from the payload.
-`filter`          payload fields that narrow a list.
+`filter`          payload fields that narrow a list. A record field holding
+                  several values is matched by membership: the payload value
+                  has to be one of them, never a piece of one.
 `field_map`       record field names for payload fields that are spelled
                   differently.
 `project`         return one field of the matched record instead of the record.
@@ -260,7 +262,18 @@ def _conditions(mapping: dict, payload: dict) -> dict:
 
 
 def _matches(record: dict, conditions: dict) -> bool:
-    return all(record.get(field) == value for field, value in conditions.items())
+    return all(_holds(record.get(field), value) for field, value in conditions.items())
+
+
+def _holds(held: Any, wanted: Any) -> bool:
+    """Whether a record value answers a wanted one: equal, or one of several.
+
+    A field holding several values matches a single wanted value by membership.
+    A piece of a value is not the value, so nothing here compares substrings.
+    """
+    if isinstance(held, list) and not isinstance(wanted, list):
+        return wanted in held
+    return held == wanted
 
 
 def _limit(items: list, mapping: dict, payload: dict) -> list:

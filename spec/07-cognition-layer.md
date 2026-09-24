@@ -194,6 +194,62 @@ the user is told the request could not be carried out, not shown a stack trace.
 Inputs the plan cannot fill are returned as `missing`, each with the question to
 ask. Asking is a first-class result, not a failure.
 
+#### What the conversation is about
+
+The runtime remembers what it showed and derives from it what the conversation
+is about. Both are session facts, written at the end of every turn from
+evidence and never from model text:
+
+```text
+presented: {turn, moment, entity, integration_id, operation,
+            records: [{identifier, display, compared}]}
+focus:     {entity, cardinality: one | many, identifiers: [object], source, turn}
+```
+
+What was shown is the records of the last read of the turn that returned
+records of an entity, or the record the response of a verified write carries.
+A turn that shows records puts them in focus: one record is an object in focus,
+several are a list. A turn that shows nothing leaves both as they stand, except
+that a record it resolved from the focus narrows the focus to it.
+
+A reference to a shown record is resolved in a fixed precedence:
+
+1. A literal identifier of a shown record in the message.
+2. Else the best overlap between the message and each shown record's display
+   fields. The record in focus sets the score a challenger must beat; a
+   challenger that only ties it, or ties another challenger, wins nothing.
+3. Else the standing focus.
+
+The message is read through the synonyms of the pack that serves the domain,
+which map how people say a thing to how the catalog names it; the runtime keeps
+no word list of its own. A procedure whose subject joins the focus receives the
+resolved identifier as a collected input under the field its operations name
+the entity by, so "restart it" after a health read asks nothing. The planner is
+told such an input apart from what the person typed, as the default a request
+that names another record does not take. A subject of cardinality one never
+joins a list; the list is not guessed down to one. A context a client supplies
+never overrides any of this: it is a claim, and it becomes what was shown only
+once a governed read has shown it.
+
+#### Comparatives on the rows that were shown
+
+When a list is in focus, the planner is handed the refinements that list
+allows, as facts next to the inputs already collected:
+
+```text
+refinement: {field, operation, values: [..]}                        # an enum
+            {field, operation, shown_minimum, shown_maximum,
+             minimum?, maximum?}                                   # a number
+```
+
+A refinement is offered for a field only when the entity declares it
+comparable, the shown records hold more than one value for it, and the read
+that showed them accepts it as a filter, as an enum or as a number. An enum
+offers the shown values it allows; a number offers the range shown and the
+bounds declared. The model picks among what it is handed and has nothing else
+to pick from: a field the shown rows agree on, or one the read cannot filter
+by, is not offered.
+
 ### Reply Writer
 
 Responsibility: phrase what happened, in the user's language, without adding
@@ -228,6 +284,7 @@ of the declared one and keeps the declared wording where nothing came back.
 reply brief:
   reply_intent, outcomes, actions: [{key, label}]
   presentation_preferences: [string]     # optional; how the answer should read
+  facts: [string]                        # optional; statements derived from the catalog
 
 reply answer:
   reply: string
@@ -245,6 +302,22 @@ in the language the catalog declares, because routing is asked in every
 language a person writes in and must not be narrowed to one. And an action is
 never invented by rewording: a label returned under a key the turn did not
 offer is dropped.
+
+A request outside the catalog is answered the same way. The reply writer is
+handed no outcomes and the scope the catalog declares as a fact, and writes
+the refusal in the language of the conversation. It is the one reply call the
+turn makes; when it returns no text, the deterministic template answers
+instead, with the same scope in the declared wording.
+
+That is how `OSKA-COG-12` and `OSKA-COG-29` read together. Every answered turn
+is entitled to exactly one reply call, the off-scope decline included. Routing
+an outcome that already existed through that call is not a new call added by a
+feature; it is the call every answered turn gets. It does change what an
+off-scope turn costs, and the change is stated here rather than hidden: an
+off-scope turn decided by the model used to make one call, the route call, and
+answered from the template; it now makes the route call and the reply call. It
+makes no third, and the count of completions of such a turn is how a
+conformant system shows it.
 
 A presentation preference recorded for the session, if there is one, travels in
 the same brief as a fact about how the answer should read. It goes no further.
@@ -367,6 +440,34 @@ offline.
 - **OSKA-COG-24** — A presentation preference held for a session MUST reach the
   reply writer as a fact and MUST NOT reach the planner, a policy or an
   operation payload.
+- **OSKA-COG-25** — Every turn that shows records MUST record them on the
+  session as `presented`, with the moment reached, the entity, the read and,
+  per record, its identifiers and its display fields, and MUST derive `focus`
+  from them. What was shown MUST be taken from a read or from a verified write
+  and MUST NOT be taken from model text. A turn that shows nothing MUST leave
+  `presented` unchanged.
+- **OSKA-COG-26** — A reference to a shown record MUST be resolved in this
+  order: a literal identifier of a shown record in the message; else the best
+  overlap between the message and the display fields of each shown record,
+  where a challenger MUST score strictly higher than the record in focus and
+  than every other challenger; else the standing focus. The message MUST be
+  read through the synonyms the serving pack declares, and the runtime MUST NOT
+  hold a word list of its own for this.
+- **OSKA-COG-27** — A procedure whose subject joins the focus MUST receive the
+  resolved identifier as a collected input, MUST NOT be joined to a list when
+  its cardinality is one, and the planner MUST be told that input apart from
+  the inputs the person gave. A context supplied by a client MUST NOT override
+  the focus; it MAY become what was shown only through a governed read.
+- **OSKA-COG-28** — When a list is in focus, the planner MUST be handed as
+  facts the refinements the shown records allow and no others: a field the
+  entity declares comparable, on which the shown records hold more than one
+  value, and which the read that showed them accepts as an enum or a number.
+- **OSKA-COG-29** — A request outside the catalog MUST be answered, when a
+  provider is configured, by the reply call the turn makes, with the declared
+  scope handed over as a fact, and by the deterministic template when that call
+  returns no text. It MUST NOT add a call beyond that one reply call; a
+  conformant system MUST be able to show this by counting the completions of
+  such a turn.
 
 ## Rationale
 
@@ -422,6 +523,20 @@ reply may call a write verified unless its receipt says so.
 - `tests/unit/test_labels.py` — the offer in the language of the turn, the
   count that shows no call was added, and the preference that reaches the reply
   writer and no other prompt.
+- `src/oska/engine/subject.py` — what was shown, the focus, the precedence a
+  reference is resolved in, the join of a subject to the focus, and the
+  refinements a comparative may pick from.
+- `src/oska/planner/planner.py` and `src/oska/planner/prompts.py` — the
+  refinements and the inputs taken from the focus as the planner receives
+  them, the entity named by its noun and display fields, and the facts of the
+  reply brief.
+- `tests/unit/test_subject.py` — the precedence, the challenger that does not
+  beat the focus, membership on a field of several values, the join, and the
+  refinement not offered when the shown rows agree.
+- `examples/ops/scenarios/27_subject_from_what_was_shown.json` and
+  `examples/ops/scenarios/29_comparative_on_shown_rows.json` — "restart it"
+  after a health read, and a comparative handed exactly the refinement the
+  shown alerts differ on.
 - `examples/ops/scenarios/26_labels_in_the_turn_language.json` — the same
   thing as an executable document: a turn asked in Italian, offered its next
   steps in Italian, in three model calls.

@@ -1,14 +1,16 @@
 """Availability: the breaker, the classification of a failure, and what is said about it.
 
-The hard case has a section of its own at the end. A write whose answer never
-came could have been applied before the answer was lost, so nothing about it is
-settled by assumption: the declared read-back runs, and what it finds — landed,
-did not land, or nothing at all — decides whether the same write may be sent
-again in that session.
+The hard case has a section of its own at the end. A write whose request left
+and whose answer never came — `ambiguous` — could have been applied before the
+answer was lost, so nothing about it is settled by assumption: the declared
+read-back runs, and what it finds — landed, did not land, or nothing at all —
+decides whether the same write may be sent again in that session. A write whose
+request provably never left — `retryable` — needs no read-back at all.
 """
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
@@ -21,13 +23,17 @@ from oska.catalog.registry import SkillRegistry
 from oska.config import ResilienceConfig, Settings
 from oska.connectors.base import (
     BaseConnector,
+    CallOptions,
     CircuitBreaker,
+    ConnectorHealth,
     ConnectorOutcome,
+    idempotency_key,
     is_unavailable,
     refused,
     rejected,
     succeeded,
     transport_failure,
+    unanswered,
 )
 from oska.connectors.http import HttpConnector
 from oska.connectors.mock import MockConnector
@@ -84,8 +90,9 @@ class Counting(BaseConnector):
         answers: Callable[[], ConnectorResult],
         resilience: ResilienceConfig,
         clock: Callable[[], float],
+        sleep: Callable[[float], None] = lambda seconds: None,
     ) -> None:
-        super().__init__("integration.sample", resilience, clock=clock)
+        super().__init__("integration.sample", resilience, clock=clock, sleep=sleep)
         self._answers = answers
         self.calls = 0
 
@@ -254,7 +261,13 @@ def test_the_breaker_can_be_reset() -> None:
 # Classification.
 
 
-def test_a_timeout_is_retryable_and_a_rejected_payload_is_terminal() -> None:
+def test_a_command_that_timed_out_is_ambiguous_and_a_rejected_payload_is_terminal() -> None:
+    """A command that ran out of time was started, so it may have done its work.
+
+    This test said `retryable` while a timeout was taken to mean "nothing
+    happened". A command that was started and then stopped has left, and it is
+    `ambiguous` now: a write in that state is read back, never sent again.
+    """
     connector = ShellConnector(
         id="integration.sample",
         operations={
@@ -266,7 +279,7 @@ def test_a_timeout_is_retryable_and_a_rejected_payload_is_terminal() -> None:
     timed_out = connector.execute("sample.sleep", {})
     missing = connector.execute("sample.echo", {})
 
-    assert (timed_out.failure, timed_out.classification) == ("transport", "retryable")
+    assert (timed_out.failure, timed_out.classification) == ("transport", "ambiguous")
     assert "timed out" in (timed_out.error or "")
     assert (missing.failure, missing.classification) == ("rejected", "terminal")
     assert connector.health.consecutive_failures == 1  # only the timeout counted
@@ -283,8 +296,14 @@ def test_a_command_that_ran_and_failed_is_terminal() -> None:
     assert connector.health.state == "closed"
 
 
-def test_a_server_error_is_retryable_and_a_client_error_is_terminal() -> None:
-    codes = iter([503, 404])
+def test_a_server_error_is_ambiguous_and_a_client_error_is_terminal() -> None:
+    """A server error answered a request that left; a 4xx, a conflict included, is a no.
+
+    This test said `retryable` for the 503 while every transport failure was.
+    The request reached the server, which may have applied it before failing,
+    so it is `ambiguous` now.
+    """
+    codes = iter([503, 404, 409])
 
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(next(codes), json={"detail": "no"})
@@ -298,9 +317,15 @@ def test_a_server_error_is_retryable_and_a_client_error_is_terminal() -> None:
 
     server = connector.execute("service.status", {"service": "search"})
     client = connector.execute("service.status", {"service": "search"})
+    conflict = connector.execute("service.status", {"service": "search"})
 
-    assert (server.failure, server.classification) == ("transport", "retryable")
+    assert (server.failure, server.classification) == ("transport", "ambiguous")
     assert (client.failure, client.classification) == ("refused", "terminal")
+    assert (conflict.failure, conflict.classification, conflict.status_code) == (
+        "refused",
+        "terminal",
+        409,
+    )
     connector.close()
 
 
@@ -374,6 +399,109 @@ def test_an_integration_may_declare_its_own_resilience(tmp_path: Path) -> None:
 
     assert connector.resilience.failures_before_open == 5
     assert connector.resilience.recovery_seconds == 2.0
+
+
+# Retries inside one call: reads only.
+
+
+def recorded_sleep() -> tuple[list[float], Callable[[float], None]]:
+    """A sleep that records the pauses instead of taking them."""
+    pauses: list[float] = []
+    return pauses, pauses.append
+
+
+def test_a_read_that_never_left_is_tried_again_with_a_growing_pause() -> None:
+    answers: list[ConnectorResult] = [
+        transport_failure("connection refused"),
+        transport_failure("connection refused"),
+        succeeded({"thing": {"state": "ready"}}),
+    ]
+    pauses, sleep = recorded_sleep()
+    connector = Counting(
+        lambda: answers.pop(0),
+        ResilienceConfig(retries=2, backoff_seconds=0.5, failures_before_open=10),
+        Clock(),
+        sleep,
+    )
+
+    result = connector.execute("thing.read", {})
+
+    assert result.ok is True
+    assert connector.calls == 3
+    assert pauses == [0.5, 1.0]
+
+
+def test_a_read_is_tried_again_only_for_a_listed_status() -> None:
+    answers: list[ConnectorResult] = [
+        unanswered("http 503: busy", 503),
+        succeeded({"thing": {}}),
+        unanswered("the read timed out"),
+        succeeded({"thing": {}}),
+    ]
+    connector = Counting(
+        lambda: answers.pop(0),
+        ResilienceConfig(retries=3, retry_statuses=[503], failures_before_open=10),
+        Clock(),
+    )
+
+    listed = connector.execute("thing.read", {})
+    timed_out = connector.execute("thing.read", {})
+
+    assert listed.ok is True
+    assert (timed_out.ok, timed_out.classification) == (False, "ambiguous")
+    assert connector.calls == 3  # the timeout was neither retryable nor a listed status
+
+
+def test_a_write_is_never_tried_again_inside_the_call() -> None:
+    pauses, sleep = recorded_sleep()
+    connector = Counting(
+        lambda: transport_failure("connection refused"),
+        ResilienceConfig(retries=5, failures_before_open=10),
+        Clock(),
+        sleep,
+    )
+
+    result = connector.execute("thing.change", {}, write=True)
+
+    assert (result.ok, result.classification) == (False, "retryable")
+    assert connector.calls == 1
+    assert pauses == []
+
+
+def test_an_unsafe_method_is_never_tried_again_even_unmarked() -> None:
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(503, text="busy")
+
+    connector = HttpConnector(
+        id=RUNTIME,
+        base_url="https://runtime.test",
+        operations={"service.restart": {"method": "POST", "path": "/services/{service}"}},
+        resilience=ResilienceConfig(retries=3, failures_before_open=10),
+        transport=httpx.MockTransport(handler),
+        sleep=lambda seconds: None,
+    )
+
+    result = connector.execute("service.restart", {"service": "search"})
+
+    assert result.classification == "ambiguous"
+    assert len(seen) == 1
+    connector.close()
+
+
+def test_the_retries_stop_when_the_breaker_opens() -> None:
+    connector = Counting(
+        lambda: transport_failure("connection refused"),
+        ResilienceConfig(retries=5, failures_before_open=2),
+        Clock(),
+    )
+
+    connector.execute("thing.read", {})
+
+    assert connector.calls == 2
+    assert connector.health.state == "open"
 
 
 # The ledger.
@@ -638,35 +766,113 @@ def test_a_read_that_cannot_reach_the_system_degrades_one_capability(
 
 # A write whose answer never came, and what the read-back makes of it.
 #
-# Until this section the classification decided everything: a retryable failure
+# Before this section the classification decided everything: a retryable failure
 # left the key open and the same write went out again on the next request. That
-# is exactly the double write the ledger exists to prevent, because a gateway
-# answering 502 and a read that timed out are both retryable and both can sit
-# on top of a write the system applied. The read-back decides now.
+# is exactly the double write the ledger exists to prevent when the request left
+# and the answer was lost. The connector now says which of the two happened: a
+# request that never left is `retryable` and needs no read-back, one that left
+# and got no usable answer is `ambiguous`, and there the read-back decides.
+#
+# The first four tests below injected the mock's `unreachable` into the write,
+# which then stood for both cases. `unreachable` means "never left" now, so the
+# lost answer is injected by `LostAnswer`, which lets the request reach the
+# fixture or not and then reports the answer lost.
+
+
+class LostAnswer:
+    """The runtime binding with one operation whose answer is lost after it left."""
+
+    def __init__(self, inner: MockConnector, operation: str, *, applied: bool) -> None:
+        self.inner = inner
+        self.id = inner.id
+        self._operation = operation
+        self._applied = applied
+
+    @property
+    def health(self) -> ConnectorHealth:
+        """The health of the binding it wraps."""
+        return self.inner.health
+
+    def execute(self, operation: str, payload: dict) -> ConnectorResult:
+        """Answer as the fixture does, except that one operation's answer is lost."""
+        if operation != self._operation:
+            return self.inner.execute(operation, payload)
+        if self._applied:
+            self.inner.execute(operation, payload)
+        return unanswered("the runtime did not answer after the request went out")
+
+
+def lose_answer(engine: Engine, operation: str, *, applied: bool) -> LostAnswer:
+    """Bind the runtime through a wrapper that loses the answer of one operation."""
+    inner = engine.connectors.get(RUNTIME)
+    assert isinstance(inner, MockConnector)
+    lost = LostAnswer(inner, operation, applied=applied)
+    engine.connectors.register(RUNTIME, lost)
+    return lost
+
+
+def restore(engine: Engine, lost: LostAnswer) -> None:
+    """Bind the runtime to the fixture again, answers and all."""
+    engine.connectors.register(RUNTIME, lost.inner)
+
+
+def test_a_write_that_never_left_needs_no_read_back_and_may_be_asked_for_again(
+    repo_root: Path, tmp_path: Path
+) -> None:
+    """The connection was refused, so nothing can have happened over there."""
+    script = [
+        route_step("runbook.service_restart"),
+        restart_plan(),
+        reply_step("The restart never left, so nothing was changed."),
+        route_step("runbook.service_restart"),
+        restart_plan(),
+    ]
+    engine = engine_for(repo_root, tmp_path, script)
+    engine.turn("refused", RESTART_REQUEST)
+    engine.connectors.get(RUNTIME).set_behavior("service.restart", UNREACHABLE)
+
+    failed = engine.turn("refused", "yes")
+    engine.connectors.get(RUNTIME).set_behavior("service.restart", None)
+    again = engine.turn("refused", "search is still wedged, restart it")
+
+    held = engine.receipts("refused")[0]
+    assert [outcome.kind for outcome in failed.outcomes] == ["unavailable"]
+    assert (held.status, held.classification) == ("error", "retryable")
+    assert held.verification is VerificationStatus.unverified
+    assert "never left" in (held.verification_evidence or {}).get("reason", "")
+    reads = [
+        event
+        for event in failed.events
+        if event.kind == "execute" and event.data.get("operation") == "service.status"
+        and event.data.get("stage") == "call"
+    ]
+    assert len(reads) == 1  # the policy read; the write was not read back
+    assert _settlement(failed) == {"found": "never_left", "key_closed": False}
+    assert [outcome.kind for outcome in again.outcomes] == ["read", "approval_pending"]
 
 
 def test_a_write_whose_read_back_shows_it_did_not_land_may_be_asked_for_again(
     repo_root: Path, tmp_path: Path
 ) -> None:
-    """Only a read-back that contradicts the write leaves the key open.
+    """Only a read-back that contradicts the write reopens the key.
 
-    This test asked for the restart of a service the fixture holds stopped: the
-    write never reached the runtime, the read-back finds the service still
-    stopped, and that — not the classification — is what says nothing landed.
+    The restart of a service the fixture holds stopped left and its answer was
+    lost before it was applied: the read-back finds the service still stopped,
+    and that — not the classification — is what says nothing landed.
     """
     script = [
         route_step("runbook.service_restart"),
         restart_plan(STOPPED),
-        reply_step("The restart never left, so nothing was changed."),
+        reply_step("The restart did not land, so nothing was changed."),
         route_step("runbook.service_restart"),
         restart_plan(STOPPED),
     ]
     engine = engine_for(repo_root, tmp_path, script)
     engine.turn("retry", STOPPED_REQUEST)
-    engine.connectors.get(RUNTIME).set_behavior("service.restart", UNREACHABLE)
+    lost = lose_answer(engine, "service.restart", applied=False)
 
     failed = engine.turn("retry", "yes")
-    engine.connectors.get(RUNTIME).set_behavior("service.restart", None)
+    restore(engine, lost)
     again = engine.turn("retry", "reporting is still down, restart it")
 
     assert [outcome.kind for outcome in failed.outcomes] == ["unavailable"]
@@ -682,7 +888,7 @@ def test_a_write_whose_read_back_shows_it_did_not_land_may_be_asked_for_again(
 def test_a_write_whose_read_back_finds_it_landed_is_not_sent_again(
     repo_root: Path, tmp_path: Path
 ) -> None:
-    """The answer was lost, the read-back found the write done, and the key closed.
+    """The write was applied, its answer was lost, the read-back found it, and the key closed.
 
     The receipt says what the read-back established: an executed, verified
     write. A later request for the same thing is answered from the ledger and
@@ -698,17 +904,17 @@ def test_a_write_whose_read_back_finds_it_landed_is_not_sent_again(
     ]
     engine = engine_for(repo_root, tmp_path, script)
     engine.turn("lost", RESTART_REQUEST)
-    engine.connectors.get(RUNTIME).set_behavior("service.restart", UNREACHABLE)
+    lost = lose_answer(engine, "service.restart", applied=True)
 
-    lost = engine.turn("lost", "yes")
-    engine.connectors.get(RUNTIME).set_behavior("service.restart", None)
+    answered = engine.turn("lost", "yes")
+    restore(engine, lost)
     again = engine.turn("lost", "search is still wedged, restart it")
 
-    assert [outcome.kind for outcome in lost.outcomes] == ["receipt"]
+    assert [outcome.kind for outcome in answered.outcomes] == ["receipt"]
     held = engine.receipts("lost")
     assert (held[0].status, held[0].classification) == ("executed", "terminal")
     assert held[0].verification is VerificationStatus.verified
-    assert _settlement(lost) == {"found": "landed", "key_closed": True}
+    assert _settlement(answered) == {"found": "landed", "key_closed": True}
     assert [outcome.kind for outcome in again.outcomes] == ["read", "ledger_hit"]
     assert len(engine.receipts("lost")) == 1
 
@@ -716,28 +922,27 @@ def test_a_write_whose_read_back_finds_it_landed_is_not_sent_again(
 def test_an_unknown_outcome_is_asked_again_only_where_the_system_would_stop_a_repeat(
     repo_root: Path, tmp_path: Path
 ) -> None:
-    """Neither the write nor its read-back was reachable, and the operation is collapsible.
+    """The write's answer was lost, its read-back unreachable, and the operation collapsible.
 
     `service.restart` declares the field that makes two requests the same
     request to the runtime, so a second send would be collapsed there. That,
-    and only that, is why the key is left open while nothing is known.
+    and only that, is why the key is reopened while nothing is known.
     """
     script = [
         route_step("runbook.service_restart"),
         restart_plan(),
-        reply_step("Neither the restart nor the read-back reached the runtime."),
+        reply_step("Neither the restart nor the read-back answered."),
         route_step("runbook.service_restart"),
         restart_plan(),
     ]
     engine = engine_for(repo_root, tmp_path, script)
     engine.turn("dark", RESTART_REQUEST)
-    runtime = engine.connectors.get(RUNTIME)
-    runtime.set_behavior("service.restart", UNREACHABLE)
-    runtime.set_behavior("service.status", UNREACHABLE_AFTER_THE_POLICY_READ)
+    lost = lose_answer(engine, "service.restart", applied=False)
+    lost.inner.set_behavior("service.status", UNREACHABLE_AFTER_THE_POLICY_READ)
 
     dark = engine.turn("dark", "yes")
-    runtime.set_behavior("service.restart", None)
-    runtime.set_behavior("service.status", None)
+    lost.inner.set_behavior("service.status", None)
+    restore(engine, lost)
     again = engine.turn("dark", "search is still wedged, restart it")
 
     held = engine.receipts("dark")[0]
@@ -745,6 +950,10 @@ def test_an_unknown_outcome_is_asked_again_only_where_the_system_would_stop_a_re
     assert held.verification is VerificationStatus.unverified
     assert [outcome.kind for outcome in dark.outcomes] == ["unavailable"]
     assert _settlement(dark) == {"found": "unknown", "key_closed": False}
+    line = receipt_lines(dark.outcomes)[0]
+    assert "may or may not have landed" in line
+    assert "Nothing was sent" not in line
+    assert held.receipt_id in line
     assert [outcome.kind for outcome in again.outcomes] == ["read", "approval_pending"]
 
 
@@ -755,14 +964,15 @@ def test_a_write_nothing_is_known_about_is_never_sent_again(
 
     The catalog of this test declares the restart without idempotency fields
     and the service has no lifecycle, so nothing over there would stop a second
-    send. Neither the write nor the read-back reaches the runtime, and the key
-    is closed on an outcome nobody knows rather than risking a second restart.
+    send. The write's answer is lost and the read-back does not answer, and the
+    key is closed on an outcome nobody knows rather than risking a second
+    restart.
     """
     _drop_idempotency(catalog_copy)
     script = [
         route_step("runbook.service_restart"),
         restart_plan(),
-        reply_step("Neither the restart nor the read-back reached the runtime."),
+        reply_step("Neither the restart nor the read-back answered."),
         route_step("runbook.service_restart"),
         restart_plan(),
         reply_step("Nothing was sent again: what that restart did is not known."),
@@ -774,24 +984,145 @@ def test_a_write_nothing_is_known_about_is_never_sent_again(
         settings, provider=ScriptedModelProvider(script), audit_sink=MemorySink()
     )
     engine.turn("unknown", RESTART_REQUEST)
-    runtime = engine.connectors.get(RUNTIME)
-    runtime.set_behavior("service.restart", UNREACHABLE)
-    runtime.set_behavior("service.status", UNREACHABLE_AFTER_THE_POLICY_READ)
+    lost = lose_answer(engine, "service.restart", applied=False)
+    lost.inner.set_behavior("service.status", UNREACHABLE_AFTER_THE_POLICY_READ)
 
-    lost = engine.turn("unknown", "yes")
-    runtime.set_behavior("service.restart", None)
-    runtime.set_behavior("service.status", None)
+    unknown = engine.turn("unknown", "yes")
+    lost.inner.set_behavior("service.status", None)
+    restore(engine, lost)
     again = engine.turn("unknown", "search is still wedged, restart it")
 
     held = engine.receipts("unknown")
     assert (held[0].status, held[0].classification) == ("error", "terminal")
     assert held[0].verification is VerificationStatus.unverified
     assert "is unknown" in (held[0].error or "")
-    assert _settlement(lost) == {"found": "unknown", "key_closed": True}
-    line = receipt_lines(lost.outcomes)[0]
+    assert _settlement(unknown) == {"found": "unknown", "key_closed": True}
+    line = receipt_lines(unknown.outcomes)[0]
     assert "is unknown" in line and "not sent again" in line
+    assert "may or may not have landed" in line
+    assert held[0].receipt_id in line
+    assert "failed" not in line
+    assert line in unknown.reply
     assert [outcome.kind for outcome in again.outcomes] == ["read", "ledger_hit"]
     assert len(engine.receipts("unknown")) == 1
+
+
+class Refusing:
+    """The runtime binding with one operation the system answers no to."""
+
+    def __init__(self, inner: MockConnector, operation: str) -> None:
+        self.inner = inner
+        self.id = inner.id
+        self._operation = operation
+
+    @property
+    def health(self) -> ConnectorHealth:
+        """The health of the binding it wraps."""
+        return self.inner.health
+
+    def execute(self, operation: str, payload: dict) -> ConnectorResult:
+        """Answer as the fixture does, except that one operation is refused."""
+        if operation != self._operation:
+            return self.inner.execute(operation, payload)
+        return refused("the runtime refused the restart", status_code=409)
+
+
+def test_a_write_the_system_refused_is_reported_as_failed(
+    repo_root: Path, tmp_path: Path
+) -> None:
+    """"Failed" is kept for a write the system answered no to, and only for that."""
+    script = [route_step("runbook.service_restart"), restart_plan()]
+    engine = engine_for(repo_root, tmp_path, script)
+    engine.turn("no", RESTART_REQUEST)
+    inner = engine.connectors.get(RUNTIME)
+    assert isinstance(inner, MockConnector)
+    engine.connectors.register(RUNTIME, Refusing(inner, "service.restart"))
+
+    answered = engine.turn("no", "yes")
+
+    held = engine.receipts("no")[0]
+    line = receipt_lines(answered.outcomes)[0]
+    assert (held.status, held.classification) == ("error", "terminal")
+    assert line.startswith("service.restart failed: the runtime refused the restart.")
+    assert "may or may not" not in line
+    assert held.receipt_id in line
+
+
+def test_a_write_another_turn_already_claimed_is_not_sent(
+    repo_root: Path, tmp_path: Path
+) -> None:
+    """The claim is taken when the write runs, not only when the approval was asked.
+
+    Between the question and the answer another process sharing the ledger
+    performed the same write. The approval arrives, the claim finds the key
+    settled, and the receipt of that write is reported instead of a second send.
+    """
+    script = [
+        route_step("runbook.service_restart"),
+        restart_plan(),
+        reply_step("Nothing ran again: that restart was already performed."),
+    ]
+    engine = engine_for(repo_root, tmp_path, script)
+    engine.turn("raced", RESTART_REQUEST)
+    ledger = WriteLedger(tmp_path / "ledger.sqlite")
+    payload = {"service": RUNNING}
+    key = ledger.key(RUNTIME, "service.restart", payload, ["service"])
+    elsewhere = ledger.record(
+        ledger.new_receipt("raced", key, RUNTIME, "service.restart", payload)
+    )
+    ledger.update(elsewhere.receipt_id, status="executed", response={})
+    before = engine.connectors.get(RUNTIME).snapshot()
+
+    answered = engine.turn("raced", "yes")
+
+    assert [outcome.kind for outcome in answered.outcomes] == ["ledger_hit"]
+    assert answered.outcomes[0].receipt_id == elsewhere.receipt_id
+    assert engine.connectors.get(RUNTIME).snapshot() == before
+    assert [receipt.receipt_id for receipt in engine.receipts("raced")] == [
+        elsewhere.receipt_id
+    ]
+
+
+class Keyed(MockConnector):
+    """The fixture binding, keeping what each call was told about itself."""
+
+    def __init__(self, *args: object, **kwargs: object) -> None:
+        super().__init__(*args, **kwargs)
+        self.told: list[tuple[str, CallOptions]] = []
+
+    def _perform_call(
+        self, operation: str, payload: dict, options: CallOptions
+    ) -> ConnectorResult:
+        self.told.append((operation, options))
+        return super()._perform_call(operation, payload, options)
+
+
+def test_a_write_carries_the_idempotency_key_derived_from_its_ledger_key(
+    repo_root: Path, tmp_path: Path
+) -> None:
+    script = [
+        route_step("runbook.service_restart"),
+        restart_plan(),
+        reply_step("The restart ran and the read-back confirmed it."),
+    ]
+    engine = engine_for(repo_root, tmp_path, script)
+    config = repo_root / "examples" / "ops" / "configs" / "connectors.json"
+    declared = json.loads(config.read_text(encoding="utf-8"))["integrations"][RUNTIME]
+    bound = engine.connectors.get(RUNTIME)
+    assert isinstance(bound, MockConnector)
+    keyed = Keyed(RUNTIME, bound.fixture_path, declared["operations"])
+    engine.connectors.register(RUNTIME, keyed)
+
+    engine.turn("keyed", RESTART_REQUEST)
+    engine.turn("keyed", "yes")
+
+    held = engine.receipts("keyed")[0]
+    writes = [options for operation, options in keyed.told if operation == "service.restart"]
+    reads = [options for operation, options in keyed.told if operation == "service.status"]
+    assert writes == [
+        CallOptions(write=True, idempotency_key=idempotency_key("keyed", held.ledger_key))
+    ]
+    assert reads and all(options == CallOptions() for options in reads)
 
 
 def test_what_would_stop_a_repeat_is_read_from_the_declarations(skills_root: Path) -> None:

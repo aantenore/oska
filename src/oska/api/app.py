@@ -1,13 +1,30 @@
 """The HTTP application: one runtime behind a small set of routes.
 
-There is no authentication here. The service assumes an authenticated proxy in
-front of it, which decides who may reach it and which identity is on a call.
-The `by` field of a proposal transition is recorded as it arrives, and so is the
-identity a turn runs under; nothing in this package verifies that the caller is
-who it says it is. The runtime trusts the proxy and checks nothing of its own,
-which is worth stating plainly: the guarantee that a write is bound to the
-person who asked for it is exactly as strong as the deployment's guarantee that
-nothing reaches this port except through that proxy.
+Every call is resolved to an identity before its handler runs, in one of two
+modes `IdentityConfig.mode` chooses. In `proxy` mode an authenticated proxy in
+front of the runtime sets the subject and attributes headers and the runtime
+takes them as given: it verifies nothing there, so the guarantee that a write
+is bound to the person who asked for it is exactly as strong as the
+deployment's guarantee that nothing reaches this port except through that
+proxy. In `token` mode the caller presents a signed session token and the
+runtime verifies its signature, claims, validity window and session itself.
+With `IdentityConfig.required`, on by default in `token` mode, a call without
+an identity is refused; `/health` stays open, and `/metrics` is a reviewer's
+read unless `MetricsConfig.public` opens it.
+
+Reading proposals and change requests and moving a proposal is a reviewer's
+work: a principal reaches those routes only when its `roles` attribute holds
+`IdentityConfig.reviewer_role`. Drafting a proposal from a session is open to
+the session's own principal and to a reviewer. A transition is recorded under
+the caller's principal whatever its body says. A call without an identity
+reaches the reviewer's routes only where `IdentityConfig.single_user` says it
+is the deployment's one user; there it names its actor in `by`, and that name
+is recorded as stated and not verified. Anywhere else it may converse and
+nothing more.
+
+The runtime configuration is read once, when the application is built, and
+kept on it as `app.state.runtime`: the platform's own when it serves a
+platform, else the file the settings name.
 
 This process serves a catalog and does not write one. The catalog roots it
 reads are read-only to it: the only thing publication produces is a change
@@ -21,19 +38,30 @@ proposal store for its lifetime. The handlers are synchronous, so the framework
 runs them in a threadpool and two turns of that one engine overlap: anything
 counted for the length of a turn is counted per turn and not on the engine, as
 the model budget is.
+
+Given a platform, the application serves every domain it declares, each for its
+tenants: the platform hands out one service set per (tenant, domain) and the
+routes choose among them per request. The default domain is built at start, so
+a catalog that does not hold up stops the process before it listens. When the
+application shuts down it closes the platform, and every runtime it holds.
 """
 
 from __future__ import annotations
+
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from oska.api.metrics import metrics_router
 from oska.api.routes import ApiError, router
-from oska.config import Settings
+from oska.config import Settings, load_runtime_config
 from oska.engine.engine import Engine
 from oska.learning.proposals import ProposalStore
+from oska.platform import Platform
 from oska.services import PROPOSALS_DIRNAME, Services, build_services
 
 __all__ = ["PROPOSALS_DIRNAME", "Services", "create_app"]
@@ -46,15 +74,40 @@ def create_app(
     *,
     engine: Engine | None = None,
     proposal_store: ProposalStore | None = None,
+    platform: Platform | None = None,
 ) -> FastAPI:
-    """Build the application. Anything not passed in is built from the settings."""
-    app = FastAPI(title=API_TITLE)
-    app.state.services = build_services(
-        settings, engine=engine, proposal_store=proposal_store
+    """Build the application. Anything not passed in is built from the settings.
+
+    With a platform, the routes act on its domains and `engine` and
+    `proposal_store` are not used.
+    """
+    app = FastAPI(title=API_TITLE, lifespan=_lifespan)
+    app.state.platform = platform
+    app.state.services = (
+        platform.services()
+        if platform is not None
+        else build_services(settings, engine=engine, proposal_store=proposal_store)
+    )
+    app.state.runtime = (
+        platform.runtime
+        if platform is not None
+        else load_runtime_config(settings=app.state.services.settings)
     )
     app.include_router(router)
+    app.include_router(metrics_router)
     _register_errors(app)
     return app
+
+
+@asynccontextmanager
+async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """Serve until shutdown, then close the platform the application was given, if any."""
+    try:
+        yield
+    finally:
+        platform: Platform | None = getattr(app.state, "platform", None)
+        if platform is not None:
+            platform.close()
 
 
 def _register_errors(app: FastAPI) -> None:

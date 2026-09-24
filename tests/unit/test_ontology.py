@@ -5,8 +5,10 @@ from __future__ import annotations
 from pathlib import Path
 
 from oska.catalog.registry import SkillRegistry
+from oska.contracts.skill import EntityField, Skill, SkillFrontmatter, SkillSections, SkillType
 from oska.ontology.export import from_json, to_json, to_mermaid
 from oska.ontology.graph import OntologyCache, OntologyGraph, operation_node_id
+from oska.ontology.naming import noun_of, plural_of
 from oska.ontology.queries import (
     operations_on,
     path,
@@ -15,6 +17,7 @@ from oska.ontology.queries import (
     vocabulary,
     writers_of,
 )
+from oska.planner.prompts import planner_system
 
 
 def test_every_published_declaration_becomes_a_node(registry: SkillRegistry) -> None:
@@ -48,6 +51,62 @@ def test_an_entity_node_carries_its_identifier_states_and_fields(registry: Skill
     assert node.attributes["state_field"] == "status"
     assert node.attributes["states"] == ["running", "degraded", "stopped"]
     assert [field["name"] for field in node.attributes["fields"]][:2] == ["name", "environment"]
+
+
+def _entity_skill(**overrides: object) -> Skill:
+    """A minimal published entity, for naming rules that touch no example catalog."""
+    frontmatter = SkillFrontmatter(
+        id=overrides.pop("id", "entity.widget"),
+        type=SkillType.entity,
+        version=1,
+        description="A widget declared only for this test, long enough to pass the checks.",
+        fields=[EntityField(name="id", type="string", identifier=True)],
+        **overrides,
+    )
+    return Skill(
+        frontmatter=frontmatter,
+        sections=SkillSections(),
+        path=Path("entity/widget/v1/skill.md"),
+        fingerprint="test",
+    )
+
+
+def test_the_graph_carries_the_declared_noun_and_plural(registry: SkillRegistry) -> None:
+    """OSKA-ONT-27: an entity node carries `noun` and `plural`, read off a real declaration."""
+    node = OntologyGraph.from_registry(registry).node("entity.service")
+    assert node is not None
+    declared = registry.get("entity.service")
+    assert declared is not None
+    assert node.attributes["noun"] == "service" == noun_of(declared.frontmatter)
+    assert node.attributes["plural"] == "services" == plural_of(declared.frontmatter)
+    assert node.attributes["display_fields"] == ["name", "environment", "status", "version"]
+    assert node.attributes["comparable_fields"] == ["environment", "status"]
+
+
+def test_noun_and_plural_default_when_an_entity_declares_neither() -> None:
+    """OSKA-ONT-27: `noun` defaults to the short name, `plural` to that noun plus `s`."""
+    skill = _entity_skill()
+    node = OntologyGraph.from_skills([skill]).node("entity.widget")
+    assert node is not None
+    assert node.attributes["noun"] == "widget"
+    assert node.attributes["plural"] == "widgets"
+
+
+def test_the_planner_prompt_names_an_entity_by_the_noun_and_plural_the_graph_carries(
+    repo_root: Path,
+) -> None:
+    """OSKA-ONT-27: the runtime reads `noun`/`plural` off the ontology through the prompt
+    the planner is built from, and not from the short name of the entity's id.
+    """
+    access_registry = SkillRegistry([repo_root / "examples" / "access" / "skills"])
+    graph = OntologyGraph.from_registry(access_registry)
+    node = graph.node("entity.user")
+    assert node is not None
+    assert node.attributes["noun"] == "account"
+    assert node.attributes["plural"] == "accounts"
+    hydrated = access_registry.closure("runbook.access_check")
+    prompt = planner_system(hydrated, "scope")
+    assert "one is a account, several are accounts" in prompt
 
 
 def test_relations_are_edges_with_a_name_and_a_cardinality(registry: SkillRegistry) -> None:

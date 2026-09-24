@@ -19,6 +19,7 @@ from oska.catalog.revision import (
 from oska.catalog.validator import CatalogError
 from oska.cli.commands_revision import app
 from oska.config import Settings
+from oska.engine import factory
 from oska.engine.factory import build_engine, revision_ledger
 
 TENANT = "default"
@@ -226,6 +227,36 @@ def test_a_receipt_names_the_revision_it_was_opened_under(
     assert unpinned.revision is None
 
 
+def test_a_receipt_names_the_revision_of_the_engine_s_own_catalog(
+    revision_settings: Settings, catalog_copy: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Two catalogs pinned to different revisions in one context: each engine names its own."""
+    first = _build(revision_settings)
+    _retire(catalog_copy, "service_restart")
+    second = _build(revision_settings)
+    assert first != second
+    opened: list = []
+    real_open = factory.open_ledger
+
+    def keep(*args: object, **kwargs: object) -> object:
+        ledger = real_open(*args, **kwargs)
+        opened.append(ledger)
+        return ledger
+
+    monkeypatch.setattr(factory, "open_ledger", keep)
+    engine = build_engine(revision_settings)
+    [ledger] = opened
+    other = ServedCatalog(RevisionStore(Path(revision_settings.state_dir) / "revisions"), TENANT)
+
+    with engine.registry.pinned(first), other.pinned(second):
+        inner = ledger.new_receipt("s", "k1", "integration.container_runtime", "x", {})
+    with other.pinned(first), engine.registry.pinned(second):
+        outer = ledger.new_receipt("s", "k2", "integration.container_runtime", "x", {})
+
+    assert inner.revision == first
+    assert outer.revision == second
+
+
 def test_the_revision_commands_build_list_show_and_choose(revision_settings: Settings) -> None:
     """The round trip, run against the command group itself.
 
@@ -280,3 +311,43 @@ def test_the_runtime_serves_the_revision_the_choice_file_names(
 def _revisions(result) -> list[dict]:
     """The revision events of one turn, as they were recorded."""
     return [event.data for event in result.events if event.kind == "revision"]
+
+
+def test_the_file_hashes_describe_the_build_and_not_the_identifier(
+    skills_root: Path, store_root: Path, example_settings: Settings
+) -> None:
+    manifest = build_revision([skills_root], store_root, tenant=TENANT, settings=example_settings)
+    assert manifest.files
+    assert all(name.endswith(("skill.md", ".json")) or "/" in name for name in manifest.files)
+    stripped = manifest.model_copy(update={"files": {}})
+    assert revision_id(stripped) == manifest.revision
+
+
+def test_two_catalogs_touched_in_one_turn_keep_their_own_pins(
+    catalog_copy: Path, store_root: Path, example_settings: Settings, examples: Path
+) -> None:
+    settings = example_settings.model_copy(update={"skills_roots": [catalog_copy]})
+    ops_first = build_revision([catalog_copy], store_root, tenant=TENANT, settings=settings)
+    _retire(catalog_copy, "service_restart")
+    ops_second = build_revision([catalog_copy], store_root, tenant=TENANT, settings=settings)
+    access_root = store_root.parent / "access-revisions"
+    access_skills = examples / "access" / "skills"
+    access = build_revision(
+        [access_skills],
+        access_root,
+        tenant=TENANT,
+        settings=settings.model_copy(update={"skills_roots": [access_skills]}),
+    )
+    ops = ServedCatalog(RevisionStore(store_root), TENANT)
+    other = ServedCatalog(RevisionStore(access_root), TENANT)
+    with ops.pinned(ops_first.revision):
+        with other.pinned(access.revision):
+            assert ops.revision == ops_first.revision
+            assert other.revision == access.revision
+            assert ops.get(RESTART) is not None and ops.get(RESTART).is_published
+            other.adopt(access.revision)
+            ops.adopt(ops_second.revision)
+            assert other.revision == access.revision
+            assert ops.revision == ops_second.revision
+        assert ops.revision == ops_second.revision
+    assert ops.revision == ops.newest_revision()

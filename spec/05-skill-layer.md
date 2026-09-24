@@ -174,6 +174,41 @@ fingerprint — the index, the ontology graph, the fast path — are correct wit
 re-reading anything. Serving a directory remains legal, and remains what a
 single process on its own disk should do.
 
+A deployment says which of the two it wants. In `directory` mode it serves the
+roots, or a revision when the store holds one that answers the configuration.
+In `revision` mode it serves a revision and nothing else, and a process that
+finds none to serve refuses to start rather than falling back to a directory
+nobody released.
+
+A content hash names a revision; it does not say who released it. A revision
+may therefore be signed:
+
+```text
+Manifest:
+  ...
+  files: { "<path>": content_hash }   # every file the revision holds
+
+RevisionSigner:
+  name: string
+  sign(manifest_bytes) -> signature
+  verify(manifest_bytes, signature) -> bool
+```
+
+The build signs the exact bytes of the manifest it writes and puts the
+signature in a file beside it, with the name of the signer. The manifest names
+the hash of every file the revision holds, so a signature over the manifest
+vouches for the files through it. Loading a revision checks the signature and
+then every file against its hash, before a line of the catalog is read. The
+file hashes describe the build and take no part in the identifier.
+
+A signer is selected by name. The key is never in the configuration or the
+manifest: the configuration names where the key is found, and a key that is
+not there is a refusal, not a reason to serve unchecked. A shared-key signer is
+enough for one organization; a key management service is another signer
+behind the same interface, which signs by asking the service and verifies by
+asking it or by checking against a public key. The check on load and the
+refusal are the same whichever signer is used.
+
 ### Validator
 
 Responsibility: decide whether a catalog is coherent, and report every
@@ -314,6 +349,8 @@ the catalog.
 - **OSKA-SKL-23** — A catalog served as a revision MUST report the revision
   identifier as its fingerprint, and MUST NOT re-read its files to decide
   whether it has changed.
+- **OSKA-SKL-36** — The revision pin MUST be held per catalog; a pin on one
+  catalog MUST NOT change the revision another catalog reads.
 - **OSKA-SKL-24** — A runtime serving a revision MUST NOT read a mutable
   catalog directory while it serves.
 - **OSKA-SKL-25** — A skill MAY carry an evaluation set beside it, in the
@@ -331,6 +368,38 @@ the catalog.
   and MUST NOT reimplement scoring. Proposing cases for a skill MUST draw them
   from the declared triggers of the skills nearest it and MUST NOT write
   anything into the catalog.
+- **OSKA-SKL-28** — A deployment MUST declare whether it serves a catalog
+  directory or only revisions. A deployment that serves only revisions MUST
+  refuse to start when there is no revision to serve, and MUST NOT fall back to
+  a directory.
+- **OSKA-SKL-29** — A revision MAY be signed. A signature MUST be made over the
+  exact bytes of the manifest and kept beside it with the name of the signer
+  that made it, and the manifest of a signed revision MUST record the content
+  hash of every file the revision holds. The file hashes MUST NOT affect the
+  revision identifier.
+- **OSKA-SKL-30** — Loading a signed revision MUST verify its signature and
+  MUST verify every file it holds against the hashes its manifest records, and
+  MUST refuse the revision, with a reason naming what failed, when either check
+  fails or when a file is present that the manifest does not name. A signed
+  revision MUST be verified whether or not signatures are required.
+- **OSKA-SKL-31** — A deployment that requires signatures MUST refuse an
+  unsigned revision. A deployment that does not MAY serve one.
+- **OSKA-SKL-32** — A signing or verification key MUST NOT appear in the
+  configuration or in a revision. The configuration MUST name where the key is
+  read from, and a key that cannot be read MUST cause a refusal and MUST NOT
+  cause a revision to be served unchecked.
+- **OSKA-SKL-33** — Signers MUST be interchangeable behind one interface that
+  signs manifest bytes and verifies a signature over them, and MUST be selected
+  by name. Adding a signer, such as one backed by a key management service,
+  MUST NOT change how a signature is stored or how a revision is checked on
+  load.
+- **OSKA-SKL-34** — Signing a revision after it was built MUST NOT modify its
+  manifest or its files. Only the signature beside the manifest MAY be written,
+  and only when the one there does not verify under the signer being used.
+- **OSKA-SKL-35** — A runtime serving a revision MUST parse exactly the bytes
+  whose hash it compared with the manifest, and MUST check every other file it
+  uses (policies included) the same way. A mismatch MUST refuse the skill, and
+  when signatures are required, the revision.
 
 ## Rationale
 
@@ -362,6 +431,15 @@ turns "are we serving the same thing?" from an argument about file timestamps
 into a comparison of two strings, and turns a rollback into serving an
 identifier that is still sitting there.
 
+A signature (`OSKA-SKL-29` to `OSKA-SKL-34`) answers the question the
+identifier cannot: who released this. Anyone who can write the revision store
+can build a revision with a valid identifier, because the identifier is only a
+hash. Only someone holding the key can sign one. The signature covers the
+manifest and the manifest covers the files, so one check at load proves both
+that the catalog was released by someone trusted and that nothing under it
+moved since. Keeping the key out of the configuration is what keeps that
+property when the configuration itself is under review by many people.
+
 The identifier is deliberately not a version number a person chooses. A chosen
 name can be reused, and a catalog that was served under a name someone later
 reused cannot be recovered from the audit trail. A content hash cannot be
@@ -377,8 +455,33 @@ an unbounded one.
 
 ## In the reference implementation
 
-- `src/oska/catalog/` — `loader.py`, `registry.py`, `validator.py`,
-  `resolver.py`.
+- `src/oska/catalog/` — `loader.py`, `registry.py`, `validator.py` (the
+  facade that runs every check), `checks/` (one module per concern: `common.py`,
+  `contract.py`, `ontology.py`, `governance.py`, `presentation.py`,
+  `inputs.py`), `resolver.py`.
+- `src/oska/catalog/loader.py` (`read_checked`) and
+  `src/oska/catalog/registry.py` (`SkillRegistry.from_revision`, `read_file`) —
+  each file of a revision read once and parsed from the bytes whose hash was
+  compared with the manifest; a mismatch refuses the skill as
+  `revision_file_mismatch`, or the revision where signatures are required. The
+  pin a turn opens is held per catalog, so two catalogs pinned in one context
+  keep their own revisions (`tests/unit/test_signing.py`,
+  `tests/unit/test_revision.py`).
+- `src/oska/catalog/revision.py` — the build, the manifest with its file
+  hashes, the store and `RevisionStore.verify`, the check a revision passes
+  before it is served.
+- `src/oska/catalog/signing.py` — `RevisionSigner`, the registry of signers by
+  name, the `hmac-sha256` signer that reads its key from the variable
+  `catalog.signing.key_env` names, and `RevisionTrust`, which applies
+  `catalog.signing.required`.
+- `src/oska/catalog/registry.py` — `serve_catalog`, the one place
+  `catalog.mode` is read, which refuses to start in `revision` mode without a
+  revision that verifies.
+- `src/oska/cli/commands_revision.py` — `revision build` signs when a signer is
+  configured; `revision verify` runs the check a runtime runs; `revision use`
+  refuses a revision that would be refused at start.
+- `tests/unit/test_signing.py` — signing, a changed manifest byte, a changed
+  or added file, a wrong key, and required against not required.
 - `src/oska/engine/factory.py` — the assembly, which raises `CatalogError`
   rather than serve a catalog carrying an error.
 - `src/oska/contracts/skill.py` — the frontmatter, sections and skill models.

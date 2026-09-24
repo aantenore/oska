@@ -154,6 +154,42 @@ reading its skill roots directly picks the new version up on the next call,
 because the set of files on disk changed and the fingerprint with it. See
 [operating.md](operating.md).
 
+### Publishing to a review a team already has
+
+A directory under `changes.root` is a review for a deployment that keeps its
+catalog on the same disk it runs the CLI from. A team that reviews everything
+else as a pull request can ask for that instead:
+
+```sh
+oska change publish <request_id> --repo /path/to/checkout --path packs/ops/skills \
+  --push --open-pr 'gh pr create --head {branch} --title {title} --fill'
+```
+
+`oska.learning.publishers.GitPublisher` writes the package into an isolated
+git worktree, commits it on a new branch (`change/<request_id>`, from `--base`,
+`HEAD` by default) as the request's actor, and removes the worktree — the
+operator's checkout is untouched throughout. The branch and the commit are
+recorded on the request as soon as they exist, so a push or a pull-request
+command that fails afterward still leaves a request that says where its work
+is. Nothing is pushed without `--push`, and `--open-pr` is refused without
+`--push` too — a pull request is opened for a branch that exists somewhere to
+open it against. `--open-pr` names a command run with `{branch}` and `{title}`
+substituted; which tool that is (`gh`, a hosted API, an internal script) is the
+operator's choice, never the runtime's. A version that already exists on the
+target branch is refused, the same guarantee `apply` gives a catalog root.
+
+The commit is authored as the request's actor, and `publish` refuses to make
+that commit when the actor was only stated and never verified — a name given
+over HTTP with no identity behind it, or a `--by` with none either. Passing
+`--allow-unverified-actor` is the operator saying, at the moment of
+publishing, that this one is trusted anyway. See
+[governance.md#who-may-do-what-over-http](governance.md#who-may-do-what-over-http).
+
+Publishing does not decide the request. It stays `open`, carrying where its
+branch is, until a person applies it or rejects it — the same two moves as
+always, made after the review that happens on the branch rather than in place
+of it.
+
 ## Why there is no auto-approve
 
 The runtime has one privilege that matters: it can change a system of record.
@@ -209,6 +245,9 @@ oska propose transition <proposal_id> --to <state> --by <actor> [--note "..."]
 oska change list [--state open|applied|rejected]
 oska change show <request_id>
 oska change apply <request_id> --into <catalog root> --by <actor>
+oska change publish <request_id> --repo <path> [--path <p>] [--base HEAD]
+                     [--push] [--remote origin] [--open-pr <command>]
+                     [--allow-unverified-actor]
 oska change reject <request_id> --by <actor> [--note "..."]
 ```
 
@@ -242,22 +281,29 @@ written a package and nothing else.
 
 | Route | Does |
 | --- | --- |
-| `POST /proposals/from-session/{session_id}` | Draft from a session and store it. Returns the proposal |
-| `GET /proposals` | Every proposal held |
-| `GET /proposals/{proposal_id}` | One proposal |
-| `POST /proposals/{proposal_id}/transition` | Move it. Body: `{"to": ..., "by": ..., "note": ...}`. Returns the proposal and, when the move composed one, its change request |
-| `GET /changes` | Every change request held, oldest first |
-| `GET /changes/{request_id}` | One change request |
+| `POST /proposals/from-session/{session_id}` | Draft from a session and store it. Open to the session's own principal and to a reviewer. Returns the proposal |
+| `GET /proposals` | Every proposal held. Reviewer role required |
+| `GET /proposals/{proposal_id}` | One proposal. Reviewer role required |
+| `POST /proposals/{proposal_id}/transition` | Move it. Body: `{"to": ..., "by": ..., "note": ...}`. Reviewer role required. Returns the proposal and, when the move composed one, its change request |
+| `GET /changes` | Every change request held, oldest first. Reviewer role required |
+| `GET /changes/{request_id}` | One change request. Reviewer role required |
 
 There is no endpoint that applies a change request, and there is not going to be
 one. The two `changes` routes read; nothing over HTTP writes into a catalog
-root. The drafting route takes no actor, so the drafting entry records the
-session id; the transition route takes `by` in the body and it is required by
-the lifecycle, not by the schema — an empty one comes back as a 409.
+root. The drafting route takes no actor at all — the drafting entry always
+records the session id. The transition route takes `by` in the body, and only
+reads it when the call carries no identity: a call with one is recorded under
+the caller's principal whatever `by` says, and a call with neither an identity
+nor a non-empty `by` is refused, `422 invalid_request`, before the lifecycle
+ever runs.
 
 Errors are `{"error": ..., "detail": ...}`: 404 `unknown_proposal`, 409
-`illegal_transition` for an edge that is not allowed, a missing actor or a failed
-quality check, 422 `unknown_state` for a state that does not exist.
-
-The service has no authentication and does not verify `by`. See
-[governance.md](governance.md#identity).
+`illegal_transition` for an edge that is not allowed or a failed quality
+check, 422 `unknown_state` for a state that does not exist, 422
+`invalid_request` for a transition whose call names no actor at all. Every
+route on this page also answers `401 identity_required` when the deployment
+requires an identity and the call carries none; the drafting route also
+answers `403 session_refused` when the caller is neither the session's own
+principal nor a reviewer; the five reviewer-gated routes above also answer
+`403 reviewer_required` to a principal without `identity.reviewer_role`. See
+[governance.md#who-may-do-what-over-http](governance.md#who-may-do-what-over-http).

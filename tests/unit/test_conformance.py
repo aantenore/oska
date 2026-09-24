@@ -140,6 +140,85 @@ def test_a_wrong_expectation_fails_readably(
     assert "conformance level 0" in text
 
 
+DIRECTIVE_SCENARIO = "28_directive_from_verified_write"
+
+
+@pytest.fixture
+def directive_scenario(scenarios: list[ScenarioFile]) -> ScenarioFile:
+    """A scenario that asks for presentation and lists the directives of each turn."""
+    return next(scenario for scenario in scenarios if scenario.name == DIRECTIVE_SCENARIO)
+
+
+def test_the_directive_scenarios_ask_for_presentation_and_pass(
+    scenarios: list[ScenarioFile], example_settings: Settings, tmp_path: Path
+) -> None:
+    presenting = [scenario for scenario in scenarios if scenario.presentation]
+    assert {scenario.name for scenario in presenting} >= {
+        "27_subject_from_what_was_shown",
+        DIRECTIVE_SCENARIO,
+        "29_comparative_on_shown_rows",
+    }
+    for scenario in presenting:
+        assert any(turn.expect.directives for turn in scenario.turns)
+        result = run_scenario(scenario, example_settings, state_dir=tmp_path / scenario.name)
+        assert result.passed, result.failures
+
+
+def test_a_wrong_directive_field_fails_the_scenario(
+    directive_scenario: ScenarioFile, example_settings: Settings, tmp_path: Path
+) -> None:
+    broken = directive_scenario.model_copy(deep=True)
+    directives = broken.turns[1].expect.directives
+    assert directives
+    directives[0]["fields"]["service"] = "payments"
+
+    result = run_scenario(broken, example_settings, state_dir=tmp_path / "broken")
+
+    assert result.passed is False
+    assert result.failures == [
+        "turn 2: directive 1: field 'service' is 'search', the scenario expects 'payments'"
+    ]
+
+
+@pytest.mark.parametrize(
+    ("change", "expected"),
+    [
+        ({"view": "service_status"}, "view 'service_restarted'"),
+        ({"fields": {"shade": "blue"}}, "no field 'shade'"),
+    ],
+)
+def test_a_wrong_directive_view_or_an_absent_field_fails_the_scenario(
+    directive_scenario: ScenarioFile,
+    example_settings: Settings,
+    tmp_path: Path,
+    change: dict,
+    expected: str,
+) -> None:
+    broken = directive_scenario.model_copy(deep=True)
+    directives = broken.turns[1].expect.directives
+    assert directives
+    directives[0].update(change)
+
+    result = run_scenario(broken, example_settings, state_dir=tmp_path / "broken")
+
+    assert not result.passed
+    assert any(expected in failure for failure in result.failures), result.failures
+
+
+def test_directives_are_counted_and_absent_without_presentation(
+    directive_scenario: ScenarioFile, example_settings: Settings, tmp_path: Path
+) -> None:
+    expecting_none = directive_scenario.model_copy(deep=True)
+    expecting_none.turns[1].expect.directives = []
+    unpresented = directive_scenario.model_copy(deep=True, update={"presentation": False})
+
+    counted = run_scenario(expecting_none, example_settings, state_dir=tmp_path / "none")
+    silent = run_scenario(unpresented, example_settings, state_dir=tmp_path / "off")
+
+    assert any("1 directive(s)" in failure for failure in counted.failures)
+    assert any("0 directive(s)" in failure for failure in silent.failures)
+
+
 @pytest.fixture
 def learning_scenario(scenarios: list[ScenarioFile]) -> ScenarioFile:
     """The adaptive scenario: a session that becomes a published procedure."""

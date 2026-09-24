@@ -119,7 +119,7 @@ class PresentationMoment(BaseModel):
 
     `view` names the view; `bind` maps each directive field to evidence the
     runtime holds (`$items.<field>`, `$item.<field>`, `$selection`,
-    `$inputs.<field>`, `$receipt.<field>`). Anything else is copied as written.
+    `$receipt.<field>`). Anything else is copied as written.
     """
 
     view: str

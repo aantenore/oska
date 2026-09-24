@@ -26,6 +26,11 @@ Consequence: the same binary serves an entirely different domain by pointing at
 a different catalog root. Adding a procedure is adding a file, not shipping
 code.
 
+The principles are meant to be used to build platforms, not only to describe
+one runtime. Carried one step further, the same binary serves several domains
+at once, each from its own packs of declarations and none seeing another's;
+[14-platform-blueprint.md](14-platform-blueprint.md) states how.
+
 ## 3. Declared operations only
 
 The model may plan only operations that an integration skill declares, with a

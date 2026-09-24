@@ -14,6 +14,7 @@ from typing import Literal, Protocol
 from pydantic import BaseModel, Field
 
 from oska.contracts.skill import Skill, SkillType
+from oska.ontology.naming import noun_of, plural_of
 
 NodeKind = Literal["entity", "integration", "operation", "procedure", "composite", "state"]
 EdgeKind = Literal[
@@ -170,6 +171,10 @@ def _entity_node(skill: Skill) -> Node:
             "initial_state": frontmatter.initial_state,
             "final_states": list(frontmatter.final_states),
             "state_read": frontmatter.state_read,
+            "noun": noun_of(frontmatter),
+            "plural": plural_of(frontmatter),
+            "display_fields": list(frontmatter.display_fields),
+            "comparable_fields": list(frontmatter.comparable_fields),
             "fields": [
                 {
                     "name": field.name,

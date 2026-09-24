@@ -4,6 +4,16 @@ A goal is one procedure, or the ordered procedures of a composite. This module
 plans the procedure the session is on, runs what the plan declares, and moves
 to the next one, until something stops it: a question to ask, a write waiting
 for approval, a refusal, or the end of the list.
+
+When a list is in focus, the refinements the shown records allow are handed
+to the planner with the procedure, as facts: a comparative in the request may
+pick among them and has nothing else to pick from.
+
+A goal moves to its next procedure only past writes that landed. A step whose
+write was not confirmed by its read-back, or never left, ends the goal there,
+whether the write ran in this turn or was found in the ledger from an earlier
+one. A write found in the ledger unconfirmed also stops its own plan, so no
+operation after it runs and no later write asks for an approval.
 """
 
 from __future__ import annotations
@@ -12,18 +22,36 @@ from dataclasses import dataclass, field
 
 from oska.catalog.registry import SkillRegistry
 from oska.catalog.resolver import CapabilityResolver, SuggestedAction, offer
-from oska.contracts.common import Hydrated, PendingInfo
+from oska.contracts.common import Hydrated, Outcome, PendingInfo
 from oska.contracts.plan import Plan
 from oska.engine import outcomes as build
+from oska.engine import subject
 from oska.engine.execution import PlanExecutor, StopReason, TurnContext
+from oska.engine.outcomes import landed
 from oska.engine.reply import ReplyKind
 from oska.governance.verification import read_state
 from oska.planner.planner import InvalidPlanError, Planner
 
-__all__ = ["Answer", "GoalRunner"]
+__all__ = ["Answer", "GoalRunner", "landed", "stopped_short", "unlanded"]
 
 UNKNOWN_PROCEDURE = "the procedure this session was working on is no longer in the catalog"
 _PLAN_FAILED = "the plan could not run"
+NOT_LANDED = "a write was not confirmed as done, so nothing planned after it was run"
+_WRITE_KINDS = frozenset({"receipt", "ledger_hit"})
+
+
+def stopped_short(reply_intent: str) -> str:
+    """The reply intent of a goal that stopped at a write, saying the rest was not run."""
+    return f"{reply_intent}; {NOT_LANDED}" if reply_intent else NOT_LANDED
+
+
+def unlanded(outcomes: list[Outcome]) -> bool:
+    """Whether any write among these outcomes did not land, confirmed."""
+    return any(
+        (outcome.kind in _WRITE_KINDS and not landed(outcome))
+        or (outcome.kind == "unavailable" and outcome.data.get("write"))
+        for outcome in outcomes
+    )
 
 
 @dataclass
@@ -87,15 +115,27 @@ class GoalRunner:
                     pending=PendingInfo(kind="input", question=plan.missing[0].question),
                     reply_intent=reply_intent,
                 )
+            before = len(ctx.outcomes)
             stop = self._executor.run(ctx, runbook, hydrated, plan, 0)
             if stop != "completed":
                 return self.stopped(ctx, stop, reply_intent)
+            if unlanded(ctx.outcomes[before:]):
+                state.pending_goal = None
+                last = goal.step_index + 1 >= len(goal.runbook_ids)
+                return Answer(
+                    "outcomes",
+                    reply_intent=reply_intent if last else stopped_short(reply_intent),
+                )
             goal.step_index += 1
         state.pending_goal = None
         return Answer("outcomes", suggestions=self.suggestions(ctx), reply_intent=reply_intent)
 
     def stopped(self, ctx: TurnContext, stop: StopReason, reply_intent: str) -> Answer:
-        """The answer for a plan that did not run to the end."""
+        """The answer for a plan that did not run to the end.
+
+        A plan stopped at a write found in the ledger unconfirmed had operations
+        after it, so the reply is told that the rest was not run.
+        """
         if stop == "approval":
             return Answer(
                 "approval_request",
@@ -103,6 +143,8 @@ class GoalRunner:
                 reply_intent=reply_intent,
             )
         ctx.state.pending_goal = None
+        if stop == "not_landed":
+            return Answer("outcomes", reply_intent=stopped_short(reply_intent))
         return Answer("outcomes", reply_intent=reply_intent)
 
     def suggestions(self, ctx: TurnContext) -> list[SuggestedAction]:
@@ -147,8 +189,19 @@ class GoalRunner:
         planner = self._planner
         if planner is None:
             return None
+        refinements = subject.refinements(
+            ctx.state, self._registry, hydrated.runbook.frontmatter.capabilities.reads
+        )
         try:
-            plan = planner.plan(hydrated, list(ctx.state.history), dict(collected))
+            plan = planner.plan(
+                hydrated,
+                list(ctx.state.history),
+                dict(collected),
+                refinements=refinements,
+                from_focus=subject.focus_inputs(
+                    hydrated.runbook, self._registry, ctx.state, collected
+                ),
+            )
         except InvalidPlanError as error:
             ctx.emit(
                 "plan",
@@ -167,6 +220,7 @@ class GoalRunner:
                 ],
                 "missing": [item.field for item in plan.missing],
                 "reply_intent": plan.reply_intent,
+                **({"refinements": refinements} if refinements else {}),
             },
         )
         return plan

@@ -26,6 +26,15 @@
       "default": 2,
       "description": "Lowest conformance level this scenario belongs to. A scenario carrying a learning block belongs to level 3."
     },
+    "presentation": {
+      "type": "boolean",
+      "default": false,
+      "description": "Build the engine with presentation on, as a domain that enables it builds its own. Without it a turn returns no directive."
+    },
+    "principal": {
+      "$ref": "#/$defs/principal",
+      "description": "The identity an authenticated channel puts on every turn of the session. Without it the session carries no principal."
+    },
     "provider_script": {
       "type": "array",
       "default": [],
@@ -133,7 +142,8 @@
               "rejected",
               "invalid_plan",
               "approval_pending",
-              "cancelled"
+              "cancelled",
+              "unavailable"
             ]
           },
           "description": "The outcome kinds of the turn, in order, exactly."
@@ -167,6 +177,71 @@
             null
           ],
           "description": "Verification status of the most recent receipt, or null when there is none."
+        },
+        "directives": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "default": null,
+          "items": {
+            "$ref": "#/$defs/directive"
+          },
+          "description": "The directives the turn must return, in order: the same count, and for each the same procedure, moment and view and every listed field with an equal value. Fields not listed are not compared. An empty list asserts that there are none; no list means directives are not checked."
+        }
+      }
+    },
+    "directive": {
+      "type": "object",
+      "required": [
+        "procedure",
+        "moment",
+        "view"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "procedure": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The procedure that declared the directive."
+        },
+        "moment": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The moment of the turn the directive was declared for."
+        },
+        "view": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The view the directive names."
+        },
+        "fields": {
+          "type": "object",
+          "default": {},
+          "description": "Fields that must be present with an equal value. A field the directive holds and this object does not name is not compared."
+        }
+      }
+    },
+    "principal": {
+      "type": "object",
+      "required": [
+        "subject"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "subject": {
+          "type": "string",
+          "description": "Who the channel says this is."
+        },
+        "attributes": {
+          "type": "object",
+          "default": {},
+          "description": "Whatever else traveled with the identity."
+        },
+        "authenticated": {
+          "type": "boolean",
+          "default": true,
+          "description": "The channel's own statement."
         }
       }
     },

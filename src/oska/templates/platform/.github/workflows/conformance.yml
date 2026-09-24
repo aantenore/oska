@@ -1,0 +1,25 @@
+name: conformance
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  conform:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: install oska
+        run: pip install oska
+      - name: check every pack in isolation
+        run: |
+          set -e
+          for pack in packs/*/; do
+            echo "checking ${pack%/}"
+            oska pack check "${pack%/}"
+          done
+      - name: check the platform as a whole
+        run: oska conform --platform platform.yaml

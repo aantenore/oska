@@ -20,6 +20,10 @@ The layout under the change request root is one directory per request::
 
 The package is laid out the way a catalog root is laid out, so applying a
 request is a copy of one subtree and not a translation.
+
+A request may also be published as a branch of a git repository, for a person
+to review there. `publishers.py` does that and records the branch and the
+commit on the request; the request stays open until a person decides on it.
 """
 
 from __future__ import annotations
@@ -34,7 +38,7 @@ from pathlib import Path
 from pydantic import BaseModel, Field
 
 from oska.config import Settings, load_runtime_config, state_path
-from oska.contracts.proposal import QualityReport
+from oska.contracts.proposal import VERIFIED_SOURCES, ActorSource, QualityReport
 
 __all__ = [
     "POLICY_FILENAME",
@@ -74,13 +78,24 @@ class ChangeRequestState(StrEnum):
 
 
 class ChangeRequest(BaseModel):
-    """What one review is about: a package, its origin and its decision."""
+    """What one review is about: a package, its origin and its decision.
+
+    `publisher` names how the package was published for review. A request
+    published as a branch records the repository, the branch, the commit and,
+    when one was opened, what the pull request command answered.
+
+    `actor_source` and `actor_verified` say whether `actor` is an identity
+    the runtime established or only a name the approving call gave; a request
+    written before they were kept reads as stated.
+    """
 
     request_id: str
     proposal_id: str
     skill_id: str
     version: int
     actor: str
+    actor_source: ActorSource = ActorSource.stated
+    actor_verified: bool = False
     created_at: datetime
     quality: QualityReport = Field(default_factory=QualityReport)
     state: ChangeRequestState = ChangeRequestState.open
@@ -89,6 +104,12 @@ class ChangeRequest(BaseModel):
     decided_by: str = ""
     note: str = ""
     applied_to: str = ""
+    publisher: str = "directory"
+    repository: str = ""
+    branch: str = ""
+    commit: str = ""
+    pushed: bool = False
+    pull_request: str = ""
 
 
 def package_of(skill_id: str, version: int) -> str:
@@ -110,14 +131,19 @@ def new_request(
     version: int,
     actor: str,
     quality: QualityReport,
+    *,
+    actor_source: ActorSource | str = ActorSource.stated,
 ) -> ChangeRequest:
     """An open request for one package, stamped with the moment it was composed."""
+    source = ActorSource(actor_source)
     return ChangeRequest(
         request_id=str(uuid.uuid4()),
         proposal_id=proposal_id,
         skill_id=skill_id,
         version=version,
         actor=actor,
+        actor_source=source,
+        actor_verified=source in VERIFIED_SOURCES,
         created_at=datetime.now(UTC),
         quality=quality,
         package=package_of(skill_id, version),
@@ -274,6 +300,13 @@ def summarize(request: ChangeRequest) -> str:
         )
     if request.applied_to:
         lines.append(f"- Applied into: {request.applied_to}")
+    if request.branch:
+        where = "pushed" if request.pushed else "not pushed"
+        lines.append(
+            f"- Branch: {request.branch} at {request.commit} in {request.repository} ({where})"
+        )
+    if request.pull_request:
+        lines.append(f"- Pull request: {request.pull_request}")
     if request.note:
         lines.append(f"- Note: {request.note}")
     lines.extend(

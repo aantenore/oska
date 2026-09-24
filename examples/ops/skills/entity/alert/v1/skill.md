@@ -39,6 +39,10 @@ relations:
     target: entity.service
     cardinality: one
     description: Service the rule behind this alert watches.
+noun: alert
+plural: alerts
+display_fields: [id, service, rule, state]
+comparable_fields: [state, service]
 ---
 
 ## Purpose

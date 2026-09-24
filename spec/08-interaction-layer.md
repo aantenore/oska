@@ -22,6 +22,8 @@ SessionState:
   pending_goal: PendingGoal | null
   pending_approval: PendingApproval | null
   last_entities: [string]        # entities the most recent read touched
+  presented: object              # what the runtime last showed, from evidence
+  focus: object                  # what the conversation is about, derived from it
   history: [Message]
   receipts: [receipt_id]
   turn_count: integer
@@ -113,6 +115,14 @@ TurnResult:
   outcomes: [Outcome]
   pending: {kind: input|approval, question, approval} | null
   events: [AuditEvent]
+  directives: [Directive]        # empty unless the domain enables presentation
+
+Directive:
+  procedure: string
+  moment: on_results | on_single_result | on_selection
+        | on_verified_write | on_completion
+  view: string
+  fields: object
 
 Outcome:
   kind: read | receipt | ledger_hit | denied | rejected
@@ -161,12 +171,76 @@ The HTTP application:
 | `GET /proposals` | Every proposal held |
 | `GET /proposals/{proposal_id}` | One proposal |
 | `POST /proposals/{proposal_id}/transition` | Move one proposal to another state |
+| `GET /changes` | Every change request held |
+| `GET /changes/{request_id}` | One change request |
 | `GET /health` | Whether the runtime is up, and which catalog it holds |
 
 Only `oska run` and `POST /sessions/{session_id}/turns` carry turns; the
-rest read the catalog or drive the evolution layer. Neither channel
-authenticates: both assume an authenticated caller in front of them, and the
-actor of a proposal transition is recorded as it arrives.
+rest read the catalog or drive the evolution layer.
+
+The HTTP channel resolves every call to an identity before its handler runs,
+in one of two modes the configuration chooses. In `proxy` mode an
+authenticating proxy in front of the runtime sets the subject and attributes
+headers and the runtime takes them as given, so the binding of a write to the
+person who asked is exactly as strong as the deployment's guarantee that
+nothing reaches the port except through that proxy. In `token` mode the caller
+presents a signed session token and the channel verifies it itself
+([06-governance-layer.md](06-governance-layer.md)). With `identity.required`,
+on by default in `token` mode, a call without an identity is refused with 401;
+the health read stays open, and the metrics read only where the configuration
+marks it public. A deployment that requires no identity answers a call that
+carries none as a conversation, and serves it as its single user, review
+included, only where it declares itself single-user.
+
+A call on a session — a turn, its receipts, a proposal drafted from it — is
+held to the subject that opened the session, and every refusal of such a call
+answers the same 403, whatever its reason. Reading proposals and change
+requests and moving a proposal need a principal whose `roles` attribute holds
+the configured reviewer role; drafting from a session is open to the session's
+own principal and to a reviewer. A transition is recorded under the caller's
+principal whatever its body says; only a call without an identity, in a
+single-user deployment, names its actor in `by`, and that name is recorded as stated and
+marked unverified. The command line records the person at the terminal as the
+operator. What the reference channel reads and refuses is in
+`src/oska/api/identity.py` and `src/oska/api/routes.py`.
+
+### Presentation directives
+
+Responsibility: tell a presentation surface what a turn may show, in a form a
+channel renders without interpreting the conversation.
+
+A procedure declares, per moment of a turn, a view and how its fields are
+filled:
+
+```text
+presentation:
+  <moment>:
+    view: string
+    bind: {field: binding}     # "$items.<f>" | "$item.<f>" | "$selection"
+                               # | "$receipt.<f>" | literal
+    fields: object             # copied as written
+```
+
+After a turn, each procedure that ran reaches the first of these moments it
+declares: `on_verified_write` (one of its writes was performed and verified),
+`on_selection` (its subject was resolved from the focus and a read of the turn
+returned that record), `on_results` (a read returned several records),
+`on_single_result` (a read returned one), `on_completion` (its goal finished
+in the turn and every write of the turn is executed and verified). Every
+binding is answered from evidence the runtime holds for that procedure: the
+records its reads returned, the record the turn selected, and a receipt whose
+read-back verified it. What a person typed is not evidence: a value somebody
+gave is shown once a write carried it and its read-back confirmed it, as
+`$receipt.<field>`, and a binding to `$inputs.<field>` is refused when the
+catalog is read, under `presentation_unverified_input`. A binding the evidence
+cannot answer drops the whole directive. No value is taken from model text.
+
+The contract with a channel is narrow. A directive is a request to show
+something: a channel MAY render it and MAY ignore it, and nothing a channel does
+with it reaches back into the turn. A directive never writes, never approves
+and is never read into a plan, a policy or a payload. It is emitted only where
+the serving domain enables presentation; elsewhere a turn returns none. The
+directives of a turn are also recorded on its `reply` audit event.
 
 ### Human-in-the-loop
 
@@ -189,7 +263,9 @@ One user turn. Numbered steps, executed in order.
    event with the kind, the procedure, the confidence, the deciding stage and
    the language. If the decision carries a language, adopt it.
 3. **Greeting or out of scope.** Reply from the resolver's declared scope. No
-   procedure runs. A model provider, if present, only phrases it.
+   procedure runs. A model provider, if present, only phrases it: an out of
+   scope reply is written by the one reply call of the turn from the scope
+   handed over as a fact, and falls back to the template.
 4. **Cancellation.** Discard any pending approval — emitting
    `approval_decided` with decision `cancelled` — and any pending goal. Record a
    `cancelled` outcome.
@@ -213,6 +289,8 @@ One user turn. Numbered steps, executed in order.
    procedure the router named, or ask discovery; on a tie, ask the planner to
    pick. If nothing is chosen, reply out of scope. Set the pending goal: a
    composite expands into its members in order, anything else is a single step.
+   A member whose subject joins the focus starts with the record the message
+   refers to already collected, resolved in the precedence of L5.
 8. **Advance the goal.** While a step remains: hydrate the current procedure and
    emit `hydrate`; with no model provider, stop and say so without running
    anything; otherwise plan it and emit `plan`. A plan that does not validate
@@ -220,8 +298,10 @@ One user turn. Numbered steps, executed in order.
    plan reports missing inputs, store them, ask the first question and stop.
    Otherwise execute the plan from its first operation. If execution stops for
    an approval, reply with the exact payload and stop. If it stops for any other
-   reason, discard the goal. When a step completes, move to the next; when all
-   steps complete, discard the goal.
+   reason, discard the goal. When a step completes with a write among its
+   outcomes that is not executed and verified, a ledger hit included, discard
+   the goal and run no later step. When a step completes, move to the next;
+   when all steps complete, discard the goal.
 9. **Execute a plan.** For each operation in order: look up its declaration; an
    undeclared operation is an `invalid_plan` outcome and stops the plan. A read
    executes immediately, records a `read` outcome and updates the entities seen
@@ -232,18 +312,31 @@ One user turn. Numbered steps, executed in order.
 10. **Resume after approval.** Hydrate the procedure the approval names; a
     procedure the catalog no longer holds records `invalid_plan` and stops.
     Re-read what the plan read before the write, so the policy is judged on
-    current state. Re-evaluate the policy, emitting `policy` for that second
+    current state; a read that cannot be performed again records
+    `unavailable`, saying the state could not be confirmed, and stops here with
+    nothing sent. Re-evaluate the policy, emitting `policy` for that second
     evaluation; a denial records `denied` and stops here. Record the intent,
-    execute, verify, update the receipt, record a `receipt` outcome, then
-    continue the same plan from the operation after the write. When that plan
-    completes and the goal has further steps, move to the next step and resume
-    at step 8. Never re-plan on resume.
+    execute, verify, update the receipt and record a `receipt` outcome. A
+    write that is not executed and verified ends the goal here: nothing after
+    it runs. Otherwise continue the same plan from the operation after the
+    write. When that plan completes with every write executed and verified and
+    the goal has further steps, move to the next step and resume at step 8.
+    Never re-plan on resume.
 11. **Suggest.** When a read-only procedure completes, ask the resolver which
     actions the entities just read support, and carry those phrases as
     suggestions.
-12. **Reply.** Build the reply from the outcome list, the pending information,
-    the suggestions and the reply intent, in the session language. Emit a
-    `reply` event.
+12. **Reply.** Record what the turn showed as `presented` and derive `focus`
+    from it. Where the domain enables presentation, build the directives of
+    the procedures that ran. Build the reply from the outcome list, the pending
+    information, the suggestions and the reply intent, in the session
+    language. The reply writer is told, for each write of the turn, whether it
+    landed. When any write of the turn is not executed and verified, the text
+    the reply writer returns is set aside and the deterministic form answers,
+    which costs something plain: that answer is in the language of the
+    deterministic templates, not the language of the conversation; only the
+    offered actions keep the labels the call returned. Emit a
+    `reply` event carrying the directives and any record the
+    turn took from the focus.
 13. **Save.** Append the reply to the history and save the session, whatever
     happened.
 
@@ -322,6 +415,28 @@ One user turn. Numbered steps, executed in order.
   planned under, and the goal MUST finish under that revision. A session MUST
   take a newer revision only on a turn where nothing of an earlier turn is
   waiting to be answered.
+- **OSKA-IXN-21** — A turn MUST return a directive only where the serving domain
+  enables presentation, and only for a procedure that ran in the turn and
+  declares the moment it reached. A turn in a domain that does not enable it
+  MUST return none.
+- **OSKA-IXN-22** — Every field of a directive MUST be copied as declared or
+  answered from evidence the runtime holds: the records the procedure's reads
+  returned, the record the turn selected and a read returned, or a receipt
+  whose read-back verified it. A binding the evidence cannot answer MUST drop
+  the whole directive, and a field MUST NOT be taken from model text.
+- **OSKA-IXN-23** — A directive MUST NOT write, approve or reach a plan, a
+  policy or a payload. A channel MAY render or ignore it, and nothing a channel
+  does with it MUST change what the turn did.
+- **OSKA-IXN-24** — The directives of a turn MUST be recorded on the audit
+  trail of that turn.
+- **OSKA-IXN-25** — A binding MUST name one of `$items.<f>`, `$item.<f>`,
+  `$selection` or `$receipt.<f>`. A binding to what a person typed
+  (`$inputs.<f>`) MUST be refused (`presentation_unverified_input`).
+- **OSKA-IXN-26** — `on_completion` MUST be reached only when the goal finished
+  in the turn and every write of the turn is executed and verified.
+- **OSKA-IXN-27** — The reply writer MUST be told, for each write of the turn,
+  whether it landed. When any write of the turn is not executed and verified, a
+  model-written reply MUST NOT be used; the deterministic form MUST answer.
 
 ## Rationale
 
@@ -353,11 +468,26 @@ whether it may run is current.
 
 ## In the reference implementation
 
-- `src/oska/engine/` — `engine.py` (the algorithm), `execution.py` (plan
-  execution and the write path), `goals.py`, `state.py`, `session_store.py`,
+- `src/oska/engine/` — `engine.py` (the algorithm and turn dispatch),
+  `execution.py` (plan execution), `approvals.py` (approve and reject, the
+  hash checks, the second evaluation, going on only past a verified write),
+  `settlement.py` (the claim, the send and the read-back), `binding.py` (the
+  identity and the revision a session is bound to), `budget.py`,
+  `boundary.py`, `collaborators.py`, `principal_inputs.py`, `lifecycle.py`,
+  `calls.py`, `context.py`, `goals.py`, `state.py`, `session_store.py`,
   `outcomes.py`, `reply.py`, `factory.py`.
 - `src/oska/contracts/common.py` — `TurnResult`, `Outcome`, `PendingGoal`,
-  `PendingApproval`, `PendingInfo`.
+  `PendingApproval`, `PendingInfo`, `Directive`.
+- `src/oska/engine/presentation.py` — the moments, the evidence of each
+  procedure, the binding of a declared moment to it, and the switch that keeps
+  a domain without presentation from emitting any.
+- `src/oska/ontology/naming.py` and `src/oska/catalog/checks/presentation.py`
+  — the binding grammar, and the refusal of a binding to what a person typed.
+- `tests/unit/test_presentation.py` and
+  `examples/ops/scenarios/28_directive_from_verified_write.json` — a directive
+  filled from a verified receipt, one dropped when a binding cannot be
+  answered, none when presentation is off, and no completion view past a
+  write that did not land.
 - `src/oska/services.py` — the one assembly both channels are built over:
   engine, catalog, proposal store, publication root.
 - `src/oska/cli/` (`main.py`, `commands_run.py`, `commands_serve.py`,

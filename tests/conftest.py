@@ -13,6 +13,7 @@ import yaml
 from oska.catalog.registry import SkillRegistry
 from oska.catalog.resolver import CapabilityResolver
 from oska.config import Settings
+from oska.platform import Platform
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -79,6 +80,30 @@ def example_settings(repo_root: Path, tmp_path: Path) -> Settings:
         state_dir=tmp_path / "state",
         provider="scripted",
     )
+
+
+@pytest.fixture(scope="session")
+def examples(repo_root: Path) -> Path:
+    """Directory holding the example packs and the example platform manifest."""
+    return REPO_ROOT / "examples"
+
+
+@pytest.fixture
+def platform_settings(repo_root: Path, tmp_path: Path) -> Settings:
+    """Settings of a process serving a platform; the manifest names catalogs and bindings."""
+    return Settings(
+        runtime_config=repo_root / "configs" / "runtime.json",
+        model_config_path=repo_root / "configs" / "model.json",
+        schemas_dir=repo_root / "schemas",
+        state_dir=tmp_path / "state",
+        provider="none",
+    )
+
+
+@pytest.fixture
+def example_platform(examples: Path, platform_settings: Settings) -> Platform:
+    """The example platform: two domains, each over one example pack."""
+    return Platform.from_file(examples / "platform.yaml", platform_settings)
 
 
 @pytest.fixture

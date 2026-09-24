@@ -11,7 +11,6 @@ from typing import Annotated
 
 import typer
 
-from oska.catalog.resolver import CapabilityResolver
 from oska.catalog.validator import validate_all
 from oska.cli import commands_run, commands_serve
 from oska.cli.commands_cassette import cassette
@@ -20,17 +19,23 @@ from oska.cli.commands_enrich import app as enrich
 from oska.cli.commands_evaluate import app as evaluate
 from oska.cli.commands_forget import app as forget
 from oska.cli.commands_improve import app as improve
+from oska.cli.commands_new import app as new
+from oska.cli.commands_pack import app as pack
 from oska.cli.commands_propose import propose
 from oska.cli.commands_revision import app as revision
 from oska.cli.commands_slo import app as slo
 from oska.cli.options import (
+    DomainOption,
+    PlatformOption,
     SchemasOption,
     SkillsOption,
+    TenantOption,
     fail,
     registry_for,
+    resolver_for,
     settings_for,
 )
-from oska.config import load_model_config, load_runtime_config
+from oska.config import configuration_sources, load_model_config, load_runtime_config
 from oska.ontology.export import to_json, to_mermaid
 from oska.ontology.graph import OntologyGraph
 from oska.ontology.queries import operations_on, related, vocabulary
@@ -61,9 +66,15 @@ FormatOption = Annotated[
 
 
 @app.command()
-def validate(skills: SkillsOption = None, schemas: SchemasOption = None) -> None:
+def validate(
+    skills: SkillsOption = None,
+    schemas: SchemasOption = None,
+    platform: PlatformOption = None,
+    domain: DomainOption = None,
+    tenant: TenantOption = None,
+) -> None:
     """Check every skill in the catalog and report what is wrong."""
-    settings = settings_for(skills)
+    settings = settings_for(skills, platform=platform, domain=domain, tenant=tenant)
     registry = registry_for(settings)
     schema_dir = schemas or settings.schemas_dir
     issues = list(registry.parse_errors())
@@ -79,12 +90,18 @@ def validate(skills: SkillsOption = None, schemas: SchemasOption = None) -> None
 
 @app.command()
 def config(skills: SkillsOption = None) -> None:
-    """Print the settings in force and the configuration files they name, as JSON."""
+    """Print the settings in force and the configuration files they name, as JSON.
+
+    `sources` says, for each file the package ships a default of, whether a
+    file on disk or the packaged default is in force.
+    """
     settings = settings_for(skills)
     try:
+        runtime = load_runtime_config(settings=settings)
         document = {
             "settings": settings.model_dump(mode="json"),
-            "runtime": load_runtime_config(settings=settings).model_dump(mode="json"),
+            "sources": configuration_sources(settings, runtime),
+            "runtime": runtime.model_dump(mode="json"),
             "model": load_model_config(settings=settings).model_dump(mode="json"),
         }
     except (OSError, ValueError) as exc:
@@ -93,9 +110,13 @@ def config(skills: SkillsOption = None) -> None:
 
 
 @app.command()
-def capabilities(skills: SkillsOption = None) -> None:
+def capabilities(
+    skills: SkillsOption = None,
+    platform: PlatformOption = None,
+    domain: DomainOption = None,
+) -> None:
     """Print the procedures on offer, in the order the runtime names them."""
-    resolver = CapabilityResolver(registry_for(settings_for(skills)))
+    resolver = resolver_for(skills, platform=platform, domain=domain)
     processes = resolver.available_processes()
     typer.echo(resolver.declared_scope())
     for skill in processes:
@@ -163,6 +184,8 @@ app.add_typer(revision, name="revision")
 app.add_typer(forget, name="forget")
 app.add_typer(evaluate, name="evaluate")
 app.add_typer(slo, name="slo")
+app.add_typer(new, name="new")
+app.add_typer(pack, name="pack")
 
 
 if __name__ == "__main__":

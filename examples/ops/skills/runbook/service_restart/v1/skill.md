@@ -25,6 +25,21 @@ guardrails:
   - guardrail.identifiers_are_never_invented
   - guardrail.exact_payload_approval
   - guardrail.read_back_before_confirmation
+subject:
+  entity: entity.service
+  cardinality: one
+  joins: focus
+presentation:
+  on_selection:
+    view: service_selected
+    bind:
+      service: $selection
+  on_verified_write:
+    view: service_restarted
+    bind:
+      service: $receipt.service
+      receipt: $receipt.receipt_id
+      verification: $receipt.verification
 runtime:
   action: restart a service
   action_on_selection: restart it

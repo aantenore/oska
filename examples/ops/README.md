@@ -1,4 +1,4 @@
-# Example catalog: running services
+# Example pack: running services
 
 A small estate of six services, three in staging and three in production, with
 their deployments, incidents and alerts. It exists so the runtime has something
@@ -6,8 +6,18 @@ concrete to run against. Nothing here is part of the package: the core knows
 about skills, operations, policies and receipts, and learns this domain only by
 reading these files.
 
+This directory is a pack: `pack.yaml` names it, what it `provides` and the
+runtime versions it `requires`, checked against these files by
+`oska pack check .`. See
+[docs/packs-and-platforms.md](../../docs/packs-and-platforms.md) for the pack
+contract, and `examples/platform.yaml` for this pack served as the
+`operations` domain of a platform alongside `examples/access/`.
+
 ## What is in it
 
+- `pack.yaml` the manifest: name, version, what this pack provides, the host
+  identity it documents for a platform to use, the conformance level it
+  claims.
 - `skills/` the catalog, one directory per skill and one directory per version.
 - `fixtures/` the records the mock connector reads and writes. Six services and
   their recent log lines, eight deployments, three incidents, four alerts.

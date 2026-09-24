@@ -22,7 +22,7 @@ scenario fails, so it drops into a build without further ceremony.
 
 A suite belongs to the catalog it was written for, so there are two runs, not
 one. The operational catalog is the default: `oska conform` runs its
-twenty-three scenarios and reports conformance level 3. The access catalog
+twenty-six scenarios and reports conformance level 3. The access catalog
 needs its own roots, its own scenarios and its own connector bindings, and
 `--skills` replaces the catalog roots rather than adding to them, which is what
 keeps either suite from seeing the other's procedures:
@@ -37,6 +37,23 @@ Eight scenarios, conformance level 2. That is every level it declares a
 scenario for: the evolution lifecycle of level 3 is a property of the runtime
 rather than of a domain, and is exercised once, by the operational suite.
 
+Both are also packs, and a pack is checked the same way in isolation, without
+naming its roots, its scenarios and its bindings separately:
+
+```sh
+oska pack check examples/ops
+oska pack check examples/access
+```
+
+Served together as `examples/platform.yaml`, conformance is reported per
+domain and then for the platform against its `target_level`:
+
+```sh
+oska conform --platform examples/platform.yaml
+```
+
+See [packs-and-platforms.md](packs-and-platforms.md#conformance-per-domain).
+
 The text report is one line per scenario, then the failures underneath, then the
 totals:
 
@@ -44,7 +61,7 @@ totals:
 pass  02_restart_staging  level 2  3 turn(s)
 ...
 level 1: 6/6 scenarios pass
-level 2: 16/16 scenarios pass
+level 2: 19/19 scenarios pass
 level 3: 1/1 scenarios pass
 conformance level 3
 ```
@@ -71,6 +88,7 @@ file stem. The normative schema is `spec/schemas/scenario.schema.json`.
   "name": "02_restart_staging",
   "description": "A restart outside production: exact-payload approval, verified receipt, and a second identical request that the ledger stops.",
   "level": 2,
+  "presentation": false,
   "provider_script": [ ... ],
   "turns": [ ... ],
   "learning": { ... }
@@ -78,6 +96,10 @@ file stem. The normative schema is `spec/schemas/scenario.schema.json`.
 ```
 
 `level` defaults to 2 and decides which bucket the result counts in.
+`presentation` defaults to `false`; a scenario asserting on `directives` (below)
+sets it, and the runner then builds that scenario's engine with presentation
+enabled, the same way a platform domain that enables it builds its own — see
+[presentation.md#enabling-it](presentation.md#enabling-it).
 
 ### `provider_script`
 
@@ -111,7 +133,8 @@ order of the model calls in the turn — see
     "outcomes": ["read", "approval_pending"],
     "pending": "approval",
     "receipts": 0,
-    "verification": null
+    "verification": null,
+    "directives": [ { "procedure": "runbook.service_restart", "moment": "on_selection", "view": "...", "fields": { } } ]
   },
   "connector_behaviors": { ... }
 }
@@ -125,6 +148,7 @@ order of the model calls in the turn — see
 | `pending` | `"approval"`, `"input"` or `null`. Always checked, including the null case |
 | `receipts` | How many receipts the session holds after the turn. Omit to skip |
 | `verification` | The verification status of the most recent receipt, or `null` when there is none. Always checked |
+| `directives` | The turn's `Directive` list, exactly — procedure, moment, view and fields each checked. Omit to skip; only meaningful when the scenario's own `presentation` is `true` |
 
 Outcome kinds are `read`, `receipt`, `ledger_hit`, `denied`, `rejected`,
 `invalid_plan`, `approval_pending`, `cancelled` and `unavailable`. The last is
@@ -235,7 +259,7 @@ whose lower levels all pass too. One failing level 1 scenario caps the report at
 0, however many level 3 scenarios pass, because a system that cannot say what it
 does correctly has nothing to govern.
 
-The twenty-three scenarios in `examples/ops/scenarios/` cover greeting, off
+The twenty-six scenarios in `examples/ops/scenarios/` cover greeting, off
 scope, language, a governed write with approval and verification and a ledger
 replay, a production write needing a second approval, a rejection, goal
 replacement, a policy denial, a verification failure, an invalid plan, a
@@ -243,7 +267,7 @@ cancelled approval, a session limit, an approval with nothing pending, a
 composite, a refusal at the second policy evaluation, and the learning
 lifecycle.
 
-Seven of them are newer categories and are worth naming separately, because each
+Ten of them are newer categories and are worth naming separately, because each
 asserts something the others cannot:
 
 - **An illegal lifecycle move.** A rollback asked for on a deployment that has
@@ -276,6 +300,19 @@ asserts something the others cannot:
   the wording their author declared and come back rewritten by the same call
   that wrote the reply, so the offer is the catalog's and the language is the
   conversation's.
+- **A subject taken from what was shown.** A health read shows one service;
+  "restart it" carries no service name at all, and the plan carries the one
+  the read showed anyway, stated apart from what the person typed. This is
+  `presentation: true` and asserts `directives` — see
+  [presentation.md](presentation.md).
+- **A directive filled from a verified write.** The same restart, once
+  approved: the turn's directive binds `$receipt.*` fields, and a receipt that
+  was not verified would leave the whole directive unfilled rather than
+  reporting a write that did not confirm.
+- **A comparative grounded in the rows on screen.** Several alerts shown at
+  once, differing in `state`; the refinement offered next names only the
+  values actually present among them, never a value the catalog declares but
+  nothing shown carries.
 
 The access suite adds two more: a request read while it is open is offered the
 move that completes it, and one already granted is offered nothing, because the

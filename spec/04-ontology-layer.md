@@ -248,6 +248,34 @@ description. There is one name per entity type and one per state because the
 declaration holds one; any other wording is a synonym carried by a trigger, not
 a second name.
 
+### Naming and showing
+
+Responsibility: say how a record of an entity type is called, which of its
+fields tell one shown record from another, and which of its fields a
+comparative may refine on.
+
+```text
+EntityType (continued):
+  noun: string | null               # one record; defaults to the short name
+  plural: string | null             # several records; defaults to noun + "s"
+  display_fields: [string]          # shown, and used to tell shown records apart
+  comparable_fields: [string]       # a comparative may refine on these
+```
+
+Every name listed in `display_fields` and `comparable_fields` is a declared
+field of the entity. The graph carries all four on the entity node, and the
+planning prompt names each entity by them. A field whose `type` is `list` (or
+`array`) holds several values and is matched by membership: a wanted value
+matches when it equals one of them, never when it is a piece of one. That
+holds for a filter a connector applies and for a reference the runtime
+resolves against records it has shown.
+
+A procedure names what it acts on with `subject: {entity, cardinality, joins}`.
+The entity is an entity type of the catalog. A subject that joins the focus is
+one an operation of the procedure can name a record of: an input named like an
+identifier of the entity, an input a read-back compares with that identifier,
+or an input named like the entity itself.
+
 ### Validation codes
 
 The cross-reference checks of L3 report ontology failures under their own
@@ -274,6 +302,23 @@ with a reason rather than with a schema error.
 | `ontology_move_from_final_state` | a move leaves a state declared final |
 | `ontology_unreachable_state` | a move leads to a state nothing can reach from the initial state |
 | `ontology_conflicting_required_move` | more than one required move leaves the same state |
+
+How a record is shown, what a procedure acts on and what it binds a view to
+are checked by the same pass, under codes of their own:
+
+| Code | Raised when |
+| --- | --- |
+| `presentation_unknown_display_field` | a display field is not a declared field of the entity |
+| `presentation_unknown_comparable_field` | a comparable field is not a declared field of the entity |
+| `presentation_unknown_evidence` | a binding starts with `$` and names no known kind of evidence |
+| `presentation_malformed_binding` | `$selection` names a field, or another kind names none |
+| `presentation_unknown_field` | `$items` or `$item` names a field of neither the subject's entity nor, without a subject, an entity the procedure reads |
+| `presentation_unverified_input` | a binding names `$inputs`: what a person typed is not evidence until a verified receipt carries it, as `$receipt.<field>` |
+| `presentation_unknown_receipt_field` | `$receipt` names neither a receipt field nor a field of a payload the procedure writes |
+| `presentation_receipt_without_write` | `$receipt` is bound by a procedure that writes nothing; a warning, since the directive is only ever dropped |
+| `subject_unknown_entity` | a subject names something that is not an entity type in the catalog |
+| `subject_unlisted_entity` | a runbook's subject is not one of the entities it lists |
+| `subject_unjoinable` | a subject joins the focus and no operation of the procedure can name a record of it |
 
 ## Invariants
 
@@ -383,6 +428,23 @@ with a reason rather than with a schema error.
   NOT be read as the state of any of them. A state that could not be read MUST
   NOT be treated as a state every move is legal from; no move is legal from an
   unknown state.
+- **OSKA-ONT-24** — An entity type MAY declare `noun`, `plural`,
+  `display_fields` and `comparable_fields`. Every field named in
+  `display_fields` or `comparable_fields` MUST be a declared field of the
+  entity; a catalog that names another MUST be refused under
+  `presentation_unknown_display_field` or `presentation_unknown_comparable_field`.
+- **OSKA-ONT-25** — A field declared with type `list` (or `array`) MUST be
+  matched by membership wherever a single value is compared with it: in a
+  connector filter and in the resolution of a reference to a shown record. A
+  substring of one of its values MUST NOT match.
+- **OSKA-ONT-26** — A procedure's `subject` MUST name an entity type of the
+  catalog, and a runbook's subject MUST be one of the entities it lists. A
+  subject that joins the focus MUST be nameable by an operation of the
+  procedure; a catalog where it is not MUST be refused under
+  `subject_unjoinable`.
+- **OSKA-ONT-27** — The graph MUST carry `noun`, `plural`, `display_fields`
+  and `comparable_fields` on the entity node, defaulting `noun` to the short
+  name of the entity and `plural` to the noun followed by `s`.
 
 ## Rationale
 
@@ -444,7 +506,9 @@ they are small enough that a reviewer can read them all.
   `initial_state`, `final_states`, `lifecycle` and `state_read`, and the
   `entity` and `transitions` fields of `OperationSpec`.
 - `examples/ops/skills/entity/` — the reference domain's entity declarations.
-- `src/oska/catalog/validator.py` — the cross-reference checks that enforce
+- `src/oska/catalog/checks/contract.py` and
+  `src/oska/catalog/checks/ontology.py`, run by the facade
+  `src/oska/catalog/validator.py` — the cross-reference checks that enforce
   `OSKA-ONT-3`, `OSKA-ONT-5` and `OSKA-ONT-11`, reported under the
   `ontology_*` codes listed above.
 - `src/oska/governance/verification.py` — where the closed set of states is
@@ -453,8 +517,8 @@ they are small enough that a reviewer can read them all.
   value for the state field when the `expect` block does not already name that
   field, and fails the read-back with `state_outside_declared_set` when the
   value it returns is not one the entity declares.
-- `src/oska/engine/execution.py` — where a write named by a lifecycle is
-  judged before it runs: the current state is taken from the reads the plan
+- `src/oska/engine/lifecycle.py`, called by `src/oska/engine/execution.py`
+  — where a write named by a lifecycle is judged before it runs: the current state is taken from the reads the plan
   already performed when one of them was about the object the write names, and
   from `state_read` for that object when none was, an illegal move produces an
   `invalid_plan` outcome naming the state and the legal moves, and nothing
@@ -464,6 +528,12 @@ they are small enough that a reviewer can read them all.
   them.
 - `src/oska/governance/capabilities.py` — `lifecycle_entity`, `move_for` and
   `legal_operations`, which answer which move a write is making.
+- `src/oska/ontology/naming.py` — how an entity is named and shown, the
+  field through which a procedure names its subject, the presentation binding
+  grammar, and the checks behind the `presentation_*` and `subject_*` codes,
+  which `src/oska/catalog/checks/presentation.py` reports.
+- `src/oska/connectors/mock.py` — the membership match of a filter on a field
+  holding several values.
 - `src/oska/catalog/resolver.py` and `src/oska/engine/goals.py` — where
   the suggestions after a read come from the lifecycle: the moves legal from
   the state just read, minus the ones that are not offered, with the required

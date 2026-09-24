@@ -12,11 +12,18 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
+import yaml
 from typer.testing import CliRunner
 
 from oska.catalog.registry import SkillRegistry
 from oska.cli.commands_improve import app
-from oska.config import DiscoveryConfig, ImprovementConfig, Settings, load_runtime_config
+from oska.config import (
+    DiscoveryConfig,
+    ImprovementConfig,
+    Settings,
+    load_runtime_config,
+    state_path,
+)
 from oska.contracts.common import RankedSkill
 from oska.contracts.proposal import ProposalState, SkillProposal
 from oska.contracts.receipt import VerificationStatus
@@ -59,6 +66,7 @@ from oska.index.keyword import KeywordIndex
 from oska.learning.proposals import ProposalStore
 from oska.ontology.graph import OntologyGraph
 from oska.planner.scripted import hash_bag_vector
+from oska.platform import Platform
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[2] / "src" / "oska"
 IMPROVEMENT = PACKAGE_ROOT / "improvement"
@@ -601,6 +609,132 @@ def test_applying_the_tuning_writes_the_overrides_file(
     assert report.tuning_applied is True
     assert report.overrides_path is not None
     assert Path(report.overrides_path).is_file()
+
+
+# --- the job on a platform: one run per (tenant, domain) it serves --------
+#
+# `run_job` already takes settings, and a platform's settings for one
+# (tenant, domain) already point at that pair's own state directory
+# (`Platform.settings_for`). What `oska improve run --platform` adds is the
+# loop: without `--domain` or `--tenant` it runs the job once per pair, so
+# what one domain learns from its own signals never reaches another.
+
+
+def _platform_manifest(examples: Path, tenants: list[str]) -> dict:
+    """A platform of two domains (`operations`, `access`), each serving these tenants."""
+    return {
+        "name": "trial",
+        "packs": {
+            "ops": {"path": str(examples / "ops")},
+            "access": {"path": str(examples / "access")},
+        },
+        "domains": [
+            {
+                "name": "operations",
+                "packs": ["ops"],
+                "host": {"name": "the operations desk"},
+                "tenants": tenants,
+            },
+            {
+                "name": "access",
+                "packs": ["access"],
+                "host": {"name": "the access desk"},
+                "tenants": tenants,
+            },
+        ],
+    }
+
+
+def _write_platform(directory: Path, document: dict) -> Path:
+    path = directory / "platform.yaml"
+    path.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+    return path
+
+
+@pytest.fixture
+def platform_env(monkeypatch: pytest.MonkeyPatch, repo_root: Path, tmp_path: Path) -> Settings:
+    """Settings of a platform process, with state under `tmp_path` for the CLI too.
+
+    `oska improve run --platform` reads its settings from the environment, so
+    the state directory it opens has to be the one these tests open directly.
+    """
+    state = tmp_path / "state"
+    for name, value in (
+        ("RUNTIME_CONFIG", repo_root / "configs" / "runtime.json"),
+        ("MODEL_CONFIG", repo_root / "configs" / "model.json"),
+        ("SCHEMAS_DIR", repo_root / "schemas"),
+        ("STATE_DIR", state),
+    ):
+        monkeypatch.setenv(f"OSKA_{name}", str(value))
+    monkeypatch.setenv("OSKA_PROVIDER", "none")
+    return Settings(
+        runtime_config=repo_root / "configs" / "runtime.json",
+        model_config_path=repo_root / "configs" / "model.json",
+        schemas_dir=repo_root / "schemas",
+        state_dir=state,
+        provider="none",
+    )
+
+
+def _report_path(held: Platform, tenant: str, domain: str) -> Path:
+    settings = held.settings_for(domain, tenant)
+    runtime = load_runtime_config(settings=settings)
+    return state_path(settings.state_dir, runtime.improvement.report_path)
+
+
+def test_the_job_on_a_platform_writes_into_each_pairs_directory_and_learns_only_from_it(
+    repo_root: Path, tmp_path: Path, platform_env: Settings, evaluation_dir: Path
+) -> None:
+    examples = repo_root / "examples"
+    path = _write_platform(tmp_path, _platform_manifest(examples, ["default", "acme"]))
+    held = Platform.from_file(path, platform_env)
+    signalled = held.settings_for("operations", "acme")
+    write_audit(
+        Path(signalled.state_dir) / "audit.jsonl",
+        [event("turn", "session-1", "t1", {"turn": 1, "text": "bounce the payments worker"})],
+    )
+    runner = CliRunner()
+
+    result = runner.invoke(
+        app, ["run", "--platform", str(path), "--cases", str(evaluation_dir / "routing.json")]
+    )
+
+    assert result.exit_code == 0
+    for tenant, domain in held.pairs():
+        report = read_report(_report_path(held, tenant, domain))
+        assert report is not None
+        assert report.signals == (1 if (tenant, domain) == ("acme", "operations") else 0)
+    root = Path(platform_env.state_dir)
+    assert not (root / "state" / "improvement.json").is_file()
+    assert not (root / "improvement.json").is_file()
+
+
+def test_the_job_on_a_platform_narrowed_by_domain_runs_only_that_domains_tenants(
+    repo_root: Path, tmp_path: Path, platform_env: Settings, evaluation_dir: Path
+) -> None:
+    examples = repo_root / "examples"
+    path = _write_platform(tmp_path, _platform_manifest(examples, ["default", "acme"]))
+    held = Platform.from_file(path, platform_env)
+    runner = CliRunner()
+
+    result = runner.invoke(
+        app,
+        [
+            "run",
+            "--platform",
+            str(path),
+            "--domain",
+            "operations",
+            "--cases",
+            str(evaluation_dir / "routing.json"),
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert read_report(_report_path(held, "default", "operations")) is not None
+    assert read_report(_report_path(held, "acme", "operations")) is not None
+    assert read_report(_report_path(held, "default", "access")) is None
+    assert read_report(_report_path(held, "acme", "access")) is None
 
 
 # --- level 3: the ceiling -------------------------------------------------

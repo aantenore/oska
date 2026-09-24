@@ -58,7 +58,8 @@ whether a result is good enough.
 Connector:
   id: string
   health: ConnectorHealth
-  execute(operation: string, payload: object) -> ConnectorResult
+  execute(operation: string, payload: object,
+          write?: boolean, idempotency_key?: string) -> ConnectorResult
 
 ConnectorResult:
   ok: boolean
@@ -66,9 +67,15 @@ ConnectorResult:
   error: string | null
   latency_ms: integer
   failure: transport | refused | rejected | null
-  classification: retryable | terminal | null
+  classification: retryable | ambiguous | terminal | null
+  status_code: integer | null
   health: ConnectorHealth | null
 ```
+
+`write` and `idempotency_key` are what the caller knows and the connector
+cannot see: whether the catalog declares the operation a write, and the key a
+system that collapses repeated requests may recognize it by. A connector that
+takes neither is called with the operation and the payload alone.
 
 ### Availability
 
@@ -79,15 +86,59 @@ The connector is the only place that knows which of the two statements it is
 making, so the distinction is part of its result and not a guess made above it.
 A failure is one of three things:
 
-- **transport** — the call did not reach the system, or the system did not
-  complete it: a timeout, a refused connection, an address that is not there, a
-  server error, a call the breaker refused. Retryable.
+- **transport** — the call did not reach the system, or it reached it and no
+  usable answer came back: a refused connection, an address that is not there,
+  a timeout, a connection lost after the request went out, a server error, a
+  call the breaker refused. Retryable or ambiguous, as below.
 - **refused** — the system answered and the answer was no: a record that does
   not exist, a value it would not take, a permission denied. Terminal.
 - **rejected** — the request was never sent, because it was not well formed:
   an undeclared operation, a payload missing a field the call needs. Terminal.
 
-Every connector carries a breaker over that distinction. After a configured run
+A transport failure is split once more, by whether the request left:
+
+- **retryable** — the request provably never left: the connection was refused,
+  the name did not resolve, no pooled connection was free before it could be
+  sent, the breaker kept it in. Nothing can have happened over there.
+- **ambiguous** — the request left and no usable answer came back: a read that
+  timed out, a connection reset after the request was sent, a server error, a
+  command stopped after it started. The system may have applied it.
+
+Where a connector cannot establish that a request never left, it says
+`ambiguous`. The difference decides what happens to a write: a `retryable`
+write is left to the ledger, which keeps its key open, and an `ambiguous` one
+is settled by reading it back (06, the Write Ledger).
+
+| What happened | HTTP | Command | Classification |
+|---|---|---|---|
+| never sent: not well formed | undeclared operation, unfillable path | undeclared operation, bad argument | `terminal` (rejected) |
+| never left | connection refused, name not resolved, pool exhausted, breaker open | executable not found, breaker open | `retryable` |
+| left, no usable answer | read or write timeout, connection reset after send, 5xx | timed out after it started | `ambiguous` |
+| the system said no | any 4xx, 409 included | non-zero exit | `terminal` (refused) |
+| answered past the budget | 2xx body over `max_response_bytes` | — | `terminal` (refused) |
+
+A read may be tried again inside one call. When its failure is `retryable`, or
+its status is one the binding lists in `retry_statuses`, the connector repeats
+it up to `retries` times, pausing `backoff_seconds` before the first repeat and
+twice as long before each one after, and stops as soon as its breaker opens. A
+write is never repeated inside a call: whether the catalog declares it a write
+or its protocol method is not safe, it is sent once, and what happens next is
+the ledger's decision.
+
+A response is read as a stream and no further than `max_response_bytes`. A
+successful answer larger than that is refused, `terminal`, with the budget
+named in the error; an error answer is read only as far as the part of it the
+error message keeps.
+
+Every HTTP call whose method is not safe carries an `Idempotency-Key` header.
+For a write the runtime executes, the key is derived from the session and the
+ledger key of the write, so every attempt at one intent in one session carries
+one key and no other intent carries it; a call made without one carries a key
+derived from what it sends. The key is derived locally. It is useful only where
+the system downstream honors it and collapses a request it has already seen,
+and harmless where it does not.
+
+Every connector carries a breaker over the three kinds of failure. After a configured run
 of consecutive transport failures it stops calling the system: calls are
 refused in the connector, without leaving the process, for the configured
 recovery window. One attempt is then let through, and it closes the breaker or
@@ -105,9 +156,13 @@ ResilienceConfig:
   timeout_seconds: number
   failures_before_open: integer
   recovery_seconds: number
+  retries: integer                # in-call repeats of a read; 0 by default
+  backoff_seconds: number         # the first pause; doubled for each repeat
+  retry_statuses: [integer]       # statuses that allow a read to repeat
+  max_response_bytes: integer     # the most of a body a connector reads
 ```
 
-The three settings are configuration, read from the binding the same way for
+The settings are configuration, read from the binding the same way for
 every kind of adapter, and an outage is bounded by them rather than by anything
 written into an adapter.
 
@@ -122,7 +177,10 @@ the field:
   paths deterministically, and an injected outage is declared apart from an
   injected refusal, because the two are not the same failure.
 - **HTTP.** Maps each operation to a method, a path template and the payload
-  fields allowed in the query or body. Only declared fields are sent.
+  fields allowed in the query or body. Only declared fields are sent. A value
+  put into the path is one percent-encoded segment and nothing more: it cannot
+  climb out of its segment, start a query or cut the path short, and a value
+  that names no segment at all is refused before anything is sent.
 - **Command.** Maps each operation to an argument vector template with a
   timeout. Arguments are substituted positionally; a payload value is never
   concatenated into a command string and never interpreted by a shell.
@@ -199,7 +257,8 @@ ConnectorRegistry:
 - **OSKA-INT-14** — Every failed result MUST carry a classification saying
   whether another attempt is sensible. A timeout, a connection that was refused
   or lost, a server error and a call refused by an open breaker MUST be
-  `retryable`. A payload the system rejected, a record that does not exist, any
+  `retryable` or `ambiguous`, as OSKA-INT-20 decides between them. A payload
+  the system rejected, a record that does not exist, any
   other refusal by the system, and a request that was never sent because it was
   not well formed MUST be `terminal`.
 - **OSKA-INT-15** — A connector MUST hold a breaker. After the configured run
@@ -221,6 +280,33 @@ ConnectorRegistry:
   failure, and that simulation MUST be declared apart from a simulated refusal
   by the system, so a conformance suite can exercise an outage without
   exercising a refusal.
+- **OSKA-INT-20** — A transport failure MUST be classified by whether the
+  request left. It MUST be `retryable` only where the request provably never
+  left: a refused connection, a name that did not resolve, no pooled connection
+  before the request was sent, a call the breaker refused. It MUST be
+  `ambiguous` where the request left and no usable answer came back: a read or
+  write timeout, a connection reset or lost after the request was sent, a
+  server error. A connector that cannot establish that a request never left
+  MUST classify it `ambiguous`. A refusal by the system, a 409 conflict
+  included, MUST be `terminal`.
+- **OSKA-INT-21** — A connector MAY repeat a read inside one call, at most the
+  configured `retries` times, only when its failure is `retryable` or its
+  status is listed in `retry_statuses`, pausing `backoff_seconds` before the
+  first repeat and a growing pause before each later one, and MUST stop when
+  its breaker opens. A write — an operation the catalog declares a write, or a
+  call whose protocol method is not safe — MUST NOT be repeated inside a call.
+- **OSKA-INT-22** — A connector MUST NOT read more of a response body than
+  `max_response_bytes`. A successful answer larger than that MUST be refused as
+  `terminal`, and the error MUST name the budget.
+- **OSKA-INT-23** — An HTTP adapter MUST send an `Idempotency-Key` header with
+  every call whose method is not safe. For a write the runtime executes, the
+  key MUST be derived from the session and the ledger key of the write, so
+  every attempt at one intent in one session carries the same key and no other
+  intent carries it. The key is derived locally, and a conformant system MUST
+  NOT rely on it where the downstream system is not known to honor it.
+- **OSKA-INT-24** — An HTTP binding MUST percent-encode each payload value
+  placed in the path as a single segment, and MUST refuse, without sending, a
+  value that is empty, `.` or `..`.
 
 ## Rationale
 
@@ -250,10 +336,13 @@ named field, then be substituted into a position the adapter chose.
 
 ## In the reference implementation
 
-- `src/oska/connectors/` — `base.py` (protocol, result, classification and
-  breaker), `mock.py`, `http.py`, `shell.py`, `registry.py`.
+- `src/oska/connectors/` — `base.py` (protocol, result, classification,
+  breaker, in-call retries of reads, the idempotency key and `invoke`),
+  `mock.py`, `http.py` (what left and what did not, the response budget, the
+  `Idempotency-Key` header), `shell.py`, `registry.py`.
 - `src/oska/config.py` — `ResilienceConfig`: the timeout, the run of
-  failures that opens a breaker and the recovery window.
+  failures that opens a breaker, the recovery window, the in-call retries of a
+  read and the response budget.
 - `src/oska/contracts/skill.py` — `OperationSpec`, `VerifySpec`.
 - `src/oska/governance/capabilities.py` — the operation registry view over
   the catalog.

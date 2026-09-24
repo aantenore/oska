@@ -29,6 +29,17 @@ guardrails:
   - guardrail.identifiers_are_never_invented
   - guardrail.exact_payload_approval
   - guardrail.read_back_before_confirmation
+subject:
+  entity: entity.service
+  cardinality: one
+  joins: focus
+presentation:
+  on_verified_write:
+    view: deployment_rolled_back
+    bind:
+      service: $receipt.service
+      version: $receipt.target_version
+      receipt: $receipt.receipt_id
 runtime:
   action: roll a service back to an earlier version
   action_on_selection: roll it back

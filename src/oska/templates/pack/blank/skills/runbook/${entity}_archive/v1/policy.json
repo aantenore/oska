@@ -1,0 +1,12 @@
+{
+  "skill_id": "runbook.${entity}_archive",
+  "default": "deny",
+  "rules": [
+    {
+      "operation": "${entity}.archive",
+      "effect": "allow",
+      "max_per_session": 2,
+      "reason": "Archiving only changes a status field and is corrected by editing the record directly, so one approval is enough."
+    }
+  ]
+}

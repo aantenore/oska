@@ -1,0 +1,23 @@
+{
+  "name": "01_greeting",
+  "description": "An opening greeting is answered from the catalog alone, with no model call.",
+  "level": 1,
+  "provider_script": [],
+  "turns": [
+    {
+      "user": "hello",
+      "expect": {
+        "kind": "greeting",
+        "contains": [
+          "I can",
+          "check a ${entity}'s status",
+          "archive a ${entity}"
+        ],
+        "outcomes": [],
+        "pending": null,
+        "receipts": 0,
+        "verification": null
+      }
+    }
+  ]
+}

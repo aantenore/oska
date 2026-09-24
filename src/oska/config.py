@@ -4,6 +4,21 @@ Every value is external: paths and the provider selection come from the
 environment (prefix `OSKA_`), thresholds and copy come from `runtime.json`,
 provider access comes from `model.json`. Relative paths resolve against the
 current working directory.
+
+The runtime configuration, the model configuration, the guardrail catalog and
+the schema directory ship with the package, so an installation works in a
+directory that holds none of them. Each is resolved in this order:
+
+1. An explicit environment variable (`OSKA_RUNTIME_CONFIG`,
+   `OSKA_MODEL_CONFIG`, `OSKA_GUARDRAILS_CATALOG`, `OSKA_SCHEMAS_DIR`), or a
+   value given to `Settings` directly, wins and is used as given.
+2. Otherwise the configured path, when it exists relative to the working
+   directory: `configs/runtime.json`, `configs/model.json`, `schemas/`, and
+   the catalog `runtime.json` names under `guardrails.catalog` (also looked
+   for beside the runtime configuration).
+3. Otherwise the packaged default under `oska/defaults/`.
+
+`configuration_sources` names which of these is in force for each.
 """
 
 from __future__ import annotations
@@ -14,12 +29,41 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 ENV_PREFIX = "OSKA_"
 ProviderName = Literal["openai_compatible", "scripted", "none"]
 
 _PATH_SEPARATORS = (os.pathsep, ",")
+
+PACKAGED_DEFAULTS = Path(__file__).resolve().parent / "defaults"
+"""Where the defaults shipped with the package live."""
+PACKAGED_CONFIGS = PACKAGED_DEFAULTS / "configs"
+PACKAGED_SCHEMAS = PACKAGED_DEFAULTS / "schemas"
+PACKAGED_SOURCE = "packaged default"
+"""How `configuration_sources` names a file read from the package itself."""
+
+RUNTIME_CONFIG_PATH = Path("configs/runtime.json")
+MODEL_CONFIG_PATH = Path("configs/model.json")
+GUARDRAILS_CATALOG_PATH = Path("configs/guardrails.json")
+SCHEMAS_PATH = Path("schemas")
+
+
+def _local_or_packaged(configured: Path, packaged: Path) -> Path:
+    """The configured path when it exists in the working directory, else the packaged one."""
+    return configured if configured.exists() else packaged
+
+
+def _default_runtime_config() -> Path:
+    return _local_or_packaged(RUNTIME_CONFIG_PATH, PACKAGED_CONFIGS / RUNTIME_CONFIG_PATH.name)
+
+
+def _default_model_config() -> Path:
+    return _local_or_packaged(MODEL_CONFIG_PATH, PACKAGED_CONFIGS / MODEL_CONFIG_PATH.name)
+
+
+def _default_schemas_dir() -> Path:
+    return _local_or_packaged(SCHEMAS_PATH, PACKAGED_SCHEMAS)
 
 
 class Settings(BaseModel):
@@ -30,10 +74,11 @@ class Settings(BaseModel):
     skills_roots: list[Path] = Field(
         default_factory=lambda: [Path("examples/ops/skills"), Path("state/skills")]
     )
-    runtime_config: Path = Path("configs/runtime.json")
-    model_config_path: Path = Path("configs/model.json")
+    runtime_config: Path = Field(default_factory=_default_runtime_config)
+    model_config_path: Path = Field(default_factory=_default_model_config)
+    guardrails_catalog: Path | None = None
     connectors_config: Path = Path("examples/ops/configs/connectors.json")
-    schemas_dir: Path = Path("schemas")
+    schemas_dir: Path = Field(default_factory=_default_schemas_dir)
     scenarios_dir: Path = Path("examples/ops/scenarios")
     state_dir: Path = Path("state")
     provider: ProviderName | None = None
@@ -49,6 +94,7 @@ class Settings(BaseModel):
         for field, name in (
             ("runtime_config", "RUNTIME_CONFIG"),
             ("model_config_path", "MODEL_CONFIG"),
+            ("guardrails_catalog", "GUARDRAILS_CATALOG"),
             ("connectors_config", "CONNECTORS_CONFIG"),
             ("schemas_dir", "SCHEMAS_DIR"),
             ("scenarios_dir", "SCENARIOS_DIR"),
@@ -124,11 +170,12 @@ class ReplyConfig(BaseModel):
     """Reply defaults.
 
     `conversation_window` is how many of the most recent messages are handed to
-    the model that phrases a reply.
+    the model that phrases a reply. It is at least one: the window is taken as
+    the last N messages, and zero would read as no limit at all.
     """
 
     default_language: str = "en"
-    conversation_window: int = 6
+    conversation_window: int = Field(default=6, ge=1)
 
 
 class ApiConfig(BaseModel):
@@ -148,7 +195,7 @@ class GuardrailsConfig(BaseModel):
     """Where the guardrail catalog lives, and whether guardrails run at all."""
 
     enabled: bool = True
-    catalog: Path = Path("configs/guardrails.json")
+    catalog: Path = GUARDRAILS_CATALOG_PATH
 
 
 class TracingConfig(BaseModel):
@@ -162,18 +209,19 @@ class TurnConfig(BaseModel):
     """What one turn may spend.
 
     `max_model_calls` is the budget a turn may not exceed; work that needs more
-    belongs at publish time or in a scheduled job.
+    belongs at publish time or in a scheduled job. Zero is a turn that never
+    calls the model and answers from the catalog and the rules alone.
     """
 
-    max_model_calls: int = 4
+    max_model_calls: int = Field(default=4, ge=0)
 
 
 class EnrichmentConfig(BaseModel):
     """Routing examples written at publish time, never during a turn."""
 
     enabled: bool = False
-    per_language: int = 3
-    cap_per_route: int = 24
+    per_language: int = Field(default=3, ge=1)
+    cap_per_route: int = Field(default=24, ge=1)
     filename: str = "generated-examples.json"
 
 
@@ -186,9 +234,9 @@ class ImprovementConfig(BaseModel):
 
     learned_root: Path = Path("state/learned")
     report_path: Path = Path("state/improvement.json")
-    max_phrases_per_skill: int = 24
-    cluster_threshold: float = 0.8
-    cluster_min_size: int = 3
+    max_phrases_per_skill: int = Field(default=24, ge=1)
+    cluster_threshold: float = Field(default=0.8, gt=0, le=1)
+    cluster_min_size: int = Field(default=3, ge=1)
     bounds: dict[str, tuple[float, float]] = Field(
         default_factory=lambda: {"min_score": (0.1, 0.5), "tie_margin": (0.02, 0.15)}
     )
@@ -205,7 +253,7 @@ class StorageConfig(BaseModel):
     how long one waits for the other rather than failing the turn.
     """
 
-    busy_timeout_seconds: float = DEFAULT_BUSY_TIMEOUT_SECONDS
+    busy_timeout_seconds: float = Field(default=DEFAULT_BUSY_TIMEOUT_SECONDS, gt=0)
     backend: Literal["sqlite", "postgres"] = "sqlite"
     url_env: str = "OSKA_DATABASE_URL"
 
@@ -251,15 +299,21 @@ class ResilienceConfig(BaseModel):
 
     `failures_before_open` is how many consecutive failures open the breaker,
     `recovery_seconds` how long it stays open before one attempt is let through.
+
+    Every cost has a floor, so a value that would mean nothing, or would read
+    as no limit, is refused where the configuration is read, a tenant fragment
+    included: a timeout and a response size are above zero, the breaker opens
+    after at least one failure, and retries, backoff and recovery may be zero
+    and never negative.
     """
 
-    timeout_seconds: float = 30.0
-    failures_before_open: int = 3
-    recovery_seconds: float = 30.0
-    retries: int = 0
-    backoff_seconds: float = 0.5
+    timeout_seconds: float = Field(default=30.0, gt=0)
+    failures_before_open: int = Field(default=3, ge=1)
+    recovery_seconds: float = Field(default=30.0, ge=0)
+    retries: int = Field(default=0, ge=0)
+    backoff_seconds: float = Field(default=0.5, ge=0)
     retry_statuses: list[int] = Field(default_factory=lambda: [502, 503, 504])
-    max_response_bytes: int = 1_000_000
+    max_response_bytes: int = Field(default=1_000_000, ge=1)
 
 
 class RetentionConfig(BaseModel):
@@ -269,7 +323,7 @@ class RetentionConfig(BaseModel):
     available regardless of the window.
     """
 
-    days: int = 0
+    days: int = Field(default=0, ge=0)
 
 
 class IdentityConfig(BaseModel):
@@ -278,13 +332,62 @@ class IdentityConfig(BaseModel):
     `mode` is `proxy` when an authenticated proxy sets headers the runtime
     trusts, and `token` when the caller presents a signed session token the
     runtime verifies itself. `key_env` names where the verification key lives.
+
+    `required` refuses every call that carries no identity, except the health
+    and metrics reads. It is off by default, so a single-user deployment keeps
+    answering without one, and on by default in `token` mode: a deployment that
+    verifies tokens and still answers a call without one has verified nothing.
+    Saying `required: false` explicitly is the only way to turn it off there.
+
+    `tenant_header` names a header the proxy sets to say which tenant a call
+    belongs to. It is read in `proxy` mode only, and only when it is named: a
+    header the runtime reads without being told to is one any client can set.
+    Once it is named it is the only place the tenant is read from: a `tenant`
+    in the attributes header is not, because the proxy is known to own one
+    header and not every key of the other.
+
+    `reviewer_role` is the role a principal carries in its `roles` attribute
+    (the `roles` claim of a token, or the `roles` entry of the proxy's
+    attributes header) to read proposals and change requests and to move a
+    proposal. A call with an identity that lacks it is refused those routes.
+
+    `single_user` says that whoever reaches this runtime without an identity is
+    its one user, and may do everything that user may: read and move proposals,
+    read change requests, and name who moved a proposal in the call itself,
+    recorded as stated. It is off by default. Off, a call without an identity,
+    where none is required, may still converse, but the reviewer's routes need
+    a principal that carries the reviewer role: no identity is never worth more
+    than an identity that lacks the role. A deployment in `token` mode verifies
+    who each caller is, so it has more than one user, and saying `single_user`
+    there is refused.
     """
 
     mode: Literal["proxy", "token"] = "proxy"
+    required: bool = False
     key_env: str = "OSKA_SESSION_TOKEN_KEY"
     required_claims: list[str] = Field(default_factory=lambda: ["sub", "sid", "exp"])
     tenant_claim: str = "tenant"
+    tenant_header: str = ""
     leeway_seconds: int = 30
+    reviewer_role: str = "reviewer"
+    single_user: bool = False
+
+    @model_validator(mode="after")
+    def _token_mode_requires_identity(self) -> IdentityConfig:
+        """In `token` mode an identity is required unless the configuration says otherwise."""
+        if self.mode == "token" and "required" not in self.model_fields_set:
+            self.required = True
+        return self
+
+    @model_validator(mode="after")
+    def _single_user_verifies_nobody(self) -> IdentityConfig:
+        """A deployment that verifies tokens is not the deployment of one user."""
+        if self.single_user and self.mode == "token":
+            raise ValueError(
+                "identity.single_user is for a deployment whose one user carries no "
+                "identity, and token mode verifies each caller's; set one or the other"
+            )
+        return self
 
 
 class EvaluationConfig(BaseModel):
@@ -296,15 +399,29 @@ class EvaluationConfig(BaseModel):
 
 
 class MetricsConfig(BaseModel):
-    """Whether the runtime exposes numbers a monitoring system can scrape."""
+    """Whether the runtime exposes numbers a monitoring system can scrape.
+
+    `cache_seconds` is how long a computed report is served again before the
+    audit trail is read anew; zero reads it on every scrape, and it is never
+    negative.
+
+    The report names every tenant a platform serves and what each one does, so
+    where an identity is required it is a reviewer's read like the proposals
+    are. `public` opens it to any caller anyway, for a deployment whose
+    scraper reaches the runtime over a private network and presents no
+    identity; it is off by default, and turning it on is a statement about
+    that network, not about the runtime.
+    """
 
     enabled: bool = True
+    cache_seconds: float = Field(default=15.0, ge=0)
+    public: bool = False
 
 
 class PlatformConfig(BaseModel):
-    """How many tenant and domain runtimes one process keeps warm at once."""
+    """How many tenant and domain runtimes one process keeps warm at once; at least one."""
 
-    cache_size: int = 16
+    cache_size: int = Field(default=16, ge=1)
 
 
 class RuntimeConfig(BaseModel):
@@ -358,15 +475,42 @@ def state_path(state_dir: Path, configured: Path) -> Path:
 def guardrail_catalog_path(config: GuardrailsConfig, settings: Settings) -> Path:
     """Where the guardrail catalog is read from.
 
-    A relative path is read from the working directory, and from the directory
-    of the runtime configuration when it is not there, so a deployment that
-    keeps its configuration together does not have to say where it is twice.
+    `OSKA_GUARDRAILS_CATALOG` wins when it is set. Otherwise a relative path
+    is read from the working directory, and from the directory of the runtime
+    configuration when it is not there, so a deployment that keeps its
+    configuration together does not have to say where it is twice. When the
+    runtime configuration names the default catalog and neither holds it, the
+    packaged catalog is read. A catalog named anywhere else is used as named,
+    present or not.
     """
+    if settings.guardrails_catalog is not None:
+        return Path(settings.guardrails_catalog)
     configured = Path(config.catalog)
     if configured.is_absolute() or configured.exists():
         return configured
     beside = Path(settings.runtime_config).parent / configured.name
-    return beside if beside.exists() else configured
+    if beside.exists():
+        return beside
+    if configured == GUARDRAILS_CATALOG_PATH:
+        return PACKAGED_CONFIGS / GUARDRAILS_CATALOG_PATH.name
+    return configured
+
+
+def configuration_sources(settings: Settings, runtime: RuntimeConfig) -> dict[str, str]:
+    """Which file is in force for each shipped default: a path, or the packaged default."""
+    return {
+        "runtime_config": _source(settings.runtime_config),
+        "model_config": _source(settings.model_config_path),
+        "guardrails_catalog": _source(guardrail_catalog_path(runtime.guardrails, settings)),
+        "schemas_dir": _source(settings.schemas_dir),
+    }
+
+
+def _source(path: Path) -> str:
+    resolved = Path(path).resolve()
+    if resolved.is_relative_to(PACKAGED_DEFAULTS):
+        return PACKAGED_SOURCE
+    return str(path)
 
 
 def load_settings(env: Mapping[str, str] | None = None) -> Settings:

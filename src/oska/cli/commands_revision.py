@@ -10,6 +10,12 @@ deployment from one release to another is an operation, not an edit of a file
 under review. A runtime configuration that does name a revision wins over the
 file, because a deployment that pinned itself deliberately should not be moved
 by a command.
+
+When `catalog.signing` names a signer, `build` signs the manifest and writes
+the signature beside it, with the key read from the variable the configuration
+names. `verify` runs the check a runtime runs before serving a revision, and
+`use` runs it before recording a choice, so a revision that would be refused at
+start is refused here first.
 """
 
 from __future__ import annotations
@@ -21,9 +27,10 @@ from typing import Annotated
 import typer
 
 from oska.catalog.revision import Manifest, RevisionStore, build_revision
+from oska.catalog.signing import RevisionTrust, RevisionTrustError, signer_for
 from oska.catalog.validator import CatalogError
 from oska.cli.options import SkillsOption, fail, settings_for
-from oska.config import Settings, load_runtime_config, state_path
+from oska.config import CatalogConfig, Settings, load_runtime_config, state_path
 
 __all__ = ["app"]
 
@@ -44,15 +51,25 @@ def build(skills: SkillsOption = None, tenant: TenantOption = "") -> None:
     """Validate the catalog roots and release them as a revision."""
     settings = settings_for(skills)
     store_root, chosen = _store_root(settings, tenant)
+    signing = _catalog(settings).signing
     try:
+        signer = signer_for(signing)
+        if signer is None and signing.required:
+            raise RevisionTrustError(
+                "catalog.signing.required is set and catalog.signing.signer names no signer"
+            )
         manifest = build_revision(
-            settings.skills_roots, store_root, tenant=chosen, settings=settings
+            settings.skills_roots, store_root, tenant=chosen, settings=settings, signer=signer
         )
     except CatalogError as exc:
         fail(f"the catalog does not hold up: {exc}")
+    except RevisionTrustError as exc:
+        fail(f"the revision cannot be signed: {exc}")
     except OSError as exc:
         fail(f"the revision could not be written: {exc}")
     typer.echo(f"{manifest.revision}\t{chosen}\t{len(manifest.skills)} skill(s)")
+    if signer is not None:
+        typer.echo(f"  signed by {signer.name}")
     for line in manifest.report:
         typer.echo(f"  {line}")
 
@@ -82,11 +99,21 @@ def show(revision: str, skills: SkillsOption = None, tenant: TenantOption = "") 
 
 
 @app.command()
+def verify(revision: str, skills: SkillsOption = None, tenant: TenantOption = "") -> None:
+    """Check one revision the way the runtime checks it before serving it."""
+    settings = settings_for(skills)
+    store_root, chosen = _store_root(settings, tenant)
+    signed = _verified(RevisionStore(store_root, trust=_trust(settings)), chosen, revision)
+    typer.echo(f"{chosen}\t{revision}\t{'signed and verified' if signed else 'not signed'}")
+
+
+@app.command()
 def use(revision: str, skills: SkillsOption = None, tenant: TenantOption = "") -> None:
     """Record which revision this deployment serves from now on."""
     settings = settings_for(skills)
     store_root, chosen = _store_root(settings, tenant)
-    store = RevisionStore(store_root)
+    store = RevisionStore(store_root, trust=_trust(settings))
+    _verified(store, chosen, revision)
     try:
         store.choose(chosen, revision)
     except KeyError as exc:
@@ -102,12 +129,33 @@ def use(revision: str, skills: SkillsOption = None, tenant: TenantOption = "") -
         )
 
 
-def _store_root(settings: Settings, tenant: str) -> tuple[Path, str]:
-    """Where the revisions of this deployment are kept, and whose they are."""
+def _catalog(settings: Settings) -> CatalogConfig:
+    """The catalog section of the runtime configuration, or a failure saying why not."""
     try:
-        catalog = load_runtime_config(settings=settings).catalog
+        return load_runtime_config(settings=settings).catalog
     except (OSError, ValueError) as exc:
         fail(f"the configuration could not be read: {exc}")
+
+
+def _trust(settings: Settings) -> RevisionTrust:
+    """What this deployment demands of a revision before serving it."""
+    return RevisionTrust(_catalog(settings).signing)
+
+
+def _verified(store: RevisionStore, tenant: str, revision: str) -> bool:
+    """Whether the revision is signed, or a failure naming why it would be refused."""
+    try:
+        store.manifest(tenant, revision)
+        return store.verify(tenant, revision)
+    except KeyError as exc:
+        fail(str(exc))
+    except RevisionTrustError as exc:
+        fail(f"the revision would be refused: {exc}")
+
+
+def _store_root(settings: Settings, tenant: str) -> tuple[Path, str]:
+    """Where the revisions of this deployment are kept, and whose they are."""
+    catalog = _catalog(settings)
     return (
         state_path(settings.state_dir, catalog.revisions_root),
         tenant.strip() or catalog.tenant,

@@ -2,26 +2,29 @@
 
 The receipt is written before the connector is called, so a write whose outcome
 is unknown still leaves a trace and still blocks a second attempt at the same
-thing. The file is plain SQLite and every call opens and closes its own
-connection, so the ledger survives a restart and can be read by another
-process while the runtime is up.
+thing. This is the SQLite implementation of the `LedgerStore` interface in
+`oska.storage`: the file is plain SQLite and every call opens and closes its own
+connection, so the ledger survives a restart and can be read by another process
+while the runtime is up.
 
 One failure is not like the others. A write the system answered — with a
 success, with a refusal, with anything at all — reached it, and an identical
 write is never sent a second time on the strength of a later request: `settled`
 returns that receipt, and the caller reports it rather than calling again.
 
-A failure the connector classifies `retryable` is the one case the ledger
-cannot decide on its own. It covers both a request that never left and one the
-system applied without ever acknowledging, and the two are indistinguishable
-from the connector. So the classification on the receipt is not a guess about
-which of them happened: it is what the read-back of that write established. A
-receipt left `error` and `retryable` is one whose read-back showed the write
-did not land, and only that receipt leaves the key open for another attempt.
-Where the read-back showed the write landed, the receipt says `executed`; where
-it could not be reached at all, the write is closed as `terminal` unless the
-system of record would itself stop a repeat. The rule is written where the
-decision is taken, in `engine/execution.py`.
+The intent is taken with `claim`, which records the receipt only when nothing
+already settles its key and does both in one transaction that holds the write
+lock of the file. Two turns, two threads or two processes asking for the same
+write at once cannot both win it.
+
+A receipt left `error` and `retryable` is the one that leaves the key open. The
+connector classifies a failure `retryable` only when the request provably never
+left, and the read-back settlement in `engine/execution.py` leaves a receipt
+`retryable` only when it showed the write did not land, or when nothing is known
+and the system of record would itself stop a repeat. A failure classified
+`ambiguous` — the request left and no usable answer came back — keeps the key
+closed until the read-back has settled it, and closed for good when the process
+never gets that far.
 
 The receipt of the attempt stays in the record whichever way it went, because
 what was tried is part of the account even when nothing came of it.
@@ -47,6 +50,7 @@ from oska.contracts.receipt import (
     VerificationStatus,
     WriteReceipt,
 )
+from oska.storage.sqlite import prepare
 
 _COLUMNS = (
     "receipt_id",
@@ -86,13 +90,69 @@ CREATE INDEX IF NOT EXISTS receipts_session_key ON receipts (session_id, ledger_
 CREATE INDEX IF NOT EXISTS receipts_session_operation ON receipts (session_id, operation);
 """
 
+_INSERT = (
+    f"INSERT INTO receipts ({','.join(_COLUMNS)}) VALUES ({','.join('?' * len(_COLUMNS))})"
+)
+
+_SETTLED = (
+    "SELECT * FROM receipts WHERE session_id = ? AND ledger_key = ? "
+    "AND NOT (status = 'error' AND COALESCE(classification, '') = 'retryable') "
+    "ORDER BY rowid DESC LIMIT 1"
+)
+
+
 def canonical_json(value: Any) -> str:
     """Render a value as JSON that is byte-identical for equal content."""
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True, default=str)
 
 
+def ledger_key(
+    integration_id: str,
+    operation: str,
+    payload: dict,
+    idempotency_fields: list[str] | None = None,
+) -> str:
+    """Identity of a write: the same key twice is the same intent twice.
+
+    With declared idempotency fields only those fields count, so two requests
+    that differ in an irrelevant field still collide. Every ledger backend
+    derives its keys here, so a key means the same thing wherever it is kept.
+    """
+    if idempotency_fields:
+        subject: dict = {field: payload.get(field) for field in sorted(idempotency_fields)}
+    else:
+        subject = dict(payload)
+    material = canonical_json([integration_id, operation, subject])
+    return hashlib.sha256(material.encode("utf-8")).hexdigest()
+
+
+def pending_receipt(
+    session_id: str,
+    key: str,
+    integration_id: str,
+    operation: str,
+    payload: dict,
+) -> WriteReceipt:
+    """A receipt for an intent that has not been sent yet."""
+    return WriteReceipt(
+        receipt_id=str(uuid.uuid4()),
+        session_id=session_id,
+        ledger_key=key,
+        integration_id=integration_id,
+        operation=operation,
+        payload=dict(payload),
+        response=None,
+        status="pending",
+        verification=VerificationStatus.unverified,
+        verification_evidence=None,
+        created_at=datetime.now(UTC),
+        error=None,
+        classification=None,
+    )
+
+
 class WriteLedger:
-    """Write receipts kept in a SQLite file."""
+    """Write receipts kept in a SQLite file: the `LedgerStore` every install starts with."""
 
     def __init__(self, path: Path, *, busy_timeout: float | None = None) -> None:
         self._path = Path(path)
@@ -112,17 +172,8 @@ class WriteLedger:
         payload: dict,
         idempotency_fields: list[str] | None = None,
     ) -> str:
-        """Identity of a write: the same key twice is the same intent twice.
-
-        With declared idempotency fields only those fields count, so two
-        requests that differ in an irrelevant field still collide.
-        """
-        if idempotency_fields:
-            subject: dict = {field: payload.get(field) for field in sorted(idempotency_fields)}
-        else:
-            subject = dict(payload)
-        material = canonical_json([integration_id, operation, subject])
-        return hashlib.sha256(material.encode("utf-8")).hexdigest()
+        """Identity of a write: the same key twice is the same intent twice."""
+        return ledger_key(integration_id, operation, payload, idempotency_fields)
 
     def new_receipt(
         self,
@@ -133,30 +184,31 @@ class WriteLedger:
         payload: dict,
     ) -> WriteReceipt:
         """A receipt for an intent that has not been sent yet."""
-        return WriteReceipt(
-            receipt_id=str(uuid.uuid4()),
-            session_id=session_id,
-            ledger_key=key,
-            integration_id=integration_id,
-            operation=operation,
-            payload=dict(payload),
-            response=None,
-            status="pending",
-            verification=VerificationStatus.unverified,
-            verification_evidence=None,
-            created_at=datetime.now(UTC),
-            error=None,
-            classification=None,
-        )
+        return pending_receipt(session_id, key, integration_id, operation, payload)
 
     def record(self, receipt: WriteReceipt) -> WriteReceipt:
-        """Store a receipt. Called before the connector runs."""
+        """Store a receipt, whatever else the ledger holds for its key."""
         with self._connect() as connection:
-            connection.execute(
-                f"INSERT INTO receipts ({','.join(_COLUMNS)}) "
-                f"VALUES ({','.join('?' * len(_COLUMNS))})",
-                _to_row(receipt),
-            )
+            connection.execute(_INSERT, _to_row(receipt))
+        return receipt
+
+    def claim(self, receipt: WriteReceipt) -> WriteReceipt:
+        """Take the intent for this receipt, or hand back the receipt that already holds it.
+
+        The receipt is recorded only when nothing settles its key for its
+        session, and the check and the record are one transaction under the
+        write lock of the file, so of two callers claiming the same intent at
+        once exactly one wins. The winner gets its own receipt back; the other
+        gets the winner's, and does not send the write.
+        """
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            held = connection.execute(
+                _SETTLED, (receipt.session_id, receipt.ledger_key)
+            ).fetchone()
+            if held is not None:
+                return _from_row(held)
+            connection.execute(_INSERT, _to_row(receipt))
         return receipt
 
     def update(
@@ -218,15 +270,10 @@ class WriteLedger:
         an identical write is not sent again. A receipt left `error` and
         `retryable` settles nothing, and the intent may be attempted once more
         with the receipt of the attempt left in place — which is the record of
-        a write whose read-back showed it did not land, never of one whose
-        outcome is merely unknown.
+        a write that never left, or whose read-back showed it did not land. A
+        receipt left `ambiguous` settles the intent: its outcome is not known.
         """
-        rows = self._query(
-            "SELECT * FROM receipts WHERE session_id = ? AND ledger_key = ? "
-            "AND NOT (status = 'error' AND COALESCE(classification, '') = 'retryable') "
-            "ORDER BY rowid DESC LIMIT 1",
-            (session_id, key),
-        )
+        rows = self._query(_SETTLED, (session_id, key))
         return _from_row(rows[0]) if rows else None
 
     def count(self, session_id: str, operation: str) -> int:
@@ -273,16 +320,7 @@ class WriteLedger:
     def _connect(self) -> Iterator[sqlite3.Connection]:
         with self._opening:
             if not self._ready:
-                self._path.parent.mkdir(parents=True, exist_ok=True)
-                starting = sqlite3.connect(self._path, timeout=self._busy_timeout)
-                starting.row_factory = sqlite3.Row
-                try:
-                    starting.execute("PRAGMA journal_mode=WAL")
-                    starting.executescript(_SCHEMA)
-                    _add_missing_columns(starting)
-                    starting.commit()
-                finally:
-                    starting.close()
+                prepare(self._path, self._busy_timeout, _SCHEMA, _add_missing_columns)
                 self._ready = True
         connection = sqlite3.connect(self._path, timeout=self._busy_timeout)
         connection.row_factory = sqlite3.Row

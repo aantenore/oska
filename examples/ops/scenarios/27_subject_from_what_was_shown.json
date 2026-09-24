@@ -1,0 +1,142 @@
+{
+  "name": "27_subject_from_what_was_shown",
+  "description": "A health read shows one service, so the conversation is about it. The restart that follows says only \"restart it\": the procedure joins the focus, takes the service from what was shown, asks nothing, and stops for approval on the exact payload.",
+  "level": 2,
+  "presentation": true,
+  "provider_script": [
+    {
+      "purpose": "router classification",
+      "expect_contains": "how is the search service doing in staging",
+      "response": {
+        "kind": "new_task",
+        "runbook_id": "runbook.service_health",
+        "confidence": 0.9,
+        "language": "en"
+      }
+    },
+    {
+      "purpose": "plan",
+      "expect_contains": "how is the search service doing",
+      "response": {
+        "runbook_id": "runbook.service_health",
+        "operations": [
+          {
+            "integration_id": "integration.container_runtime",
+            "operation": "service.status",
+            "payload": {
+              "service": "search"
+            },
+            "write": false,
+            "purpose": "read the state of the service"
+          }
+        ],
+        "missing": [],
+        "reply_intent": "report the state of search"
+      }
+    },
+    {
+      "purpose": "reply writing",
+      "expect_contains": "\"kind\": \"read\"",
+      "response": {
+        "reply": "search is running in staging on version 0.8.2 with 2 replicas."
+      }
+    },
+    {
+      "purpose": "router classification",
+      "expect_contains": "restart it",
+      "response": {
+        "kind": "new_task",
+        "runbook_id": "runbook.service_restart",
+        "confidence": 0.9,
+        "language": "en"
+      }
+    },
+    {
+      "purpose": "plan, with the service taken from the focus and stated apart from what the person typed",
+      "expect_contains": "restart it",
+      "response": {
+        "runbook_id": "runbook.service_restart",
+        "operations": [
+          {
+            "integration_id": "integration.container_runtime",
+            "operation": "service.status",
+            "payload": {
+              "service": "search"
+            },
+            "write": false,
+            "purpose": "read the current state"
+          },
+          {
+            "integration_id": "integration.container_runtime",
+            "operation": "service.restart",
+            "payload": {
+              "service": "search"
+            },
+            "write": true,
+            "purpose": "restart the service in focus"
+          }
+        ],
+        "missing": [],
+        "reply_intent": "restart the service the conversation is about"
+      }
+    }
+  ],
+  "turns": [
+    {
+      "user": "how is the search service doing in staging",
+      "expect": {
+        "kind": "new_task",
+        "contains": [
+          "search is running in staging"
+        ],
+        "outcomes": [
+          "read"
+        ],
+        "pending": null,
+        "receipts": 0,
+        "verification": null,
+        "directives": [
+          {
+            "procedure": "runbook.service_health",
+            "moment": "on_single_result",
+            "view": "service_status",
+            "fields": {
+              "service": "search",
+              "environment": "staging",
+              "status": "running",
+              "version": "0.8.2"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "user": "restart it",
+      "expect": {
+        "kind": "new_task",
+        "contains": [
+          "approval",
+          "service.restart",
+          "{\"service\":\"search\"}"
+        ],
+        "outcomes": [
+          "read",
+          "approval_pending"
+        ],
+        "pending": "approval",
+        "receipts": 0,
+        "verification": null,
+        "directives": [
+          {
+            "procedure": "runbook.service_restart",
+            "moment": "on_selection",
+            "view": "service_selected",
+            "fields": {
+              "service": "search"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

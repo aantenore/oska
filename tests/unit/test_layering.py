@@ -20,6 +20,7 @@ LAYERS: dict[str, int] = {
     "catalog": 3,
     "governance": 4,
     "audit": 4,
+    "storage": 4,
     "index": 5,
     "router": 5,
     "planner": 5,
@@ -28,6 +29,9 @@ LAYERS: dict[str, int] = {
     "cli": 6,
     "services": 6,
     "conformance": 6,
+    "platform": 6,
+    "kit": 6,
+    "observability": 6,
     "learning": 7,
 }
 SHARED = frozenset({"contracts", "config"})

@@ -1,0 +1,101 @@
+{
+  "name": "28_directive_from_verified_write",
+  "description": "A restart outside production is approved, runs, and is read back. The directive the procedure declares for a verified write is filled from the receipt alone: the service from the payload the read-back confirmed, the verification from the receipt.",
+  "level": 2,
+  "presentation": true,
+  "provider_script": [
+    {
+      "purpose": "router classification",
+      "expect_contains": "the search service in staging is wedged, restart it",
+      "response": {
+        "kind": "new_task",
+        "runbook_id": "runbook.service_restart",
+        "confidence": 0.9,
+        "language": "en"
+      }
+    },
+    {
+      "purpose": "plan",
+      "expect_contains": "is wedged, restart it",
+      "response": {
+        "runbook_id": "runbook.service_restart",
+        "operations": [
+          {
+            "integration_id": "integration.container_runtime",
+            "operation": "service.status",
+            "payload": {
+              "service": "search"
+            },
+            "write": false,
+            "purpose": "read the current state"
+          },
+          {
+            "integration_id": "integration.container_runtime",
+            "operation": "service.restart",
+            "payload": {
+              "service": "search"
+            },
+            "write": true,
+            "purpose": "restart the wedged service"
+          }
+        ],
+        "missing": [],
+        "reply_intent": "report the restart of search and whether the read-back confirmed it"
+      }
+    },
+    {
+      "purpose": "reply writing",
+      "expect_contains": "\"kind\": \"receipt\"",
+      "response": {
+        "reply": "search was restarted and the read-back shows it running again, so the receipt is verified."
+      }
+    }
+  ],
+  "turns": [
+    {
+      "user": "the search service in staging is wedged, restart it",
+      "expect": {
+        "kind": "new_task",
+        "contains": [
+          "approval",
+          "{\"service\":\"search\"}"
+        ],
+        "outcomes": [
+          "read",
+          "approval_pending"
+        ],
+        "pending": "approval",
+        "receipts": 0,
+        "verification": null,
+        "directives": []
+      }
+    },
+    {
+      "user": "yes",
+      "expect": {
+        "kind": "approve",
+        "contains": [
+          "restarted",
+          "verified"
+        ],
+        "outcomes": [
+          "receipt"
+        ],
+        "pending": null,
+        "receipts": 1,
+        "verification": "verified",
+        "directives": [
+          {
+            "procedure": "runbook.service_restart",
+            "moment": "on_verified_write",
+            "view": "service_restarted",
+            "fields": {
+              "service": "search",
+              "verification": "verified"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,17 +1,23 @@
-# Example catalog: access management
+# Example pack: access management
 
 Six accounts, five groups and the requests people raised to be put into them.
 It exists to show the runtime running a domain it shares no words with: the
 core knows about skills, operations, policies and receipts, and learns what an
 account, a group and a membership are only by reading these files.
 
-It is also the smaller of the two catalogs, and the one to copy when declaring
-a domain of your own: three entities, three integrations, four procedures and a
-composite, which is about the least that still exercises reads, a governed
-write, a second approval and a sequence.
+It is also the smaller of the two reference packs, and the one to copy when
+declaring a pack of your own: three entities, three integrations, four
+procedures and a composite, which is about the least that still exercises
+reads, a governed write, a second approval and a sequence. `oska new pack`
+generates the same shape from templates rather than from this one directly;
+either way, [docs/packs-and-platforms.md](../../docs/packs-and-platforms.md)
+is the contract a pack has to satisfy.
 
 ## What is in it
 
+- `pack.yaml` the manifest: name, version, what this pack provides, the host
+  identity it documents for a platform to use, the conformance level it
+  claims — checked against these files by `oska pack check .`.
 - `skills/` the catalog, one directory per skill and one directory per version.
 - `fixtures/` the records the mock connector reads and writes: the directory of
   accounts and groups, the memberships that join the two, and four requests.

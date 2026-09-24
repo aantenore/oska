@@ -24,10 +24,11 @@ set -a; . ./.env; set +a
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `OSKA_SKILLS_ROOTS` | `examples/ops/skills`, `state/skills` | Catalog roots. Separate several with `:` or `,` |
-| `OSKA_RUNTIME_CONFIG` | `configs/runtime.json` | The runtime configuration file |
-| `OSKA_MODEL_CONFIG` | `configs/model.json` | The model configuration file |
+| `OSKA_RUNTIME_CONFIG` | `configs/runtime.json`, else packaged | The runtime configuration file |
+| `OSKA_MODEL_CONFIG` | `configs/model.json`, else packaged | The model configuration file |
+| `OSKA_GUARDRAILS_CATALOG` | `guardrails.catalog` in `runtime.json`, else packaged | The guardrail catalog file |
 | `OSKA_CONNECTORS_CONFIG` | `examples/ops/configs/connectors.json` | The connector bindings |
-| `OSKA_SCHEMAS_DIR` | `schemas` | Where the JSON schemas live |
+| `OSKA_SCHEMAS_DIR` | `schemas`, else packaged | Where the JSON schemas live |
 | `OSKA_SCENARIOS_DIR` | `examples/ops/scenarios` | Default directory for `oska conform` |
 | `OSKA_STATE_DIR` | `state` | Where sessions, receipts, audit and proposals are kept |
 | `OSKA_PROVIDER` | unset | `openai_compatible`, `scripted` or `none`. Overrides `provider` in `model.json` |
@@ -35,12 +36,40 @@ set -a; . ./.env; set +a
 | `OSKA_MODEL_API_KEY` | unset | Overrides `api_key` |
 | `OSKA_MODEL_CHAT` | unset | Overrides `chat_model` |
 | `OSKA_MODEL_EMBEDDING` | unset | Overrides `embedding_model` |
+| `OSKA_PLATFORM` | unset | A platform manifest serving several domains. Same as `--platform` |
+| `OSKA_DATABASE_URL` | unset | The address `storage.url_env` names, read only when `storage.backend` is `postgres` |
+| `OSKA_REVISION_KEY` | unset | The key `catalog.signing.key_env` names, read only when `catalog.signing.signer` is set |
+| `OSKA_SESSION_TOKEN_KEY` | unset | The key `identity.key_env` names, read only when `identity.mode` is `token` |
+| `OSKA_TEST_POSTGRES_URL` | unset | Read by the test suite alone, to run the storage contract tests against a real PostgreSQL server. Never read by the runtime |
+
+### Packaged defaults
+
+The runtime configuration, the model configuration, the guardrail catalog and
+the JSON schemas ship inside the package, under `oska/defaults/`, so a command
+works in a directory that holds none of them. Each is resolved in this order:
+
+1. The environment variable (`OSKA_RUNTIME_CONFIG`, `OSKA_MODEL_CONFIG`,
+   `OSKA_GUARDRAILS_CATALOG`, `OSKA_SCHEMAS_DIR`), used as given.
+2. The default path when it exists relative to the working directory:
+   `configs/runtime.json`, `configs/model.json`, `schemas/`, and the catalog
+   `guardrails.catalog` names, looked for there and then beside the runtime
+   configuration.
+3. The packaged default.
+
+A guardrail catalog that `runtime.json` names at a path other than the default
+is used as named, and a missing one defines no guardrails. `oska config`
+prints, under `sources`, the file in force for each of the four, or
+`packaged default`. This repository's `configs/` and `schemas/` are
+byte-identical to the packaged copies, and a test keeps them so.
 
 An empty or whitespace-only value is treated as unset. The four model overrides
 apply on top of `model.json`, so credentials stay out of the repository while
 the model names can live in either.
 
 `--skills` on any command replaces the catalog roots for that run.
+`--platform`, `--domain` and `--tenant` replace it with a platform manifest and
+a part of it instead; see
+[docs/packs-and-platforms.md](packs-and-platforms.md#channels).
 
 ## `configs/runtime.json`
 
@@ -138,7 +167,11 @@ keeps it until another turn changes it.
 | `api.host` | `127.0.0.1` | Address `oska serve` listens on |
 | `api.port` | `8000` | Port it listens on |
 
-`--host` and `--port` on `oska serve` override these for one run.
+`--host` and `--port` on `oska serve` override these for one run. `oska serve`
+warns on stderr before it starts whenever it binds an address other than
+loopback while `identity.required` is off: anyone who can reach that port can
+then hold a conversation and ask for writes, with nothing but the network in
+the way.
 
 ### `guardrails`
 
@@ -259,12 +292,29 @@ started on. See [operating.md](operating.md).
 | `catalog.revision` | `""` | The revision to serve. Empty means the one the store records, or failing that the newest it holds |
 | `catalog.tenant` | `"default"` | The catalog a deployment serves when it serves more than one |
 | `catalog.pin_sessions` | `true` | Whether a session keeps the revision it started on |
+| `catalog.mode` | `"directory"` | `"directory"` serves a built revision when the tenant has one and the skill roots otherwise; `"revision"` refuses to serve anything but a built revision |
+| `catalog.signing.signer` | `""` | The name of a registered signer (`hmac-sha256` ships with the runtime) a revision is signed and verified with. Empty means unsigned |
+| `catalog.signing.key_env` | `"OSKA_REVISION_KEY"` | The environment variable the signer reads its key from |
+| `catalog.signing.required` | `false` | Whether an unsigned revision is refused. A present signature is checked whatever this says |
 
 With no revision built for the tenant, the configured skill roots are read
 directly and reload when the files under them change. That is what one process
 on its own disk wants and what the example catalogs use; several replicas want
 a revision, because a directory tells each of them about a change at a
-different moment.
+different moment. `catalog.mode: "revision"` is the stricter version of the
+same choice: a deployment that must never silently fall back to reading a
+directory sets it, and a tenant with nothing built then refuses to serve at
+all rather than serving something nobody released.
+
+**Signing.** `oska revision build` signs a revision when `catalog.signing.signer`
+names a registered signer and the environment holds its key; building again
+over an already-held revision re-signs it in place. `oska revision verify` and
+the check the runtime itself runs before serving a revision both fail closed:
+a signature that does not match the key, or a file whose hash disagrees with
+the signed manifest, is refused whether or not signing is `required` — only
+the case of no signature at all is let through when it is not required.
+[docs/building-a-platform.md#7-sign-revisions](building-a-platform.md#7-sign-revisions)
+walks it end to end.
 
 Naming a `revision` pins the deployment to it and takes the choice away from
 `oska revision use`, which is right for a rollback under review and wrong as
@@ -298,11 +348,39 @@ See [governance.md](governance.md#when-the-system-does-not-answer).
 | Key | Default | Meaning |
 | --- | --- | --- |
 | `resilience.timeout_seconds` | `30.0` | Seconds one call may take before it counts as never having arrived |
-| `resilience.failures_before_open` | `3` | Consecutive calls that never arrived before the binding stops being called |
+| `resilience.failures_before_open` | `3` | Consecutive calls whose failure was `transport` (retryable or ambiguous) before the binding stops being called |
 | `resilience.recovery_seconds` | `30.0` | How long it stays out of service before one attempt is let through |
+| `resilience.retries` | `0` | Further attempts a **read** gets inside the same call after a retryable result, or one whose status is in `retry_statuses`. A write is never retried inside a call |
+| `resilience.backoff_seconds` | `0.5` | The pause before the first retry; it doubles on each further one |
+| `resilience.retry_statuses` | `[502, 503, 504]` | HTTP statuses that make a read worth retrying even when the connector classified the failure `ambiguous` rather than `retryable` |
+| `resilience.max_response_bytes` | `1000000` | A response larger than this is never read to the end. Classified `refused`, terminal — the response existed, it was simply too large to trust |
 
-These apply to every binding the connector registry builds, and only transport
-failures count toward them: a system that answered no is a system that is up.
+Every one of these costs has a floor: `timeout_seconds` and
+`max_response_bytes` above zero, `failures_before_open` at least one,
+`recovery_seconds`, `retries` and `backoff_seconds` never negative. The floor
+is enforced wherever this configuration is read, a tenant's fragment
+included — a tenant may lower `retries`, `timeout_seconds`,
+`backoff_seconds` or `max_response_bytes` below the platform's own value (see
+[docs/packs-and-platforms.md#tenant-overlay](packs-and-platforms.md#tenant-overlay)) but
+never past the floor; a value below it is refused the same way one above the
+platform's ceiling is.
+
+The same holds outside connectors. `enrichment.per_language`,
+`enrichment.cap_per_route`, `improvement.max_phrases_per_skill` and
+`improvement.cluster_min_size` are at least one, `improvement.cluster_threshold`
+lies above zero and at most one, `storage.busy_timeout_seconds` is above zero,
+and `retention.days` is never negative. A configuration that goes below any of
+them is refused when it is read, not when the value is first used.
+
+These apply to every binding the connector registry builds, and an integration
+may declare its own `resilience` block to override any of them for that
+binding alone. Only failures classified `transport` count toward the breaker:
+a system that answered no, or whose answer was too large, is a system that is
+up. See [docs/governance.md#when-the-system-does-not-answer](governance.md#when-the-system-does-not-answer)
+for what `retryable` and `ambiguous` mean for the write path and the ledger,
+which is a different question from what this section governs — in-call
+retries and the breaker are about whether and how often a call is attempted at
+all.
 
 Raising the timeout makes a slow system look healthy and a turn take longer —
 it is spent inside the turn, so it competes with everything else the turn has
@@ -310,7 +388,13 @@ to do. Lowering `failures_before_open` to one takes a binding out of service on
 a single blip; raising it means more turns wait for a system that is already
 known to be down. `recovery_seconds` is how quickly a recovered system is
 noticed, and the cost of shortening it is one call against a system that may
-still be broken.
+still be broken. Raising `retries` spends more of a turn's time budget on one
+read before giving up on it; `retry_statuses` is scoped to reads because a
+write already has its own, safer path back from an inconclusive answer — the
+ambiguous-write settlement described in `docs/governance.md`, not a blind
+resend. `max_response_bytes` is a budget on trust as much as on memory: a
+response too large to read within it is refused rather than read partially
+and treated as complete.
 
 ### `retention`
 
@@ -334,13 +418,133 @@ also why the number deserves a decision rather than a default.
 
 | Key | Default | Meaning |
 | --- | --- | --- |
-| `storage.busy_timeout_seconds` | `10.0` | How long a connection waits for another to finish before it gives up |
+| `storage.backend` | `"sqlite"` | `"sqlite"` or `"postgres"` |
+| `storage.url_env` | `"OSKA_DATABASE_URL"` | The environment variable the address is read from, only when the backend is `postgres` |
+| `storage.busy_timeout_seconds` | `10.0` | SQLite: how long a connection waits for another to finish before it gives up. PostgreSQL: the connect and lock timeout derived from the same value |
 
-The sessions and the ledger are SQLite, and two turns of the same process may
-write at once. This is how long one waits for the other rather than failing the
-turn. Raising it is worth doing only when turns start failing on a busy file
-rather than on the system they were talking to; lowering it turns contention
-into a failed turn sooner, which is a diagnosis and not a setting to run with.
+With `sqlite`, the sessions and the ledger are files, and two turns of the same
+process may write at once; this is how long one waits for the other rather
+than failing the turn. Raising it is worth doing only when turns start failing
+on a busy file rather than on the system they were talking to; lowering it
+turns contention into a failed turn sooner, which is a diagnosis and not a
+setting to run with. With `postgres`, both stores go through `psycopg`
+(the `postgres` extra: `pip install 'oska[postgres]'`) against the address
+`url_env` names, with numbered migrations applied under an advisory lock the
+first time a process opens the database. The two backends satisfy the same
+`LedgerStore` and `SessionStateStore` protocols in `oska.storage`, run through
+one contract test suite (`tests/unit/test_storage_contract.py`) — always
+against SQLite, and against PostgreSQL only when `OSKA_TEST_POSTGRES_URL`
+names a real server, which nothing in this repository's own CI does today.
+Choosing `postgres` is for more than one process sharing one ledger and one
+set of sessions, where SQLite's single-file lock would serialize every write
+across every replica instead of only the ones that collide.
+
+Isolating a (tenant, domain) pair's state differs by backend as well. SQLite
+keeps each under its own file path, `<state_dir>/<tenant>/<domain>/`; a shared
+PostgreSQL database keeps them apart with a `namespace` column
+(`<tenant>/<domain>`) scoped on every query instead. Both satisfy the same
+isolation invariant in
+[docs/packs-and-platforms.md#isolation](packs-and-platforms.md#isolation), by
+different means, and [docs/building-a-platform.md#9-move-to-postgresql](building-a-platform.md#9-move-to-postgresql)
+walks moving from one to the other.
+
+### `identity`
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `identity.mode` | `"proxy"` | `"proxy"` trusts headers a fronting proxy sets and verifies nothing; `"token"` verifies a signed session token itself |
+| `identity.required` | `false` in `proxy` mode, `true` in `token` mode | Whether a call with no identity is refused, `401 identity_required`. `GET /health` answers without one whatever this says; `GET /metrics` does too only where `metrics.public` says so |
+| `identity.key_env` | `"OSKA_SESSION_TOKEN_KEY"` | The environment variable a token's HS256 key is read from, only in `token` mode |
+| `identity.required_claims` | `["sub", "sid", "exp"]` | Claims a token must carry |
+| `identity.tenant_claim` | `"tenant"` | Which claim a platform reads to resolve the tenant of a call |
+| `identity.tenant_header` | `""` | In `proxy` mode only, the header a fronting proxy sets to say which tenant a call is for; empty means no header is read at all, and once named it is the only place the tenant is read from |
+| `identity.reviewer_role` | `"reviewer"` | The role, in `roles` on the principal, a call must carry to read or move a proposal or a change request |
+| `identity.leeway_seconds` | `30` | Clock skew allowed on `exp` and `nbf` |
+| `identity.single_user` | `false` | Whoever reaches this runtime without an identity does a reviewer's work as its one user. Off by default; the `runtime.json` this package ships, and `oska new platform` copies, sets it `true` for a local single-user setup. Refused in `token` mode |
+
+Turning `required` on in `proxy` mode is what makes a proxy that forgot to set
+its headers fail loudly instead of quietly recording writes under no
+principal at all; turning it off in `token` mode is what lets a deployment
+that verifies tokens still answer a call that presents none — worth doing
+only for a route meant to have no identity, since every other route pays for
+it the same way. `tenant_header` costs nothing until it is set: naming it is
+what lets a proxy say which tenant a call is for, and a header the
+configuration does not name is never read as one, whatever a client sends —
+and once it is named, a `tenant` entry in the attributes header is never read
+either. `reviewer_role` is the one string every reviewing principal's `roles`
+must carry; changing it does not revoke anything already granted, it only
+changes which name the check looks for next. `single_user` is what lets the
+packaged and the generated defaults answer a first request with no proxy and
+no token in front of them at all: whoever reaches the port is that one user,
+reviewer included, until the deployment is moved past it — see
+[src/oska/templates/platform/README.md](../src/oska/templates/platform/README.md)
+("Who can talk to it") for the steps.
+
+See
+[docs/governance.md#who-may-do-what-over-http](governance.md#who-may-do-what-over-http)
+for what each mode does with a turn and who may reach which route, and
+[docs/building-a-platform.md#8-move-from-proxy-identity-to-token-identity](building-a-platform.md#8-move-from-proxy-identity-to-token-identity)
+for moving a deployment from one mode to the other.
+
+### `evaluation`
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `evaluation.min_precision` | `1.0` | The floor `oska evaluate catalog` holds the catalog's aggregate precision to |
+| `evaluation.min_recall` | `1.0` | The floor it holds aggregate recall to |
+| `evaluation.require_sets` | `false` | Whether a skill with no evaluation set fails the gate on that alone |
+
+`evaluate_catalog` aggregates every case of every set in the catalog into one
+precision and one recall, and a run whose either number falls below its floor
+exits non-zero — a hard gate, not merely a report, and `.github/workflows/ci.yml`
+runs it on every push. Both default to `1.0`, so a catalog that ships any
+evaluation sets at all currently has to answer every one of their cases
+correctly; lowering either floor is how a deployment tolerates some
+ambiguity in its own routing on purpose, deliberately, rather than by not
+measuring it. `require_sets` is a separate question from precision and
+recall — a catalog with perfect precision and recall on the sets it has can
+still fail this if a skill carries none.
+
+### `metrics`
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `metrics.enabled` | `true` | Whether `GET /metrics` answers at all |
+| `metrics.cache_seconds` | `15.0` | How long a computed report is served again before it is read from the audit trail anew |
+| `metrics.public` | `false` | Opens `GET /metrics` to a caller with no identity even where `identity.required` is on |
+
+`false` makes the route answer `404 metrics_disabled` rather than an empty or
+zeroed body, so a scraper configured against a deployment that has turned
+metrics off gets a clear signal instead of a misleadingly healthy-looking
+response. `GET /metrics` is mounted into the application unconditionally —
+`enabled` decides only what it answers, not whether the route exists — see
+[docs/building-a-platform.md#10-wire-ci-and-metrics](building-a-platform.md#10-wire-ci-and-metrics).
+
+A report names every tenant a platform serves and what each does, so where
+`identity.required` is on the route is a reviewer's read like the proposals
+are: a principal carrying `identity.reviewer_role`, and nobody without an
+identity. `public` opens it anyway, for a scraper that reaches the runtime
+over a private network and presents no identity; turning it on is a statement
+about that network, not about the runtime, so it stays off by default. Where
+no identity is required the route stays open, as every other read there is.
+
+Lowering `cache_seconds` trades audit-trail reads for fresher numbers; `0`
+recomputes the report on every scrape, which is correct and costs one full
+read of the trail each time. Raising it is worth doing once a deployment's
+scrape interval is known and stable — a value longer than that interval just
+serves the same numbers to every scrape in between it.
+
+### `platform`
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `platform.cache_size` | `16` | How many (tenant, domain) runtimes a platform keeps assembled at once |
+
+Only meaningful with `--platform` or `OSKA_PLATFORM`. A runtime evicted from
+this bound is rebuilt from the same declarations the next time it is asked
+for, and resumes from the state it left — eviction costs the work of
+reassembly, never any state. See
+[docs/packs-and-platforms.md](packs-and-platforms.md#where-this-sits-in-the-codebase).
 
 ## `configs/model.json`
 
@@ -417,6 +621,15 @@ are documented in [`examples/ops/README.md`](../examples/ops/README.md).
 
 Nothing else of the payload leaves the process. A field that is not named in the
 path, the query or the body is not sent.
+
+Every call whose method is not `GET`, `HEAD`, `OPTIONS` or `TRACE` carries an
+`Idempotency-Key` header, so the far end has the same "same write" signal the
+ledger does. For a governed write it is derived from the ledger key itself
+(`idempotency_key(session_id, ledger_key)`), so a retried approval and the
+system's own deduplication agree on what counts as a repeat; for any other
+unsafe call it is derived from the request's own shape — the operation, the
+path, the query and the body — so two identical calls always carry the same
+key and two different ones never do.
 
 ### `shell`
 

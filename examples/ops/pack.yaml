@@ -1,0 +1,27 @@
+name: ops
+version: 0.1.0
+description: >-
+  Service operations: health, logs, restarts, rollbacks, alert silences and
+  incident notes over a container runtime, a deployment controller, an
+  alerting system and an incident tracker.
+requires:
+  oska: ">=0.1.0,<1.0.0"
+provides:
+  entities:
+    - entity.alert
+    - entity.deployment
+    - entity.incident
+    - entity.service
+  procedures:
+    - composite.incident_triage
+    - runbook.alert_silence
+    - runbook.deployment_rollback
+    - runbook.incident_note
+    - runbook.log_search
+    - runbook.service_health
+    - runbook.service_restart
+host:
+  name: the operations desk
+  voice: brief and factual
+  languages: [en, it]
+level: 3

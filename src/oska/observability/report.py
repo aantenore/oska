@@ -26,12 +26,13 @@ _RATES = frozenset(
 
 def render_text(report: ServiceReport) -> str:
     """The report as lines a person reads."""
-    lines = [f"{report.turns} turn(s) {_window(report)}"]
+    counted = "turns not counted" if report.turns_missing else f"{report.turns} turn(s)"
+    lines = [f"{counted} {_window(report)}"]
     for name, measure in report.measures():
         lines.append(f"  {name}: {_value(name, measure)}")
         if measure.known and measure.note:
             lines.append(f"    note: {measure.note}")
-    unknown = report.unknown()
+    unknown = _unknown(report)
     if unknown:
         lines.append("not computed:")
         lines.extend(f"  {name}: {reason}" for name, reason in unknown)
@@ -41,8 +42,14 @@ def render_text(report: ServiceReport) -> str:
 def render_json(report: ServiceReport) -> str:
     """The report as JSON, with the same measures and the same reasons."""
     document = report.model_dump(mode="json")
-    document["unknown"] = {name: reason for name, reason in report.unknown()}
+    document["unknown"] = {name: reason for name, reason in _unknown(report)}
     return json.dumps(document, indent=2, sort_keys=True)
+
+
+def _unknown(report: ServiceReport) -> list[tuple[str, str]]:
+    """Every number the report could not compute, the turn count first."""
+    counted = [("turns", report.turns_missing)] if report.turns_missing else []
+    return counted + report.unknown()
 
 
 def _window(report: ServiceReport) -> str:

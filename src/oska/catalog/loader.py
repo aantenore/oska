@@ -1,4 +1,11 @@
-"""Reading skill files from disk."""
+"""Reading skill files from disk.
+
+A skill file served out of a revision is read once. Its bytes are hashed, the
+hash is compared with the one the revision's manifest records, and those same
+bytes are what is parsed, so nothing can change the file between the check and
+the parse. Any other file a revision holds, such as a policy, is read the same
+way through `read_checked`.
+"""
 
 from __future__ import annotations
 
@@ -24,6 +31,10 @@ class SkillParseError(ValueError):
     """A skill file could not be read."""
 
 
+class SkillIntegrityError(SkillParseError):
+    """A file's bytes are not the bytes the revision it belongs to records."""
+
+
 def discover(root: Path) -> list[Path]:
     """Return every skill file under a root, sorted. A missing root yields nothing."""
     base = Path(root)
@@ -41,18 +52,40 @@ def discover_all(roots: Iterable[Path]) -> list[Path]:
     return sorted(seen)
 
 
-def load_skill(path: Path) -> Skill:
-    """Parse one skill file."""
+def load_skill(path: Path, *, expected_hash: str | None = None) -> Skill:
+    """Parse one skill file.
+
+    With `expected_hash`, the file is read once and parsed only when the bytes
+    read hash to it; anything else raises `SkillIntegrityError`. An empty
+    expected hash is one no file has, which is how a file a manifest does not
+    name is refused.
+    """
     target = Path(path)
-    try:
-        raw = target.read_bytes()
-    except OSError as exc:
-        raise SkillParseError(f"{target}: cannot be read: {exc}") from exc
+    raw = read_checked(target, expected_hash)
     try:
         text = raw.decode("utf-8")
     except UnicodeDecodeError as exc:
         raise SkillParseError(f"{target}: is not valid UTF-8") from exc
     return parse_skill_text(text, target)
+
+
+def read_checked(path: Path, expected_hash: str | None = None) -> bytes:
+    """The bytes of one file, read once and, with `expected_hash`, only when they hash to it.
+
+    A file that cannot be read raises `SkillParseError`; bytes that do not hash
+    to the expected value raise `SkillIntegrityError`. An empty expected hash is
+    one no file has.
+    """
+    target = Path(path)
+    try:
+        raw = target.read_bytes()
+    except OSError as exc:
+        raise SkillParseError(f"{target}: cannot be read: {exc}") from exc
+    if expected_hash is not None and hashlib.sha256(raw).hexdigest() != expected_hash:
+        raise SkillIntegrityError(
+            f"{target}: its bytes are not the bytes its revision's manifest records"
+        )
+    return raw
 
 
 def parse_skill_text(text: str, path: Path) -> Skill:

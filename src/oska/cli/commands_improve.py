@@ -31,7 +31,16 @@ from typing import Annotated, cast
 import typer
 
 from oska.catalog.registry import SkillRegistry
-from oska.cli.options import JsonOption, SkillsOption, fail, settings_for
+from oska.cli.options import (
+    DomainOption,
+    JsonOption,
+    PlatformOption,
+    SkillsOption,
+    TenantOption,
+    fail,
+    platform_for,
+    settings_for,
+)
 from oska.config import Settings, load_runtime_config, state_path
 from oska.improvement.evaluation import EvaluationReport, load_cases, run_evaluation
 from oska.improvement.feedback import SCORES, FeedbackStore, Score, feedback_root
@@ -48,6 +57,7 @@ from oska.improvement.report import (
 from oska.index.base import LearnedPhrases
 from oska.index.discovery import Discovery
 from oska.index.keyword import KeywordIndex
+from oska.platform import PlatformError
 
 __all__ = ["app"]
 
@@ -85,9 +95,37 @@ def run(
     as_json: JsonOption = False,
     cases: CasesOption = None,
     skills: SkillsOption = None,
+    platform: PlatformOption = None,
+    domain: DomainOption = None,
+    tenant: TenantOption = None,
 ) -> None:
-    """Run the job: read the signals, learn, tune, evaluate, report the gaps."""
-    settings = settings_for(skills)
+    """Run the job: read the signals, learn, tune, evaluate, report the gaps.
+
+    Without a platform, one deployment's state. With one and no `--domain` or
+    `--tenant`, every (tenant, domain) it serves, each run over its own
+    signals and writing its learned files, preferences and report into its own
+    state directory only: what one domain learns never reaches another.
+    """
+    if platform is None:
+        _run_one(settings_for(skills), apply_tuning, cases, as_json)
+        return
+    if skills:
+        fail("--platform names the catalog; drop --skills")
+    held = platform_for(platform)
+    try:
+        reached = held.pairs(domain, tenant)
+    except PlatformError as exc:
+        fail(str(exc))
+    for pair_tenant, pair_domain in reached:
+        if not as_json:
+            typer.echo(f"== {pair_tenant}/{pair_domain} ==")
+        _run_one(held.settings_for(pair_domain, pair_tenant), apply_tuning, cases, as_json)
+
+
+def _run_one(
+    settings: Settings, apply_tuning: bool, cases: Path | None, as_json: bool
+) -> None:
+    """Run the job once, over one deployment's or one (tenant, domain)'s state."""
     try:
         report = run_job(settings, apply_tuning=apply_tuning, cases_path=cases)
     except (OSError, ValueError) as exc:

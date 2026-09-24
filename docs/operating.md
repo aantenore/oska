@@ -62,6 +62,20 @@ With no revision built, the runtime reads the configured skill roots directly
 and reloads when the files change. That is what the example catalogs do and
 what one process on its own disk wants.
 
+```sh
+oska revision verify 1f0a4c29b8de7a63
+```
+
+`verify` runs the same check the runtime runs before it will serve a
+revision — signature, and every file's hash against the signed manifest —
+without serving anything, which is what makes it worth running by hand after a
+revision is built or before `use` is pointed at one you did not just build
+yourself. It answers only what `catalog.signing` decides: with no signer
+configured, nothing is checked and it says so; with one configured, it fails
+closed on a bad signature or a changed file whether or not signing is
+`required`. See [configuration.md#catalog](configuration.md#catalog) and
+[building-a-platform.md#7-sign-revisions](building-a-platform.md#7-sign-revisions).
+
 ## Deciding on a change request
 
 Moving a proposal to `published` no longer writes a skill file. It composes a
@@ -78,7 +92,11 @@ oska change show 8c20b659-10c1-4a04-ac36-defe0f734e7b
 `show` prints the request and then the files its package holds. Read the skill
 file and the policy beside it; a drafted procedure asks for a second approval on
 every write it declares, with a per-session limit of one, until somebody edits
-it.
+it. Run from the command line, these commands act as the operator at the
+terminal, an identity that counts as verified on its own; reading or moving a
+proposal or a change request over HTTP instead needs a principal carrying
+`identity.reviewer_role`. See
+[governance.md#who-may-do-what-over-http](governance.md#who-may-do-what-over-http).
 
 ```sh
 oska change apply 8c20b659-10c1-4a04-ac36-defe0f734e7b \
@@ -105,8 +123,38 @@ oska change reject 8c20b659-10c1-4a04-ac36-defe0f734e7b \
   --by s.reyes --note "the rollback section is a placeholder"
 ```
 
-Both decisions are final. A change request is the record of one review, not a
-queue entry to reuse.
+`apply` is a copy, for a deployment that reviews a change request as a file on
+the same disk. `publish` is the same request opened for review the way a team
+already reviews everything else it ships:
+
+```sh
+oska change publish 8c20b659-10c1-4a04-ac36-defe0f734e7b \
+  --repo /path/to/the/catalog's/git/checkout --path packs/ops/skills \
+  --push --open-pr 'gh pr create --head {branch} --title {title} --fill'
+```
+
+It writes the package into an isolated git worktree, commits it on a new
+branch (`change/<request id>`) built from `--base` (`HEAD` by default), and
+removes the worktree — the operator's own checkout is never touched. Nothing
+is pushed without `--push`, and no pull request is opened without a push
+either: `--open-pr` names a command run with `{branch}` and `{title}`
+substituted, so the actual pull-request tool is whatever the operator already
+uses (`gh`, a hosted API wrapper, anything invoked from a shell), never
+hard-coded into the runtime. The commit's author is the request's actor, and
+`publish` refuses to make that commit when the actor was only stated and
+never verified — a name given with no identity behind it — unless
+`--allow-unverified-actor` says the operator means it anyway. A version that
+already exists on the target branch is refused, the same guarantee `apply`
+gives a catalog root.
+
+`publish` does not decide the request — it stays `open` afterward, recording
+its branch, whether it was pushed and what a pull-request command answered,
+because the decision is still the review that happens on that branch. `apply`
+and `reject` are the two moves that close a request, and either may still
+follow a `publish`: a request merged through its pull request is typically
+applied afterward too, so the change request record and the catalog root agree
+about what landed. A change request is the record of one review, not a queue
+entry to reuse. See [learning.md](learning.md#publication-composes-a-change-request).
 
 ## Reading the service-level report
 
@@ -139,9 +187,15 @@ run over a copy rather than over the file a running deployment is appending to.
 
 ## Forgetting a conversation
 
-The account of one conversation lives in three files — the receipts of what it
-wrote, the audit trail of how it decided, and the state it carried between
-turns. A request to be forgotten reaches all three or it has reached none.
+The account of one conversation is spread over eight stores — the receipts of
+what it wrote, the audit trail of how it decided, the state it carried
+between turns, the judgments recorded on its turns, what was learned about
+how it reads, the trace spans that name it, the proposals drafted from it,
+and the change requests composed from those proposals. A request to be
+forgotten reaches all eight or it has reached none. An applied change request
+is the one exception: its decision record — who asked, who decided, when,
+which version, and where it landed — survives, with the drafted material
+itself cleared.
 
 ```sh
 oska forget session walk

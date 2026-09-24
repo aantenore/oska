@@ -1,0 +1,508 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://oska.local/schemas/skill.schema.json",
+  "title": "Skill frontmatter",
+  "type": "object",
+  "required": [
+    "id",
+    "type",
+    "version",
+    "description"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^(runbook|entity|integration|composite)\\.[a-z0-9_]+$"
+    },
+    "type": {
+      "type": "string",
+      "enum": [
+        "runbook",
+        "entity",
+        "integration",
+        "composite"
+      ]
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "draft",
+        "published",
+        "retired"
+      ]
+    },
+    "description": {
+      "type": "string",
+      "minLength": 20,
+      "maxLength": 200
+    },
+    "triggers": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "entities": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "integrations": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "runbooks": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "capabilities": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "reads": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "writes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "runtime": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "additionalProperties": false,
+      "required": [
+        "action"
+      ],
+      "properties": {
+        "action": {
+          "type": "string",
+          "minLength": 1
+        },
+        "action_on_selection": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "order": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      }
+    },
+    "operations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "write",
+          "input_schema",
+          "output_schema"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "write": {
+            "type": "boolean"
+          },
+          "entity": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Identifier of the entity this operation acts on."
+          },
+          "transitions": {
+            "type": "object",
+            "description": "State the entity is expected to be left in, keyed by its state field.",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "input_schema": {
+            "type": "object"
+          },
+          "output_schema": {
+            "type": "object"
+          },
+          "verify": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": false,
+            "required": [
+              "operation"
+            ],
+            "properties": {
+              "operation": {
+                "type": "string",
+                "minLength": 1
+              },
+              "expect": {
+                "type": "object",
+                "description": "Dotted path into the read-back data mapped to a literal or $payload.<field>.",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "idempotency_fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "fields": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "type"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "type": {
+            "type": "string",
+            "minLength": 1
+          },
+          "identifier": {
+            "type": "boolean"
+          },
+          "description": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "state_field": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Name of the field that carries the lifecycle state of the entity."
+    },
+    "states": {
+      "type": "array",
+      "description": "Allowed values of the state field.",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "relations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "target",
+          "cardinality"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "target": {
+            "type": "string",
+            "minLength": 1
+          },
+          "cardinality": {
+            "type": "string",
+            "enum": [
+              "one",
+              "many"
+            ]
+          },
+          "description": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "policy": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "initial_state": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "State an entity holds when it is created."
+    },
+    "final_states": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "States from which the entity moves no further."
+    },
+    "state_read": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Operation that reads the entity's state back from the system of record."
+    },
+    "lifecycle": {
+      "type": "array",
+      "description": "Legal moves between states, each naming the operation that causes it.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "to",
+          "operation"
+        ],
+        "properties": {
+          "from": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "to": {
+            "type": "string"
+          },
+          "operation": {
+            "type": "string"
+          },
+          "required": {
+            "type": "boolean"
+          },
+          "offered": {
+            "type": "boolean"
+          }
+        }
+      }
+    },
+    "human_inputs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Payload fields only a person can supply; the planner asks and never derives them."
+    },
+    "guardrails": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Identifiers of guardrails declared in the governed catalog."
+    },
+    "principal_inputs": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      },
+      "description": "Payload fields resolved from the authenticated principal, mapped to the principal attribute they take their value from. Never asked for, never written by the model."
+    },
+    "presentation": {
+      "type": "object",
+      "description": "Views a procedure asks a presentation surface to show, per moment of a turn, bound to verified evidence.",
+      "additionalProperties": false,
+      "properties": {
+        "on_results": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "view"
+          ],
+          "properties": {
+            "view": {
+              "type": "string"
+            },
+            "bind": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              }
+            },
+            "fields": {
+              "type": "object"
+            }
+          }
+        },
+        "on_single_result": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "view"
+          ],
+          "properties": {
+            "view": {
+              "type": "string"
+            },
+            "bind": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              }
+            },
+            "fields": {
+              "type": "object"
+            }
+          }
+        },
+        "on_selection": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "view"
+          ],
+          "properties": {
+            "view": {
+              "type": "string"
+            },
+            "bind": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              }
+            },
+            "fields": {
+              "type": "object"
+            }
+          }
+        },
+        "on_verified_write": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "view"
+          ],
+          "properties": {
+            "view": {
+              "type": "string"
+            },
+            "bind": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              }
+            },
+            "fields": {
+              "type": "object"
+            }
+          }
+        },
+        "on_completion": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "view"
+          ],
+          "properties": {
+            "view": {
+              "type": "string"
+            },
+            "bind": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              }
+            },
+            "fields": {
+              "type": "object"
+            }
+          }
+        }
+      }
+    },
+    "subject": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "additionalProperties": false,
+      "required": [
+        "entity"
+      ],
+      "properties": {
+        "entity": {
+          "type": "string"
+        },
+        "cardinality": {
+          "enum": [
+            "one",
+            "many"
+          ]
+        },
+        "joins": {
+          "enum": [
+            "focus",
+            "none"
+          ]
+        }
+      }
+    },
+    "noun": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "How one record of the entity is named."
+    },
+    "plural": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "How several records of the entity are named."
+    },
+    "display_fields": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Fields shown when a record is presented, and used to tell one shown record from another."
+    },
+    "comparable_fields": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Fields a comparative may refine on, when the shown records differ on them."
+    }
+  }
+}

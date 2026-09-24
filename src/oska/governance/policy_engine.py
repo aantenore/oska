@@ -4,6 +4,12 @@ A procedure that writes carries a policy file next to it. Without one nothing
 is allowed: the absence of a rule is not permission. Reads are governed by the
 catalog alone, so they never reach the rules here, and an operation the catalog
 does not declare at all is refused rather than taken for a read.
+
+The policy file is read through the catalog. Under a revision that means the
+bytes are the ones the revision's manifest records, read once and parsed as
+read, so a policy changed after the revision was verified is not enforced. A
+policy that cannot be read, does not parse, or does not match its revision
+refuses every write it governs.
 """
 
 from __future__ import annotations
@@ -12,7 +18,8 @@ import json
 from pathlib import Path
 from typing import Any
 
-from oska.catalog.registry import SkillRegistry
+from oska.catalog.loader import SkillParseError
+from oska.catalog.registry import Catalog
 from oska.contracts.common import PolicyDecision
 from oska.contracts.policy import CONDITION_OPERATORS, Policy, PolicyRule
 from oska.contracts.skill import OperationSpec, Skill
@@ -25,6 +32,9 @@ _READ_REASON = "read operation"
 _NO_POLICY_REASON = "the procedure declares no policy, so nothing may be written"
 _NO_RULE_REASON = "no rule covers this operation"
 _UNDECLARED_REASON = "undeclared operation"
+_UNREADABLE_REASON = (
+    "the procedure's policy could not be read as released, so nothing may be written"
+)
 
 
 class PolicyError(Exception):
@@ -34,14 +44,18 @@ class PolicyError(Exception):
 class PolicyEngine:
     """Applies a procedure's policy to one operation."""
 
-    def __init__(self, registry: SkillRegistry, ledger: WriteLedger) -> None:
+    def __init__(self, registry: Catalog, ledger: WriteLedger) -> None:
         self._registry = registry
         self._ledger = ledger
         self._capabilities = CapabilityRegistry(registry)
         self._cache: dict[tuple[str, str], Policy | None] = {}
 
     def load(self, skill: Skill) -> Policy | None:
-        """Read the policy declared by a procedure, resolved against its own file."""
+        """Read the policy declared by a procedure, resolved against its own file.
+
+        Raises `PolicyError` when the file cannot be read, does not parse, or,
+        under a revision, is not the file the revision's manifest records.
+        """
         reference = skill.frontmatter.policy
         if not reference:
             return None
@@ -52,11 +66,10 @@ class PolicyEngine:
         if not path.is_absolute():
             path = skill.path.parent / path
         try:
-            with path.open(encoding="utf-8") as handle:
-                document = json.load(handle)
-        except (OSError, json.JSONDecodeError) as exc:
+            document = json.loads(self._registry.read_file(path).decode("utf-8"))
+            policy = Policy.model_validate(document)
+        except (SkillParseError, ValueError) as exc:
             raise PolicyError(f"{skill.id}: policy {path} could not be read: {exc}") from exc
-        policy = Policy.model_validate(document)
         self._cache[cache_key] = policy
         return policy
 
@@ -74,7 +87,10 @@ class PolicyEngine:
             return PolicyDecision(effect="deny", rule=None, reason=_UNDECLARED_REASON)
         if not spec.write:
             return PolicyDecision(effect="allow", rule=None, reason=_READ_REASON)
-        policy = self.load(skill)
+        try:
+            policy = self.load(skill)
+        except PolicyError:
+            return PolicyDecision(effect="deny", rule=None, reason=_UNREADABLE_REASON)
         if policy is None:
             return PolicyDecision(effect="deny", rule=None, reason=_NO_POLICY_REASON)
         subject = {**payload, **(context or {})}

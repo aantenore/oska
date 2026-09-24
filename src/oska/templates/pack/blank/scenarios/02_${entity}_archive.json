@@ -1,0 +1,143 @@
+{
+  "name": "02_${entity}_archive",
+  "description": "Archiving a ${entity} needs one approval; once verified, repeating the same request replays from the ledger instead of writing again.",
+  "level": 2,
+  "provider_script": [
+    {
+      "purpose": "router classification",
+      "expect_contains": "has served its purpose",
+      "response": {
+        "kind": "new_task",
+        "runbook_id": "runbook.${entity}_archive",
+        "confidence": 0.9,
+        "language": "en"
+      }
+    },
+    {
+      "purpose": "plan",
+      "expect_contains": "has served its purpose",
+      "response": {
+        "runbook_id": "runbook.${entity}_archive",
+        "operations": [
+          {
+            "integration_id": "integration.${system}",
+            "operation": "${entity}.get",
+            "payload": { "name": "demo-1" },
+            "write": false,
+            "purpose": "read the current status"
+          },
+          {
+            "integration_id": "integration.${system}",
+            "operation": "${entity}.archive",
+            "payload": { "name": "demo-1" },
+            "write": true,
+            "purpose": "archive the ${entity}"
+          }
+        ],
+        "missing": [],
+        "reply_intent": "report the archive of demo-1 and its read-back"
+      }
+    },
+    {
+      "purpose": "reply writing",
+      "expect_contains": "\"kind\": \"receipt\"",
+      "response": {
+        "reply": "demo-1 has been archived and the read-back shows it archived under the same name, so the receipt is verified."
+      }
+    },
+    {
+      "purpose": "router classification",
+      "expect_contains": "out of service again",
+      "response": {
+        "kind": "new_task",
+        "runbook_id": "runbook.${entity}_archive",
+        "confidence": 0.9,
+        "language": "en"
+      }
+    },
+    {
+      "purpose": "plan",
+      "expect_contains": "out of service again",
+      "response": {
+        "runbook_id": "runbook.${entity}_archive",
+        "operations": [
+          {
+            "integration_id": "integration.${system}",
+            "operation": "${entity}.get",
+            "payload": { "name": "demo-1" },
+            "write": false,
+            "purpose": "read the current status"
+          },
+          {
+            "integration_id": "integration.${system}",
+            "operation": "${entity}.archive",
+            "payload": { "name": "demo-1" },
+            "write": true,
+            "purpose": "archive the ${entity} again"
+          }
+        ],
+        "missing": [],
+        "reply_intent": "report that the archive already happened in this session"
+      }
+    },
+    {
+      "purpose": "reply writing",
+      "expect_contains": "\"kind\": \"ledger_hit\"",
+      "response": {
+        "reply": "Nothing ran again: this session already archived demo-1, and the receipt from that archive still stands."
+      }
+    }
+  ],
+  "turns": [
+    {
+      "user": "the demo-1 item has served its purpose, take it out of service for good",
+      "expect": {
+        "kind": "new_task",
+        "contains": [
+          "approval",
+          "${entity}.archive",
+          "{\"name\":\"demo-1\"}"
+        ],
+        "outcomes": [
+          "read",
+          "approval_pending"
+        ],
+        "pending": "approval",
+        "receipts": 0,
+        "verification": null
+      }
+    },
+    {
+      "user": "yes",
+      "expect": {
+        "kind": "approve",
+        "contains": [
+          "archived",
+          "verified"
+        ],
+        "outcomes": [
+          "receipt"
+        ],
+        "pending": null,
+        "receipts": 1,
+        "verification": "verified"
+      }
+    },
+    {
+      "user": "take demo-1 out of service again, the same one as before",
+      "expect": {
+        "kind": "new_task",
+        "contains": [
+          "already archived demo-1"
+        ],
+        "outcomes": [
+          "read",
+          "ledger_hit"
+        ],
+        "pending": null,
+        "receipts": 1,
+        "verification": "verified"
+      }
+    }
+  ]
+}

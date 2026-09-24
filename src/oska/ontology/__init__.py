@@ -12,6 +12,16 @@ from oska.ontology.graph import (
     operation_node_id,
     state_node_id,
 )
+from oska.ontology.naming import (
+    Binding,
+    identifier_names,
+    is_multi_valued,
+    noun_of,
+    parse_binding,
+    plural_of,
+    records_in,
+    subject_field,
+)
 from oska.ontology.queries import (
     Lifecycle,
     Move,
@@ -28,6 +38,7 @@ from oska.ontology.queries import (
 
 __all__ = [
     "SUBGRAPH_TITLES",
+    "Binding",
     "Edge",
     "EdgeKind",
     "Lifecycle",
@@ -38,15 +49,22 @@ __all__ = [
     "OntologyGraph",
     "SkillSource",
     "from_json",
+    "identifier_names",
+    "is_multi_valued",
     "legal_moves",
+    "noun_of",
     "lifecycle_of",
     "operation_node_id",
     "operations_on",
+    "parse_binding",
     "path",
+    "plural_of",
     "procedures_for",
+    "records_in",
     "related",
     "required_move",
     "state_node_id",
+    "subject_field",
     "to_json",
     "to_mermaid",
     "vocabulary",

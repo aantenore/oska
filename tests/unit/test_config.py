@@ -6,6 +6,9 @@ import ast
 import re
 from pathlib import Path
 
+import pytest
+from pydantic import ValidationError
+
 from oska.catalog.registry import SkillRegistry
 from oska.config import (
     DiscoveryConfig,
@@ -18,6 +21,8 @@ from oska.config import (
 from oska.contracts.common import TurnKind
 from oska.index.discovery import Discovery
 from oska.index.keyword import KeywordIndex
+from oska.platform.errors import TenantOverlayError
+from oska.platform.tenants import TENANT_SAFE_KEYS, apply_runtime
 from oska.router import FastPath, RoutingContext, RuleRouter
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[2] / "src" / "oska"
@@ -155,3 +160,90 @@ def test_no_threshold_limit_path_or_model_name_is_written_into_logic() -> None:
                     if value not in allowed:
                         written.append(f"{name}:{line}: {value!r}")
     assert written == []
+
+
+# Every cost has a floor, and a tenant fragment is held to it too.
+
+BELOW_THE_FLOOR = [
+    ("reply", "conversation_window", 0),
+    ("resilience", "timeout_seconds", 0),
+    ("resilience", "max_response_bytes", 0),
+    ("resilience", "failures_before_open", 0),
+    ("platform", "cache_size", 0),
+    ("reply", "conversation_window", -1),
+    ("resilience", "timeout_seconds", -1),
+    ("resilience", "max_response_bytes", -1),
+    ("resilience", "retries", -1),
+    ("resilience", "backoff_seconds", -1),
+    ("resilience", "failures_before_open", -1),
+    ("resilience", "recovery_seconds", -1),
+    ("metrics", "cache_seconds", -1),
+    ("platform", "cache_size", -1),
+    ("turn", "max_model_calls", -1),
+]
+AT_THE_FLOOR = [
+    ("reply", "conversation_window", 1),
+    ("resilience", "timeout_seconds", 0.1),
+    ("resilience", "max_response_bytes", 1),
+    ("resilience", "retries", 0),
+    ("resilience", "backoff_seconds", 0),
+    ("resilience", "failures_before_open", 1),
+    ("resilience", "recovery_seconds", 0),
+    ("metrics", "cache_seconds", 0),
+    ("platform", "cache_size", 1),
+    ("turn", "max_model_calls", 0),
+]
+
+
+@pytest.mark.parametrize(("section", "key", "value"), BELOW_THE_FLOOR)
+def test_a_value_below_its_floor_is_refused(section: str, key: str, value: float) -> None:
+    with pytest.raises(ValidationError, match=key):
+        RuntimeConfig.model_validate({section: {key: value}})
+
+
+@pytest.mark.parametrize(("section", "key", "value"), AT_THE_FLOOR)
+def test_a_value_at_its_floor_is_accepted(section: str, key: str, value: float) -> None:
+    held = RuntimeConfig.model_validate({section: {key: value}})
+
+    assert getattr(getattr(held, section), key) == value
+
+
+@pytest.mark.parametrize(
+    ("section", "key", "value"),
+    [(s, k, v) for s, k, v in BELOW_THE_FLOOR if s in TENANT_SAFE_KEYS],
+)
+def test_a_tenant_fragment_below_a_floor_is_refused(section: str, key: str, value: float) -> None:
+    with pytest.raises(TenantOverlayError, match=key):
+        apply_runtime(RuntimeConfig(), {section: {key: value}})
+
+
+def test_the_shipped_configuration_is_a_single_user_deployment(repo_root: Path) -> None:
+    shipped = load_runtime_config(repo_root / "configs" / "runtime.json")
+
+    assert shipped.identity.mode == "proxy"
+    assert shipped.identity.required is False
+    assert shipped.identity.single_user is True
+    assert shipped.metrics.public is False
+
+
+@pytest.mark.parametrize(
+    ("section", "key", "value"),
+    [
+        ("enrichment", "per_language", 0),
+        ("enrichment", "cap_per_route", 0),
+        ("improvement", "max_phrases_per_skill", 0),
+        ("improvement", "cluster_threshold", 0),
+        ("improvement", "cluster_threshold", 1.5),
+        ("improvement", "cluster_min_size", 0),
+        ("storage", "busy_timeout_seconds", 0),
+        ("retention", "days", -1),
+    ],
+)
+def test_the_remaining_bounds_have_floors(section: str, key: str, value: float) -> None:
+    """Every bound on work, storage and retention refuses a value below its floor."""
+    from pydantic import ValidationError
+
+    from oska.config import RuntimeConfig
+
+    with pytest.raises(ValidationError):
+        RuntimeConfig.model_validate({section: {key: value}})

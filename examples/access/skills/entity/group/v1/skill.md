@@ -24,6 +24,10 @@ relations:
     target: entity.user
     cardinality: one
     description: Account answerable for who belongs to this group.
+noun: group
+plural: groups
+display_fields: [name, sensitivity]
+comparable_fields: [sensitivity]
 ---
 
 ## Purpose

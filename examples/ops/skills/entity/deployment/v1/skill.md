@@ -43,6 +43,10 @@ relations:
     target: entity.service
     cardinality: one
     description: Service this deployment targets.
+noun: deployment
+plural: deployments
+display_fields: [id, service, version, state]
+comparable_fields: [state]
 ---
 
 ## Purpose

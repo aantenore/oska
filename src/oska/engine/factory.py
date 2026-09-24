@@ -15,7 +15,8 @@ from that revision and nothing reads a mutable directory while it serves;
 otherwise the configured skill roots are read directly, which is what a single
 process on its own disk wants and what the example catalogs use. The ledger is
 wrapped either way, so every receipt opened in a turn names the revision the
-turn was decided under.
+engine's own catalog was pinned to for that turn, whatever else the process
+has pinned.
 
 The guardrail catalog and the trace sink are built here too, from the runtime
 configuration: guardrails on unless the configuration switches them off, traces
@@ -24,20 +25,33 @@ phrasings reach the two layers that rank the catalog, so a deployment that has
 derived the phrases of its procedures, or has run the improvement job over its
 traffic, routes by them without anything else being told. Both are read from
 disk; neither is written here.
+
+A caller that assembles several engines in one process, one per domain and
+tenant, hands over what it has already resolved: the runtime configuration
+with the tenant's fragment merged in, the connector bindings merged from the
+domain's packs, the guardrail catalog with the packs' entries added, the
+resolver that names the domain's host, the host itself for the reply writer,
+whether the domain enables presentation, the synonyms of its packs, and the
+storage namespace of the (tenant, domain). Whatever it does not hand over is
+read from the settings, exactly as for a single catalog: presentation off, no
+synonyms, no host, and the default namespace.
 """
 
 from __future__ import annotations
 
+from collections.abc import Callable, Mapping
 from pathlib import Path
 
 from oska.audit.sink import AuditSink, JsonlSink
 from oska.audit.trace import JsonlTraceSink, TraceSink
-from oska.catalog.registry import Catalog, ServedCatalog, SkillRegistry, active_revision
+from oska.catalog.registry import (
+    Catalog,
+    active_revision,
+    serve_catalog,
+)
 from oska.catalog.resolver import CapabilityResolver
-from oska.catalog.revision import RevisionStore
-from oska.catalog.validator import CatalogError, validate_all
+from oska.catalog.validator import CatalogError, validate, validate_all
 from oska.config import (
-    CatalogConfig,
     RuntimeConfig,
     Settings,
     guardrail_catalog_path,
@@ -45,9 +59,9 @@ from oska.config import (
     state_path,
 )
 from oska.connectors.registry import ConnectorRegistry
+from oska.contracts.platform import HostIdentity
 from oska.contracts.receipt import WriteReceipt
 from oska.engine.engine import BudgetedProvider, Engine, ModelBudget
-from oska.engine.session_store import SessionStore
 from oska.governance.approval import ApprovalGate
 from oska.governance.capabilities import CapabilityRegistry
 from oska.governance.guardrails import GuardrailCatalog
@@ -62,6 +76,7 @@ from oska.index.keyword import KeywordIndex
 from oska.planner.planner import Planner
 from oska.planner.provider import ModelProvider
 from oska.router import FastPath, ModelRouter, RuleRouter, TurnRouter
+from oska.storage import DEFAULT_NAMESPACE, LedgerStore, open_ledger, open_sessions
 
 __all__ = ["build_engine", "revision_ledger"]
 
@@ -73,17 +88,38 @@ def build_engine(
     audit_sink: AuditSink | None = None,
     trace_sink: TraceSink | None = None,
     connector_behaviors: dict[str, dict] | None = None,
+    runtime: RuntimeConfig | None = None,
+    connectors: ConnectorRegistry | None = None,
+    guardrails: GuardrailCatalog | None = None,
+    resolver: Callable[[Catalog], CapabilityResolver] | None = None,
+    presentation: bool = False,
+    synonyms: Mapping[str, str] | None = None,
+    host: HostIdentity | None = None,
+    namespace: str = DEFAULT_NAMESPACE,
 ) -> Engine:
-    """Assemble an engine from the settings and the configuration files they name."""
-    runtime = load_runtime_config(settings=settings)
+    """Assemble an engine from the settings and the configuration files they name.
+
+    `runtime`, `connectors` and `guardrails` replace what the settings would
+    have read; `connector_behaviors` applies only to bindings read here.
+    `guardrails` is the whole declared catalog: skills are checked against it,
+    and the engine keeps it unless the configuration switches guardrails off.
+    `resolver` builds the catalog wording over the registry built here.
+    `presentation` and `synonyms` are the serving domain's, `host` is who the
+    reply writer is told it answers as, and `namespace` is what the session
+    store and the ledger are kept under.
+    """
+    runtime = runtime or load_runtime_config(settings=settings)
     budget = ModelBudget(runtime.turn.max_model_calls)
     if provider is not None:
         provider = BudgetedProvider(provider, budget)
-    guardrails = _guardrail_catalog(runtime, settings)
+    declared = guardrails
+    guardrails = _guardrail_catalog(runtime, settings, declared)
     trace = trace_sink or _trace_sink(runtime, settings)
     registry = _catalog(runtime, settings)
-    _refuse_a_broken_catalog(registry, settings)
-    resolver = CapabilityResolver(registry)
+    _refuse_a_broken_catalog(
+        registry, settings, None if declared is None else frozenset(declared.ids())
+    )
+    wording = (resolver or CapabilityResolver)(registry)
 
     def make_index() -> SkillIndex:
         return KeywordIndex() if provider is None else EmbeddingIndex(provider)
@@ -99,24 +135,24 @@ def build_engine(
         FastPath(
             make_index, registry, runtime.router.fast_path, runtime.enrichment, learned
         ),
-        None if provider is None else ModelRouter(provider, resolver, runtime.router),
+        None if provider is None else ModelRouter(provider, wording, runtime.router),
     )
-    planner = None if provider is None else Planner(provider, registry, resolver)
-    connectors = ConnectorRegistry.from_config(
-        settings.connectors_config,
-        behaviors=connector_behaviors,
-        resilience=runtime.resilience,
-    )
+    planner = None if provider is None else Planner(provider, registry, wording)
+    if connectors is None:
+        connectors = ConnectorRegistry.from_config(
+            settings.connectors_config,
+            behaviors=connector_behaviors,
+            resilience=runtime.resilience,
+        )
     capabilities = CapabilityRegistry(registry)
     ledger = revision_ledger(
-        state_path(settings.state_dir, runtime.ledger.path),
-        busy_timeout=runtime.storage.busy_timeout_seconds,
+        open_ledger(runtime, settings, namespace=namespace), catalog=registry
     )
     audit = audit_sink or JsonlSink(state_path(settings.state_dir, runtime.audit.path))
     preferences = preferences_root(settings.state_dir)
     return Engine(
         registry=registry,
-        resolver=resolver,
+        resolver=wording,
         discovery=discovery,
         router=router,
         planner=planner,
@@ -126,17 +162,25 @@ def build_engine(
         approval=ApprovalGate(),
         ledger=ledger,
         verifier=Verifier(capabilities),
-        session_store=SessionStore(state_path(settings.state_dir, runtime.sessions.path)),
+        session_store=open_sessions(runtime, settings, namespace=namespace),
         audit=audit,
         runtime_config=runtime,
         preferences_root=preferences,
         guardrails=guardrails,
         trace=trace,
         budget=budget,
+        presentation=presentation,
+        synonyms=synonyms,
+        host=host,
     )
 
 
-def revision_ledger(path: Path, *, busy_timeout: float | None = None) -> WriteLedger:
+def revision_ledger(
+    ledger: LedgerStore | Path,
+    *,
+    catalog: Catalog | None = None,
+    busy_timeout: float | None = None,
+) -> LedgerStore:
     """A write ledger that names the revision in force on every receipt it opens.
 
     A receipt answers what was done; under a released catalog it also has to
@@ -146,8 +190,14 @@ def revision_ledger(path: Path, *, busy_timeout: float | None = None) -> WriteLe
     nothing else, so it is added to a ledger here rather than made a second kind
     of ledger: everything a receipt is, and everything the store does with it,
     stays where it is written.
+
+    With `catalog`, the revision is that catalog's pin and no other, so two
+    engines in one process never name each other's revision. Without one it is
+    the pin opened last in this context, which is only right where one catalog
+    is pinned per turn.
     """
-    ledger = WriteLedger(path, busy_timeout=busy_timeout)
+    if not isinstance(ledger, LedgerStore):
+        ledger = WriteLedger(Path(ledger), busy_timeout=busy_timeout)
     opened = ledger.new_receipt
 
     def new_receipt(
@@ -158,7 +208,7 @@ def revision_ledger(path: Path, *, busy_timeout: float | None = None) -> WriteLe
         payload: dict,
     ) -> WriteReceipt:
         receipt = opened(session_id, key, integration_id, operation, payload)
-        receipt.revision = active_revision() or None
+        receipt.revision = active_revision(catalog) or None
         return receipt
 
     ledger.new_receipt = new_receipt
@@ -166,29 +216,22 @@ def revision_ledger(path: Path, *, busy_timeout: float | None = None) -> WriteLe
 
 
 def _catalog(runtime: RuntimeConfig, settings: Settings) -> Catalog:
-    """The catalog this deployment serves: a built revision, or the skill roots.
+    """The catalog this deployment serves, decided by the catalog configuration.
 
-    A revision wins whenever the store holds one that answers the configuration:
-    the revision it names, or the newest when it names none. A configuration
-    that names a revision the store does not hold is not silently ignored; it
-    falls back to the roots, and the catalog check below is what then decides
-    whether anything is served at all.
+    The choice between the skill roots and a built revision, and the check of a
+    revision's signature, live with the catalog; the factory only asks.
     """
-    catalog: CatalogConfig = runtime.catalog
-    store = RevisionStore(state_path(settings.state_dir, catalog.revisions_root))
-    if catalog.revision:
-        if store.get(catalog.tenant, catalog.revision) is not None:
-            return ServedCatalog(store, catalog.tenant, catalog.revision)
-        return SkillRegistry(settings.skills_roots)
-    if store.current(catalog.tenant) or store.latest(catalog.tenant):
-        return ServedCatalog(store, catalog.tenant)
-    return SkillRegistry(settings.skills_roots)
+    return serve_catalog(runtime.catalog, settings)
 
 
-def _guardrail_catalog(runtime: RuntimeConfig, settings: Settings) -> GuardrailCatalog:
+def _guardrail_catalog(
+    runtime: RuntimeConfig, settings: Settings, declared: GuardrailCatalog | None = None
+) -> GuardrailCatalog:
     """The declared guardrails, or an empty catalog when they are switched off."""
     if not runtime.guardrails.enabled:
         return GuardrailCatalog.empty()
+    if declared is not None:
+        return declared
     return GuardrailCatalog.load(guardrail_catalog_path(runtime.guardrails, settings))
 
 
@@ -199,17 +242,28 @@ def _trace_sink(runtime: RuntimeConfig, settings: Settings) -> TraceSink | None:
     return JsonlTraceSink(state_path(settings.state_dir, runtime.tracing.path))
 
 
-def _refuse_a_broken_catalog(registry: Catalog, settings: Settings) -> None:
+def _refuse_a_broken_catalog(
+    registry: Catalog, settings: Settings, guardrail_ids: frozenset[str] | None = None
+) -> None:
     """Nothing is served from a catalog whose files do not hold up.
 
     The settings travel with the catalog, so what a skill may declare is read
     from the configuration of this deployment and not from wherever the process
-    happens to have been started.
+    happens to have been started. A caller that resolved the guardrail catalog
+    itself names the identifiers it defines, and skills are checked against those.
     """
-    issues = [
-        *registry.parse_errors(),
-        *validate_all(registry.skills(), schema_dir=settings.schemas_dir, settings=settings),
-    ]
+    skills = registry.skills()
+    if guardrail_ids is None:
+        checked = validate_all(skills, schema_dir=settings.schemas_dir, settings=settings)
+    else:
+        checked = [
+            issue
+            for skill in skills
+            for issue in validate(
+                skill, skills, schema_dir=settings.schemas_dir, guardrail_ids=guardrail_ids
+            )
+        ]
+    issues = [*registry.parse_errors(), *checked]
     blocking = [issue for issue in issues if issue.severity == "error"]
     if blocking:
         raise CatalogError(blocking)

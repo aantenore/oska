@@ -7,6 +7,14 @@ catalog root, and the root is an argument: there is no default, no configured
 value it falls back to, and no way to run it without saying where the package
 lands.
 
+`change publish` puts a request in front of a reviewer as a branch of a git
+repository the operator names: one commit authored by the actor who approved
+it, in a worktree of its own, never pushed unless `--push` is given and never
+forced. `--open-pr` names a command, split into arguments here and run without
+a shell, that opens a pull request for the pushed branch; `{branch}` and
+`{title}` are substituted into it. A request approved under a name the approving
+call only stated is refused unless `--allow-unverified-actor` is given.
+
 Applying is not serving. A catalog root that has gained a version is a source,
 and the runtime answers from a built revision, so the command says what it
 copied and then says what is still to be done.
@@ -15,6 +23,7 @@ copied and then says what is still to be done.
 from __future__ import annotations
 
 import json
+import shlex
 from pathlib import Path
 from typing import Annotated
 
@@ -28,6 +37,7 @@ from oska.learning.changes import (
     ChangeRequestStore,
     store_for,
 )
+from oska.learning.publishers import DEFAULT_REMOTE, CommandOpener, GitPublisher
 
 __all__ = ["app"]
 
@@ -47,6 +57,34 @@ IntoOption = Annotated[
     typer.Option("--into", help="Catalog root the package is copied into."),
 ]
 NoteOption = Annotated[str, typer.Option("--note", help="Why, recorded with the decision.")]
+RepositoryOption = Annotated[
+    Path,
+    typer.Option("--repo", help="Git repository the branch is made in."),
+]
+CatalogPathOption = Annotated[
+    str,
+    typer.Option("--path", help="Catalog root inside the repository; its top by default."),
+]
+BaseOption = Annotated[str, typer.Option("--base", help="Commit the branch starts from.")]
+PushOption = Annotated[
+    bool,
+    typer.Option("--push", help="Push the branch. Nothing is pushed without it."),
+]
+RemoteOption = Annotated[str, typer.Option("--remote", help="Remote the branch is pushed to.")]
+OpenOption = Annotated[
+    str,
+    typer.Option(
+        "--open-pr",
+        help="Command that opens a pull request, with {branch} and {title} substituted.",
+    ),
+]
+UnverifiedOption = Annotated[
+    bool,
+    typer.Option(
+        "--allow-unverified-actor",
+        help="Author the commit as an approver that was stated and not verified.",
+    ),
+]
 
 BUILD_REMINDER = (
     "Nothing serves this yet. A catalog root is a source; the runtime answers "
@@ -108,6 +146,41 @@ def apply(
     for path in copied:
         typer.echo(f"  {path}")
     typer.echo(BUILD_REMINDER)
+
+
+@app.command("publish")
+def publish(
+    request_id: str,
+    repo: RepositoryOption,
+    path: CatalogPathOption = "",
+    base: BaseOption = "HEAD",
+    push: PushOption = False,
+    remote: RemoteOption = DEFAULT_REMOTE,
+    open_pr: OpenOption = "",
+    allow_unverified_actor: UnverifiedOption = False,
+    skills: SkillsOption = None,
+) -> None:
+    """Publish one change request as a branch of a git repository, for review there."""
+    store = _store(skills)
+    try:
+        opener = CommandOpener(shlex.split(open_pr)) if open_pr.strip() else None
+        publisher = GitPublisher(
+            repo,
+            catalog_path=path,
+            base=base,
+            push=push,
+            remote=remote,
+            opener=opener,
+            allow_unverified_actor=allow_unverified_actor,
+        )
+        request = publisher.publish(store.get(request_id), store)
+    except (KeyError, ValueError, ChangeRequestError) as exc:
+        fail(str(exc))
+    typer.echo(f"{request.request_id}\t{request.branch}\t{request.commit}")
+    if not request.pushed:
+        typer.echo(f"not pushed; push {request.branch} when it is ready for review")
+    if request.pull_request:
+        typer.echo(request.pull_request)
 
 
 @app.command("reject")

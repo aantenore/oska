@@ -25,6 +25,27 @@ guardrails:
   - guardrail.identifiers_are_never_invented
   - guardrail.exact_payload_approval
   - guardrail.read_back_before_confirmation
+subject:
+  entity: entity.alert
+  cardinality: one
+  joins: focus
+presentation:
+  on_selection:
+    view: alert_selected
+    bind:
+      alert: $selection
+  on_results:
+    view: alert_list
+    bind:
+      alerts: $items.id
+      rules: $items.rule
+      states: $items.state
+  on_verified_write:
+    view: alert_silenced
+    bind:
+      alert: $receipt.alert_id
+      minutes: $receipt.minutes
+      receipt: $receipt.receipt_id
 runtime:
   action: silence an alert
   action_on_selection: silence it

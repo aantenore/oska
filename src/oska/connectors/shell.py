@@ -7,10 +7,11 @@ shell, so a payload value can only ever become one argument.
 
 The timeout is the one the binding's resilience configuration carries, and an
 operation that needs longer than the binding allows declares its own. A command
-that runs out of time, and one that cannot be run at all, are transport
-failures: nothing was done and the system this binding names could not be
-reached. A command that ran and exited non-zero is the system answering no, and
-is terminal.
+that cannot be run at all is a transport failure that never left, `retryable`:
+nothing was started. A command that ran out of time is a transport failure
+too, but it was started and may have done its work before it was stopped, so it
+is `ambiguous`. A command that ran and exited non-zero is the system answering
+no, and is terminal.
 """
 
 from __future__ import annotations
@@ -27,6 +28,7 @@ from oska.connectors.base import (
     rejected,
     succeeded,
     transport_failure,
+    unanswered,
 )
 from oska.contracts.common import ConnectorResult
 
@@ -78,7 +80,7 @@ class ShellConnector(BaseConnector):
                 check=False,
             )
         except subprocess.TimeoutExpired:
-            return transport_failure(f"{operation} timed out after {timeout}s")
+            return unanswered(f"{operation} timed out after {timeout}s")
         except OSError as error:
             return transport_failure(f"{argv[0]} could not be run: {error}")
         data = {

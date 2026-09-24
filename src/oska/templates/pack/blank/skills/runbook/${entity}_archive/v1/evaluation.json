@@ -1,0 +1,8 @@
+{
+  "cases": [
+    { "text": "archive ${entity} demo-1", "expects": "this", "language": "en" },
+    { "text": "retire ${entity} demo-1, it is done", "expects": "this", "language": "en" },
+    { "text": "what is the status of ${entity} demo-1", "expects": "not this", "language": "en" },
+    { "text": "check ${entity} demo-1", "expects": "not this", "language": "en" }
+  ]
+}

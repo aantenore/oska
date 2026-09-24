@@ -22,6 +22,14 @@ capabilities:
 guardrails:
   - guardrail.declared_operations_only
   - guardrail.identifiers_are_never_invented
+presentation:
+  on_single_result:
+    view: service_status
+    bind:
+      service: $item.name
+      environment: $item.environment
+      status: $item.status
+      version: $item.version
 runtime:
   action: check the health of a service
   action_on_selection: check its health

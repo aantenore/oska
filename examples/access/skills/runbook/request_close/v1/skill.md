@@ -25,6 +25,13 @@ guardrails:
   - guardrail.identifiers_are_never_invented
   - guardrail.exact_payload_approval
   - guardrail.read_back_before_confirmation
+presentation:
+  on_verified_write:
+    view: request_closed
+    bind:
+      request: $receipt.id
+      state: $receipt.state
+      receipt: $receipt.receipt_id
 runtime:
   action: record the outcome of an access request
   action_on_selection: record its outcome

@@ -20,6 +20,7 @@ dependencies = [
 
 [project.optional-dependencies]
 api = ["fastapi>=0.111", "uvicorn>=0.30"]
+postgres = ["psycopg[binary]>=3.1"]
 dev = ["pytest>=8.0", "ruff>=0.6"]
 
 [project.scripts]
@@ -27,6 +28,15 @@ oska = "oska.cli.main:app"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+oska = [
+    "templates/**/*",
+    "templates/**/.*",
+    "templates/**/.*/**/*",
+    "defaults/**/*",
+    "defaults/**/.*",
+]
 
 [tool.ruff]
 line-length = 100

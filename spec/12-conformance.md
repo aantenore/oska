@@ -9,7 +9,7 @@ filled in.
 **Level 1 — Declared.** The system declares what exists and what can be done,
 and speaks from its own catalog.
 
-Requires: `OSKA-INT-1` to `OSKA-INT-19`; `OSKA-ONT-1` to `OSKA-ONT-23`;
+Requires: `OSKA-INT-1` to `OSKA-INT-24`; `OSKA-ONT-1` to `OSKA-ONT-27`;
 `OSKA-SKL-1` to `OSKA-SKL-17`; `OSKA-COG-11`; `OSKA-XC-1` to `OSKA-XC-4` and
 `OSKA-XC-9`. The validator passes over the whole catalog with no issues.
 Every sentence the system says about its capability is derived. The suite runs
@@ -17,17 +17,27 @@ offline against a scripted provider. Scenario categories C1, C13 and C21 pass.
 
 **Level 2 — Governed.** Every effect on the world crosses the write path.
 
-Requires: Level 1, plus `OSKA-GOV-1` to `OSKA-GOV-24` and `OSKA-GOV-30` to
-`OSKA-GOV-32`; `OSKA-IXN-1` to `OSKA-IXN-13`; `OSKA-COG-1` to `OSKA-COG-10` and
-`OSKA-COG-12` to `OSKA-COG-24`; `OSKA-XC-5` to `OSKA-XC-8`, `OSKA-XC-10` to
-`OSKA-XC-19` and `OSKA-XC-23`. Scenario categories C1 to C14, C17, C18, C20 and
-C22 pass.
+Requires: Level 1, plus `OSKA-GOV-1` to `OSKA-GOV-24`, `OSKA-GOV-30` to
+`OSKA-GOV-34` and `OSKA-GOV-52`; `OSKA-IXN-1` to `OSKA-IXN-13` and
+`OSKA-IXN-21` to `OSKA-IXN-27`; `OSKA-COG-1` to `OSKA-COG-10` and `OSKA-COG-12` to
+`OSKA-COG-29`; `OSKA-XC-5` to `OSKA-XC-8`, `OSKA-XC-10` to `OSKA-XC-19`,
+`OSKA-XC-23` and `OSKA-XC-35`. Scenario categories C1 to C14, C17, C18, C20
+and C22 to C25 pass.
 
 **Level 3 — Adaptive.** The catalog grows through a human-controlled
 lifecycle.
 
-Requires: Level 2, plus `OSKA-EVO-1` to `OSKA-EVO-34`. Scenario categories
-C15 and C16 pass.
+Requires: Level 2, plus `OSKA-EVO-1` to `OSKA-EVO-34`, `OSKA-XC-32` and
+`OSKA-GOV-54`.
+Scenario categories C15 and C16 pass.
+
+The forgetting of what was drafted from a session is required here and not at
+Level 2 because the records it reaches — proposals and the change requests
+composed from them — exist only where the catalog grows through the lifecycle;
+a system without it has nothing drafted from a session to forget. The bounds
+on drafting from a session (`OSKA-GOV-54`) are required here for the same
+reason: a system that does not grow its catalog drafts nothing, and has no
+draft to answer the same way or to count against a turn's budget.
 
 A system MUST NOT claim a level whose scenario categories it does not run. A
 system MAY claim Level 2 without Level 3; evolution is optional, governance is
@@ -46,36 +56,83 @@ off the list rather than worked out.
 
 ### Required of a deployment, not of a level
 
-Two groups of requirements are deliberately in no level, because they are
+Six groups of requirements are deliberately in no level, because they are
 statements about how a system is deployed rather than about what a catalog
 can be made to do.
 
-A catalog released as a revision (`OSKA-SKL-18` to `OSKA-SKL-24`,
-`OSKA-IXN-14` to `OSKA-IXN-20`) is what a deployment of several replicas needs
-and what a single process on its own disk does not; serving a directory stays
-legal at every level. An authenticated principal (`OSKA-GOV-25` to
-`OSKA-GOV-29`) is what a channel that knows who is speaking must then do about
-it; a channel that authenticates nobody has nothing to carry.
+- **Revisions.** A catalog released as a revision, signed or not
+  (`OSKA-SKL-18` to `OSKA-SKL-24`, `OSKA-SKL-28` to `OSKA-SKL-36`,
+  `OSKA-IXN-14` to `OSKA-IXN-20`, `OSKA-GOV-51`, `OSKA-GOV-53`), is what a
+  deployment of several replicas
+  needs and what a single process on its own disk does not; serving a
+  directory stays legal at every level.
+- **Identity.** An authenticated principal, the signed session token a
+  channel may verify itself, the identity a channel may require, the subject a
+  session is held to, the reviewer role and the actor a transition is recorded
+  under (`OSKA-GOV-25` to `OSKA-GOV-29`, `OSKA-GOV-38` to `OSKA-GOV-44`,
+  `OSKA-GOV-46` to `OSKA-GOV-48`, `OSKA-GOV-50`), are what a channel that knows
+  who is speaking must then do about it; a channel that authenticates nobody
+  has nothing to carry, and a deployment that requires no identity serves a
+  call that carries none as its single user only where it declares itself
+  single-user.
+- **Storage.** The stores behind declared interfaces, the atomic claim, removal
+  through the interfaces, and the namespace of a shared database
+  (`OSKA-GOV-35` to `OSKA-GOV-37`, `OSKA-GOV-45`), are statements about the
+  backend a deployment chooses.
+- **Publication.** Handing a change request to a publisher, a branch or a pull
+  request, and the actor a commit may be authored as (`OSKA-EVO-36` to
+  `OSKA-EVO-40`, `OSKA-GOV-49`), is how a deployment chooses to review what its
+  lifecycle produced.
+- **Operations surface.** Exposing the service-level numbers for scraping and
+  the checks a deployment's integration pipeline runs (`OSKA-XC-24` to
+  `OSKA-XC-27`, `OSKA-XC-30`, `OSKA-XC-33`, `OSKA-XC-34`) are about where a
+  deployment runs and who watches it.
+- **Platforms.** Packs, the manifest, domains and tenants, what a tenant and a
+  pack binding may read and change, the kit that checks and builds a pack, and
+  retention and the improvement job reaching every (tenant, domain)
+  (`OSKA-PLT-1` to `OSKA-PLT-30`, `OSKA-XC-31`), are how several catalogs are
+  served from one runtime; a catalog served on its own is a platform of one
+  domain.
 
-Neither group is exercised by a scenario of either reference suite: the
-operational suite serves a directory and carries no principal, and the access
-suite is the only catalog that declares a principal field at all. A level is
-attained by running scenarios over one catalog, so requiring either group at a
-level would assert of a suite something no scenario of that suite supports —
-which is the error the wildcards made.
+No group is exercised by a scenario of either reference suite. The operational
+suite serves a directory, carries no principal, keeps its state in files of its
+own and publishes nothing, and the access suite is the only catalog that
+declares a principal field at all. Each group is proven by unit tests about the
+deployment concern itself: the revision store, the token, the storage backend,
+the publisher, the exposition, the platform assembly. A level is attained by
+running scenarios over one catalog, so requiring any of them at a level would
+assert of a suite something no scenario of that suite supports — which is the
+error the wildcards made. A platform does run the scenarios of every domain,
+but it runs each suite against the engine its domain builds; what it proves
+about the suites is the level of each, and what it adds is the assembly, which
+no scenario reaches.
 
 So they are required of the deployment that has them, at whatever level it
 claims: a deployment serving a built revision MUST hold to the revision
-requirements, and a deployment whose channel authenticates its caller MUST hold
-to the identity requirements. Both are checked by the unit suite rather than by
-a scenario — `tests/unit/test_revision.py` and `tests/unit/test_pinning.py` for
-the first, `tests/unit/test_identity.py` for the second — and a conformance
-report SHOULD state which of the two the deployment does, beside the level it
-claims.
+requirements, a deployment whose channel authenticates its caller MUST hold to
+the identity requirements, a deployment MUST hold to the storage requirements
+for the backend it runs, the default included, a deployment that publishes
+change requests MUST hold to the publication requirements, a deployment that
+exposes its numbers or runs an integration pipeline MUST hold to the operations
+requirements, and a deployment serving a manifest MUST hold to the platform
+requirements. All of them are checked by the unit suite rather than by a
+scenario — `tests/unit/test_revision.py`, `tests/unit/test_pinning.py` and
+`tests/unit/test_signing.py`; `tests/unit/test_identity.py`,
+`tests/unit/test_token.py` and `tests/unit/test_channel_identity.py`;
+`tests/unit/test_storage_contract.py`; `tests/unit/test_publishers.py`, with
+the publisher tests of `tests/unit/test_channel_identity.py`;
+`tests/unit/test_metrics.py`; `tests/unit/test_platform.py`,
+`tests/unit/test_overlays.py` and `tests/unit/test_kit.py`, with the platform
+tests of `tests/unit/test_retention.py`, `tests/unit/test_improvement.py`,
+`tests/unit/test_api.py`, `tests/unit/test_channel_identity.py` and
+`tests/unit/test_config.py`
+— and a conformance report SHOULD state which of
+them the deployment does, beside the level it claims.
 
 ### Still undecided
 
-Evaluation sets (`OSKA-SKL-25` to `OSKA-SKL-27` and `OSKA-EVO-35`) and the
+Evaluation sets and the catalog evaluation built on them (`OSKA-SKL-25` to
+`OSKA-SKL-27`, `OSKA-EVO-35`, `OSKA-XC-28` and `OSKA-XC-29`) and the
 service-level numbers (`OSKA-XC-20` to `OSKA-XC-22`) are the requirements the
 three lists leave out for a different reason: not settled rather than not of a
 level. They are stated in the layer documents and held to by the reference
@@ -132,6 +189,8 @@ Field meanings:
 | `name` | Scenario identifier; also the session identifier for the run |
 | `description` | What the scenario proves, in one sentence |
 | `level` | Lowest conformance level this scenario belongs to; default 2 |
+| `presentation` | Whether the engine is built with presentation on, as a domain that enables it builds its own; default `false` |
+| `principal` | The identity an authenticated channel puts on every turn: `subject`, `attributes` and `authenticated`; absent means no principal |
 | `provider_script` | Model responses, consumed in order, one per model call |
 | `provider_script[].expect_contains` | Substring the prompt reaching this step MUST contain |
 | `provider_script[].purpose` | Which call this step answers, for failure messages |
@@ -142,6 +201,7 @@ Field meanings:
 | `turns[].expect.pending` | `"input"`, `"approval"` or `null` |
 | `turns[].expect.receipts` | Number of receipts in the session after the turn |
 | `turns[].expect.verification` | Verification status of the most recent receipt, or `null` |
+| `turns[].expect.directives` | The presentation directives the turn MUST return, in order; see "The directive check" |
 | `turns[].connector_behaviors` | Failures or overrides injected before the turn runs |
 
 `guardrail` is not a route kind. It is what a runner MUST report for a turn
@@ -160,6 +220,44 @@ scenarios and those of every level below it all pass.
 keyed by integration identifier and then by operation name, and are applied
 before the turn runs; a null behavior clears the one in force. That is the
 only placement, and a runner MUST NOT read the object from anywhere else.
+
+### The directive check
+
+A conformance scenario MAY set `presentation` and list `directives` per turn.
+The runner MUST compare them in order: the same count, an equal `procedure`,
+`moment` and `view` for each, and every listed field present with an equal
+value. Fields that aren't listed MUST NOT be compared, because some of them,
+such as a receipt identifier, differ on every run. An empty list asserts that
+there are none. A turn that lists no `directives` is not checked for them.
+
+```json
+{
+  "presentation": true,
+  "turns": [
+    {
+      "user": "yes",
+      "expect": {
+        "kind": "approve",
+        "outcomes": ["receipt"],
+        "verification": "verified",
+        "directives": [
+          {
+            "procedure": "runbook.service_restart",
+            "moment": "on_verified_write",
+            "view": "service_restarted",
+            "fields": { "service": "search", "verification": "verified" }
+          }
+        ]
+      }
+    }
+  ]
+}
+```
+
+A scenario that does not set `presentation` runs an engine that returns no
+directive, so a turn of it that lists a directive fails, and one that lists an
+empty list passes. That is how a suite shows both halves of `OSKA-IXN-21` with
+one declaration.
 
 ### The learning block
 
@@ -231,6 +329,30 @@ A runner MUST also check, across the whole session and on every scenario, that
 every receipt the session produced is named by at least one reply, and that no
 reply calls a write verified while the receipt it names says otherwise.
 
+### Three ways to run a suite
+
+The runner is one, and it is reached three ways in the reference
+implementation. Each runs the same scenarios through the same checks; they
+differ in what the engine is built from.
+
+- **One catalog.** `oska conform` runs a scenario directory against a catalog
+  root and its connector bindings, and reports the level attained. This is how
+  each reference suite is run on its own.
+- **A platform.** `oska conform --platform <platform.yaml>` runs, for every
+  domain of the manifest, the scenarios of that domain's packs against an
+  engine built the way that domain builds its own — its merged catalog,
+  bindings, guardrails, synonyms, host and presentation — and reports a level
+  per domain, and whether every domain attains the manifest's `target_level`.
+  `--domain` and `--tenant` narrow it to one.
+- **A pack.** `oska pack check <pack>` validates one pack on its own, checks
+  that it provides what it declares, runs its evaluation sets and its
+  scenarios, and reports the level it attains against the level it claims.
+  It is what a team runs before a pack is added to any platform.
+
+A level reported by any of the three is the same statement: the highest level
+whose scenarios, and those of every level below it, all pass, for the engine
+that ran them.
+
 ## Required scenario categories
 
 | Id | Category | What it must prove | Reference scenario | Level |
@@ -257,12 +379,24 @@ reply calls a write verified while the receipt it names says otherwise.
 | C20 | Guardrail at the input boundary | A turn a guardrail declared at the `input` point refuses ends there, in the words of that guardrail, with no classification, no plan and no model call | `19_guardrail_block` | 2 |
 | C21 | A request in a second language | The router reports the language once, the session keeps it, and a later turn decided by the rules without a model call is still answered in it | `20_other_language` | 1 |
 | C22 | A human-only input is asked for | A field the procedure reserves to a person is not filled in by the model: the plan comes back with the field in `missing` and no operation, and the write carries the person's own words once they have answered | `21_human_input` | 2 |
+| C23 | The subject is taken from what was shown | A read shows one record, and a later request that only points at it ("restart it") joins the focus: the identifier comes from what was shown, nothing is asked, and the write stops for approval on the exact payload | `27_subject_from_what_was_shown` | 2 |
+| C24 | A directive from a verified write | A write is approved, runs and is read back, and the directive its procedure declares for a verified write is filled from the receipt alone, in the turn that verified it and no earlier | `28_directive_from_verified_write` | 2 |
+| C25 | A comparative on the shown rows | Several records are shown, and the comparative that follows is handed exactly the refinements the shown rows differ on and the read accepts, and no others; a record picked by what is shown about it then stops for approval | `29_comparative_on_shown_rows` | 2 |
 
 C17 belongs to level 2: it proves `OSKA-GOV-7`, which level 2 requires. C18,
 C20 and C22 belong to level 2 for the same reason, proving `OSKA-ONT-20`,
-`OSKA-GOV-19` and `OSKA-SKL-16`. C21 belongs to level 1: `OSKA-COG-19` is a
-statement about routing that holds before any write does. C19 is required by no
-level; see "Open items".
+`OSKA-GOV-19` and `OSKA-SKL-16`, and so do C23, C24 and C25, proving
+`OSKA-COG-27`, `OSKA-IXN-22` and `OSKA-COG-28`. C21 belongs to level 1:
+`OSKA-COG-19` is a statement about routing that holds before any write does.
+C19 is required by no level; see "Open items".
+
+C23 to C25 are run by the operational suite alone, which is the situation of
+C4 to C9 and not of C19: the level lists are written about the operational
+suite, which runs them, and the access suite names them among the categories it
+leaves to it. Each of the three also has a unit test of its own that asserts the
+requirement it proves (`tests/unit/test_subject.py`,
+`tests/unit/test_presentation.py`), so none of the requirements a level takes
+on for them rests on one catalog's scenario alone.
 
 ## The reference suites
 
@@ -275,7 +409,7 @@ scenario named for each category above is the one in the operational suite.
 A level is attained per suite, because a level is a statement about a
 catalog and the runtime that serves it, not about the package alone, and the
 two suites attain different levels. The operational suite attains level 3: it
-runs every category a level requires — C1 to C18 and C20 to C22 — C15 and C16
+runs every category a level requires — C1 to C18 and C20 to C25 — C15 and C16
 included. The access suite attains level 2: it runs C1, C2 twice, C3, C10, C12
 and C19, and declares no scenario of level 3, so it claims none. A second domain that runs no evolution scenario
 does not lower the level the first attains, and does not inherit it either.
@@ -292,7 +426,11 @@ leaves to the operational suite. The operational suite runs them all.
 Both suites are run by the same runner and the same command, each against its
 own catalog and its own connector bindings; see
 [reference-implementation.md](reference-implementation.md) for the two
-invocations.
+invocations. They are also run together, as the reference platform
+`examples/platform.yaml`, whose domains `operations` and `access` serve the two
+packs: each domain attains the level its suite attains on its own, level 3 and
+level 2, and the platform attains its `target_level` of 2 because every domain
+does.
 
 ## What a catalog change runs, and what a deployment can say about itself
 
@@ -355,8 +493,10 @@ adversarial near-misses drawn from a neighboring procedure.
 
 What a set is and how it is run is required by `OSKA-SKL-25` to `OSKA-SKL-27`
 in the skill layer; the quality gate running the set of the skill it is looking
-at is `OSKA-EVO-35` in the evolution layer. No level requires them yet; see
-"Open items".
+at is `OSKA-EVO-35` in the evolution layer; the catalog evaluation that
+computes precision and recall over every set, and fails below a configured
+floor, is `OSKA-XC-28` and `OSKA-XC-29` in the cross-cutting requirements. No
+level requires them yet; see "Open items".
 
 ### The service-level numbers
 
@@ -420,7 +560,7 @@ accident.
 | OSKA-INT-2 | `src/oska/connectors/mock.py`, `http.py`, `shell.py` | `tests/unit/test_connectors.py` |
 | OSKA-INT-3 | `src/oska/planner/planner.py` | `tests/unit/test_planner.py` |
 | OSKA-INT-4 | `src/oska/contracts/skill.py` | `tests/unit/test_catalog.py` |
-| OSKA-INT-5 | `src/oska/catalog/validator.py`, `src/oska/ontology/graph.py` | `tests/unit/test_catalog.py`, `tests/unit/test_ontology.py` |
+| OSKA-INT-5 | `src/oska/catalog/checks/ontology.py`, `src/oska/ontology/graph.py` | `tests/unit/test_catalog.py`, `tests/unit/test_ontology.py` |
 | OSKA-INT-6 | `src/oska/connectors/base.py` | `tests/unit/test_connectors.py` |
 | OSKA-INT-7 | `src/oska/connectors/shell.py` | `tests/unit/test_connectors.py` |
 | OSKA-INT-8 | `src/oska/connectors/http.py` | `tests/unit/test_connectors.py` |
@@ -433,36 +573,45 @@ accident.
 | OSKA-INT-15 | `src/oska/connectors/base.py` | `tests/unit/test_resilience.py` |
 | OSKA-INT-16 | `src/oska/connectors/base.py` | `tests/unit/test_resilience.py` |
 | OSKA-INT-17 | `src/oska/connectors/base.py` | `tests/unit/test_resilience.py` |
-| OSKA-INT-18 | `src/oska/engine/execution.py`, `src/oska/engine/outcomes.py` | `tests/unit/test_resilience.py`, `examples/ops/scenarios/23_capability_unavailable.json` |
+| OSKA-INT-18 | `src/oska/engine/execution.py`, `src/oska/engine/calls.py`, `src/oska/engine/outcomes.py` | `tests/unit/test_resilience.py`, `examples/ops/scenarios/23_capability_unavailable.json` |
 | OSKA-INT-19 | `src/oska/connectors/mock.py` | `tests/unit/test_resilience.py` |
+| OSKA-INT-20 | `src/oska/connectors/base.py`, `http.py`, `shell.py` | `tests/unit/test_resilience.py`, `tests/unit/test_connectors.py` |
+| OSKA-INT-21 | `src/oska/connectors/base.py`, `http.py` | `tests/unit/test_resilience.py`, `tests/unit/test_connectors.py` |
+| OSKA-INT-22 | `src/oska/connectors/http.py` | `tests/unit/test_connectors.py` |
+| OSKA-INT-23 | `src/oska/connectors/http.py`, `src/oska/engine/settlement.py` | `tests/unit/test_connectors.py`, `tests/unit/test_resilience.py` |
+| OSKA-INT-24 | `src/oska/connectors/http.py` | `tests/unit/test_connectors.py` |
 
 ### Ontology (L2)
 
 | Id | Module | Proof |
 | --- | --- | --- |
 | OSKA-ONT-1 | `src/oska/contracts/skill.py`, `src/oska/ontology/graph.py` | `tests/unit/test_catalog.py`, `tests/unit/test_ontology.py` |
-| OSKA-ONT-2 | `src/oska/contracts/skill.py`, `src/oska/catalog/validator.py` | `tests/unit/test_catalog.py`, `tests/unit/test_ontology.py` |
-| OSKA-ONT-3 | `src/oska/catalog/validator.py` | `tests/unit/test_catalog.py` |
-| OSKA-ONT-4 | `src/oska/contracts/skill.py`, `src/oska/catalog/validator.py` | `tests/unit/test_catalog.py`, `tests/unit/test_ontology.py` |
-| OSKA-ONT-5 | `src/oska/catalog/validator.py` | `tests/unit/test_catalog.py` |
+| OSKA-ONT-2 | `src/oska/contracts/skill.py`, `src/oska/catalog/checks/ontology.py` | `tests/unit/test_catalog.py`, `tests/unit/test_ontology.py` |
+| OSKA-ONT-3 | `src/oska/catalog/checks/contract.py` | `tests/unit/test_catalog.py` |
+| OSKA-ONT-4 | `src/oska/contracts/skill.py`, `src/oska/catalog/checks/ontology.py` | `tests/unit/test_catalog.py`, `tests/unit/test_ontology.py` |
+| OSKA-ONT-5 | `src/oska/catalog/checks/ontology.py` | `tests/unit/test_catalog.py` |
 | OSKA-ONT-6 | `src/oska/ontology/queries.py` | `tests/unit/test_ontology.py` |
 | OSKA-ONT-7 | `src/oska/contracts/skill.py` | `tests/unit/test_catalog.py` |
 | OSKA-ONT-8 | `src/oska/ontology/queries.py` | `tests/unit/test_ontology.py`, `tests/unit/test_cli.py` |
 | OSKA-ONT-9 | `src/oska/catalog/registry.py` | `tests/unit/test_catalog.py` |
-| OSKA-ONT-10 | `src/oska/catalog/validator.py` | `tests/unit/test_catalog.py` |
-| OSKA-ONT-11 | `src/oska/catalog/validator.py` | `tests/unit/test_catalog.py` |
+| OSKA-ONT-10 | `src/oska/catalog/checks/contract.py`, `src/oska/catalog/checks/ontology.py` | `tests/unit/test_catalog.py` |
+| OSKA-ONT-11 | `src/oska/catalog/checks/ontology.py` | `tests/unit/test_catalog.py` |
 | OSKA-ONT-12 | `src/oska/ontology/graph.py` | `tests/unit/test_ontology.py` |
 | OSKA-ONT-13 | `src/oska/ontology/export.py` | `tests/unit/test_ontology.py` |
-| OSKA-ONT-14 | `src/oska/contracts/skill.py`, `src/oska/catalog/validator.py` | `tests/unit/test_lifecycle.py` |
-| OSKA-ONT-15 | `src/oska/catalog/validator.py` | `tests/unit/test_lifecycle.py` |
-| OSKA-ONT-16 | `src/oska/catalog/validator.py` | `tests/unit/test_lifecycle.py` |
-| OSKA-ONT-17 | `src/oska/catalog/validator.py`, `src/oska/engine/execution.py` | `tests/unit/test_lifecycle.py` |
-| OSKA-ONT-18 | `src/oska/catalog/validator.py` | `tests/unit/test_lifecycle.py` |
-| OSKA-ONT-19 | `src/oska/catalog/validator.py` | `tests/unit/test_lifecycle.py` |
-| OSKA-ONT-20 | `src/oska/engine/execution.py`, `src/oska/governance/capabilities.py` | `tests/unit/test_lifecycle.py`, `examples/ops/scenarios/17_illegal_move.json` |
+| OSKA-ONT-14 | `src/oska/contracts/skill.py`, `src/oska/catalog/checks/ontology.py` | `tests/unit/test_lifecycle.py` |
+| OSKA-ONT-15 | `src/oska/catalog/checks/ontology.py` | `tests/unit/test_lifecycle.py` |
+| OSKA-ONT-16 | `src/oska/catalog/checks/ontology.py` | `tests/unit/test_lifecycle.py` |
+| OSKA-ONT-17 | `src/oska/catalog/checks/ontology.py`, `src/oska/engine/lifecycle.py` | `tests/unit/test_lifecycle.py` |
+| OSKA-ONT-18 | `src/oska/catalog/checks/ontology.py` | `tests/unit/test_lifecycle.py` |
+| OSKA-ONT-19 | `src/oska/catalog/checks/ontology.py` | `tests/unit/test_lifecycle.py` |
+| OSKA-ONT-20 | `src/oska/engine/lifecycle.py`, `src/oska/governance/capabilities.py` | `tests/unit/test_lifecycle.py`, `examples/ops/scenarios/17_illegal_move.json` |
 | OSKA-ONT-21 | `src/oska/governance/verification.py` | `tests/unit/test_lifecycle.py` |
 | OSKA-ONT-22 | `src/oska/catalog/resolver.py`, `src/oska/engine/goals.py`, `src/oska/ontology/queries.py` | `tests/unit/test_lifecycle.py`, `examples/access/scenarios/07_required_next_step.json` |
-| OSKA-ONT-23 | `src/oska/engine/execution.py`, `src/oska/governance/verification.py`, `src/oska/contracts/skill.py` | `tests/unit/test_lifecycle.py`, `examples/ops/scenarios/22_state_of_another_object.json` |
+| OSKA-ONT-23 | `src/oska/engine/lifecycle.py`, `src/oska/governance/verification.py`, `src/oska/contracts/skill.py` | `tests/unit/test_lifecycle.py`, `examples/ops/scenarios/22_state_of_another_object.json` |
+| OSKA-ONT-24 | `src/oska/contracts/skill.py`, `src/oska/ontology/naming.py`, `src/oska/catalog/checks/presentation.py` | `tests/unit/test_presentation.py` |
+| OSKA-ONT-25 | `src/oska/engine/subject.py`, `src/oska/connectors/mock.py` | `tests/unit/test_subject.py` |
+| OSKA-ONT-26 | `src/oska/ontology/naming.py`, `src/oska/catalog/checks/presentation.py` | `tests/unit/test_presentation.py` |
+| OSKA-ONT-27 | `src/oska/ontology/graph.py`, `src/oska/ontology/naming.py` | `tests/unit/test_ontology.py` |
 
 ### Skill (L3)
 
@@ -470,12 +619,12 @@ accident.
 | --- | --- | --- |
 | OSKA-SKL-1 | `src/oska/contracts/skill.py` | `tests/unit/test_catalog.py` |
 | OSKA-SKL-2 | `src/oska/contracts/skill.py` | `tests/unit/test_catalog.py` |
-| OSKA-SKL-3 | `src/oska/catalog/validator.py` | `tests/unit/test_catalog.py` |
-| OSKA-SKL-4 | `src/oska/catalog/validator.py` | `tests/unit/test_catalog.py` |
-| OSKA-SKL-5 | `src/oska/catalog/loader.py`, `validator.py` | `tests/unit/test_catalog.py` |
+| OSKA-SKL-3 | `src/oska/catalog/checks/contract.py` | `tests/unit/test_catalog.py` |
+| OSKA-SKL-4 | `src/oska/catalog/checks/governance.py` | `tests/unit/test_catalog.py` |
+| OSKA-SKL-5 | `src/oska/catalog/loader.py`, `src/oska/catalog/checks/contract.py`, `src/oska/catalog/checks/governance.py` | `tests/unit/test_catalog.py` |
 | OSKA-SKL-6 | `src/oska/catalog/registry.py` | `tests/unit/test_catalog.py` |
 | OSKA-SKL-7 | `src/oska/catalog/registry.py` | `tests/unit/test_catalog.py` |
-| OSKA-SKL-8 | `src/oska/catalog/validator.py` | `tests/unit/test_catalog.py` |
+| OSKA-SKL-8 | `src/oska/catalog/validator.py`, `src/oska/catalog/checks/common.py` | `tests/unit/test_catalog.py` |
 | OSKA-SKL-9 | `src/oska/catalog/validator.py`, `src/oska/engine/factory.py` | `tests/unit/test_engine.py`, `tests/unit/test_cli.py` |
 | OSKA-SKL-10 | `src/oska/catalog/registry.py` | `tests/unit/test_catalog.py` |
 | OSKA-SKL-11 | `src/oska/catalog/resolver.py` | `tests/unit/test_resolver.py`, `examples/ops/scenarios/01_greeting.json` |
@@ -495,6 +644,15 @@ accident.
 | OSKA-SKL-25 | `src/oska/catalog/evaluation.py` | `tests/unit/test_skill_evaluation.py` |
 | OSKA-SKL-26 | `src/oska/catalog/evaluation.py`, `src/oska/cli/commands_evaluate.py` | `tests/unit/test_skill_evaluation.py` |
 | OSKA-SKL-27 | `src/oska/catalog/evaluation.py` | `tests/unit/test_skill_evaluation.py` |
+| OSKA-SKL-28 | `src/oska/catalog/registry.py`, `src/oska/config.py` | `tests/unit/test_signing.py` |
+| OSKA-SKL-29 | `src/oska/catalog/revision.py`, `src/oska/catalog/signing.py` | `tests/unit/test_signing.py`, `tests/unit/test_revision.py` |
+| OSKA-SKL-30 | `src/oska/catalog/signing.py`, `src/oska/catalog/revision.py` | `tests/unit/test_signing.py` |
+| OSKA-SKL-31 | `src/oska/catalog/signing.py` | `tests/unit/test_signing.py` |
+| OSKA-SKL-32 | `src/oska/catalog/signing.py`, `src/oska/config.py` | `tests/unit/test_signing.py` |
+| OSKA-SKL-33 | `src/oska/catalog/signing.py` | `tests/unit/test_signing.py` |
+| OSKA-SKL-34 | `src/oska/catalog/revision.py`, `src/oska/catalog/signing.py` | `tests/unit/test_signing.py` |
+| OSKA-SKL-35 | `src/oska/catalog/loader.py`, `src/oska/catalog/registry.py` | `tests/unit/test_signing.py` |
+| OSKA-SKL-36 | `src/oska/catalog/registry.py` | `tests/unit/test_revision.py` |
 
 ### Governance (L4)
 
@@ -503,35 +661,57 @@ accident.
 | OSKA-GOV-1 | `src/oska/governance/capabilities.py` | `tests/unit/test_governance.py`, `examples/ops/scenarios/10_invalid_plan.json` |
 | OSKA-GOV-2 | `src/oska/governance/policy_engine.py` | `tests/unit/test_governance.py` |
 | OSKA-GOV-3 | `src/oska/governance/policy_engine.py` | `tests/unit/test_governance.py` |
-| OSKA-GOV-4 | `src/oska/governance/approval.py`, `src/oska/engine/execution.py` | `examples/ops/scenarios/02_restart_staging.json` |
+| OSKA-GOV-4 | `src/oska/governance/approval.py`, `src/oska/engine/execution.py`, `src/oska/engine/approvals.py` | `examples/ops/scenarios/02_restart_staging.json` |
 | OSKA-GOV-5 | `src/oska/governance/approval.py` | `tests/unit/test_governance.py`, `tests/unit/test_engine.py` |
-| OSKA-GOV-6 | `src/oska/engine/engine.py` | `examples/ops/scenarios/03_restart_production.json` |
-| OSKA-GOV-7 | `src/oska/engine/engine.py`, `src/oska/engine/execution.py` | `examples/ops/scenarios/16_denied_at_approval.json` |
-| OSKA-GOV-8 | `src/oska/governance/ledger.py`, `src/oska/engine/execution.py` | `tests/unit/test_engine.py` |
+| OSKA-GOV-6 | `src/oska/engine/approvals.py`, `src/oska/engine/execution.py` | `examples/ops/scenarios/03_restart_production.json` |
+| OSKA-GOV-7 | `src/oska/engine/approvals.py`, `src/oska/engine/execution.py`, `src/oska/engine/outcomes.py` | `examples/ops/scenarios/16_denied_at_approval.json`, `tests/unit/test_engine.py` |
+| OSKA-GOV-8 | `src/oska/governance/ledger.py`, `src/oska/engine/settlement.py` | `tests/unit/test_engine.py` |
 | OSKA-GOV-9 | `src/oska/governance/ledger.py` | `tests/unit/test_governance.py` |
 | OSKA-GOV-10 | `src/oska/governance/verification.py` | `tests/unit/test_governance.py`, `examples/ops/scenarios/07_verification_failure.json` |
-| OSKA-GOV-11 | `src/oska/governance/ledger.py`, `src/oska/engine/execution.py` | `examples/ops/scenarios/02_restart_staging.json` |
+| OSKA-GOV-11 | `src/oska/governance/ledger.py`, `src/oska/engine/execution.py`, `src/oska/engine/settlement.py` | `examples/ops/scenarios/02_restart_staging.json` |
 | OSKA-GOV-12 | `src/oska/governance/ledger.py` | `tests/unit/test_governance.py`, `examples/ops/scenarios/12_max_per_session.json` |
 | OSKA-GOV-13 | `src/oska/engine/reply.py`, `src/oska/engine/outcomes.py` | `tests/scenarios/test_scenarios.py`, `tests/unit/test_engine.py` |
-| OSKA-GOV-14 | `src/oska/audit/events.py`, `src/oska/engine/execution.py` | `tests/unit/test_audit.py` |
+| OSKA-GOV-14 | `src/oska/audit/events.py`, `src/oska/engine/execution.py`, `src/oska/engine/approvals.py`, `src/oska/engine/settlement.py` | `tests/unit/test_audit.py` |
 | OSKA-GOV-15 | `src/oska/governance/guardrails.py`, `configs/guardrails.json` | `tests/unit/test_guardrails.py` |
 | OSKA-GOV-16 | `src/oska/governance/guardrails.py`, `configs/guardrails.json` | `tests/unit/test_guardrails.py` |
 | OSKA-GOV-17 | `src/oska/governance/guardrails.py` | `tests/unit/test_guardrails.py` |
 | OSKA-GOV-18 | `src/oska/governance/guardrails.py` | `tests/unit/test_guardrails.py` |
-| OSKA-GOV-19 | `src/oska/engine/engine.py`, `src/oska/governance/guardrails.py` | `tests/unit/test_guardrails.py`, `examples/ops/scenarios/19_guardrail_block.json` |
+| OSKA-GOV-19 | `src/oska/engine/boundary.py`, `src/oska/governance/guardrails.py` | `tests/unit/test_guardrails.py`, `examples/ops/scenarios/19_guardrail_block.json` |
 | OSKA-GOV-20 | `src/oska/governance/guardrails.py`, `configs/guardrails.json` | `tests/unit/test_guardrails.py` |
-| OSKA-GOV-21 | `src/oska/governance/ledger.py`, `src/oska/engine/execution.py` | `tests/unit/test_resilience.py` |
+| OSKA-GOV-21 | `src/oska/governance/ledger.py`, `src/oska/engine/settlement.py`, `src/oska/engine/calls.py` | `tests/unit/test_resilience.py` |
 | OSKA-GOV-22 | `src/oska/governance/ledger.py` | `tests/unit/test_resilience.py` |
 | OSKA-GOV-23 | `src/oska/governance/ledger.py` | `tests/unit/test_resilience.py` |
-| OSKA-GOV-24 | `src/oska/engine/outcomes.py`, `src/oska/engine/execution.py` | `tests/unit/test_resilience.py`, `examples/ops/scenarios/23_capability_unavailable.json` |
-| OSKA-GOV-25 | `src/oska/contracts/skill.py`, `src/oska/catalog/validator.py` | `tests/unit/test_identity.py` |
-| OSKA-GOV-26 | `src/oska/governance/identity.py`, `src/oska/engine/execution.py` | `tests/unit/test_identity.py` |
-| OSKA-GOV-27 | `src/oska/planner/prompts.py`, `src/oska/engine/execution.py` | `tests/unit/test_identity.py` |
-| OSKA-GOV-28 | `src/oska/governance/identity.py`, `src/oska/engine/engine.py` | `tests/unit/test_identity.py` |
-| OSKA-GOV-29 | `src/oska/engine/engine.py`, `src/oska/engine/state.py`, `src/oska/api/routes.py` | `tests/unit/test_identity.py` |
-| OSKA-GOV-30 | `src/oska/engine/execution.py`, `src/oska/governance/verification.py` | `tests/unit/test_resilience.py` |
-| OSKA-GOV-31 | `src/oska/engine/execution.py`, `src/oska/governance/ledger.py` | `tests/unit/test_resilience.py` |
-| OSKA-GOV-32 | `src/oska/engine/execution.py`, `src/oska/governance/ledger.py` | `tests/unit/test_resilience.py` |
+| OSKA-GOV-24 | `src/oska/engine/outcomes.py`, `src/oska/engine/settlement.py` | `tests/unit/test_resilience.py`, `examples/ops/scenarios/23_capability_unavailable.json` |
+| OSKA-GOV-25 | `src/oska/contracts/skill.py`, `src/oska/catalog/checks/inputs.py` | `tests/unit/test_identity.py` |
+| OSKA-GOV-26 | `src/oska/governance/identity.py`, `src/oska/engine/principal_inputs.py` | `tests/unit/test_identity.py` |
+| OSKA-GOV-27 | `src/oska/planner/prompts.py`, `src/oska/engine/principal_inputs.py`, `src/oska/engine/collaborators.py` | `tests/unit/test_identity.py` |
+| OSKA-GOV-28 | `src/oska/governance/identity.py`, `src/oska/engine/binding.py` | `tests/unit/test_identity.py` |
+| OSKA-GOV-29 | `src/oska/engine/binding.py`, `src/oska/engine/state.py`, `src/oska/api/routes.py` | `tests/unit/test_identity.py`, `tests/unit/test_channel_identity.py` |
+| OSKA-GOV-30 | `src/oska/engine/settlement.py`, `src/oska/governance/verification.py` | `tests/unit/test_resilience.py` |
+| OSKA-GOV-31 | `src/oska/engine/settlement.py`, `src/oska/governance/ledger.py` | `tests/unit/test_resilience.py` |
+| OSKA-GOV-32 | `src/oska/engine/settlement.py`, `src/oska/governance/ledger.py`, `src/oska/engine/outcomes.py` | `tests/unit/test_resilience.py` |
+| OSKA-GOV-33 | `src/oska/engine/settlement.py`, `src/oska/governance/ledger.py` | `tests/unit/test_resilience.py` |
+| OSKA-GOV-34 | `src/oska/engine/settlement.py`, `src/oska/governance/ledger.py` | `tests/unit/test_resilience.py` |
+| OSKA-GOV-35 | `src/oska/storage/protocols.py`, `src/oska/storage/openers.py` | `tests/unit/test_storage_contract.py` |
+| OSKA-GOV-36 | `src/oska/storage/protocols.py`, `src/oska/governance/ledger.py`, `src/oska/storage/postgres_ledger.py` | `tests/unit/test_storage_contract.py`, `tests/unit/test_resilience.py` |
+| OSKA-GOV-37 | `src/oska/governance/retention.py`, `src/oska/storage/protocols.py` | `tests/unit/test_storage_contract.py` |
+| OSKA-GOV-38 | `src/oska/governance/identity.py` | `tests/unit/test_token.py` (asserts the check goes through `hmac.compare_digest`, called with the computed MAC and the given signature; it cannot assert that the comparison runs in constant time, which is a property of `hmac.compare_digest` and not of this call site) |
+| OSKA-GOV-39 | `src/oska/governance/identity.py` | `tests/unit/test_token.py` |
+| OSKA-GOV-40 | `src/oska/governance/identity.py`, `src/oska/config.py` | `tests/unit/test_token.py` |
+| OSKA-GOV-41 | `src/oska/governance/identity.py` | `tests/unit/test_token.py` |
+| OSKA-GOV-42 | `src/oska/governance/identity.py`, `src/oska/api/identity.py` | `tests/unit/test_token.py`, `tests/unit/test_channel_identity.py` |
+| OSKA-GOV-43 | `src/oska/api/identity.py` | `tests/unit/test_token.py` |
+| OSKA-GOV-44 | `src/oska/api/identity.py`, `src/oska/config.py` | `tests/unit/test_token.py` |
+| OSKA-GOV-45 | `src/oska/storage/postgres.py`, `postgres_ledger.py`, `postgres_sessions.py` | `tests/unit/test_storage_contract.py` |
+| OSKA-GOV-46 | `src/oska/api/routes.py`, `src/oska/api/identity.py`, `src/oska/api/metrics.py`, `src/oska/config.py` | `tests/unit/test_channel_identity.py` |
+| OSKA-GOV-47 | `src/oska/api/routes.py`, `src/oska/api/identity.py`, `src/oska/engine/binding.py` | `tests/unit/test_channel_identity.py`, `tests/unit/test_api.py` |
+| OSKA-GOV-48 | `src/oska/api/routes.py`, `src/oska/api/identity.py`, `src/oska/contracts/proposal.py`, `src/oska/learning/lifecycle.py`, `src/oska/learning/changes.py`, `src/oska/cli/commands_propose.py` | `tests/unit/test_channel_identity.py` |
+| OSKA-GOV-49 | `src/oska/learning/publishers.py`, `src/oska/cli/commands_change.py` | `tests/unit/test_channel_identity.py` |
+| OSKA-GOV-50 | `src/oska/api/routes.py`, `src/oska/api/identity.py`, `src/oska/config.py` | `tests/unit/test_channel_identity.py` |
+| OSKA-GOV-51 | `src/oska/governance/policy_engine.py`, `src/oska/catalog/registry.py`, `src/oska/catalog/loader.py` | `tests/unit/test_signing.py` |
+| OSKA-GOV-52 | `src/oska/engine/approvals.py`, `src/oska/engine/goals.py`, `src/oska/engine/execution.py` | `tests/unit/test_presentation.py` (`test_a_write_found_unconfirmed_in_the_ledger_stops_the_rest_of_its_plan` and `test_a_write_found_confirmed_in_the_ledger_lets_its_plan_go_on` hold the ledger half: a later write never asks for an approval past an unconfirmed receipt, and does past a confirmed one) |
+| OSKA-GOV-53 | `src/oska/engine/factory.py`, `src/oska/catalog/registry.py` | `tests/unit/test_revision.py` |
+| OSKA-GOV-54 | `src/oska/api/routes.py`, `src/oska/engine/budget.py` | `tests/unit/test_api.py` |
 
 ### Cognition (L5)
 
@@ -548,7 +728,7 @@ accident.
 | OSKA-COG-9 | `src/oska/planner/planner.py` | `tests/unit/test_planner.py`, `examples/ops/scenarios/04_rollback_rejected.json` |
 | OSKA-COG-10 | `src/oska/planner/planner.py`, `src/oska/engine/reply.py` | `tests/unit/test_planner.py` |
 | OSKA-COG-11 | `src/oska/planner/scripted.py` | `tests/scenarios/test_scenarios.py` |
-| OSKA-COG-12 | `src/oska/catalog/enrichment.py`, `src/oska/engine/engine.py` | `tests/unit/test_index.py`, `tests/unit/test_trace.py` |
+| OSKA-COG-12 | `src/oska/catalog/enrichment.py`, `src/oska/engine/budget.py` | `tests/unit/test_index.py`, `tests/unit/test_trace.py` |
 | OSKA-COG-13 | `src/oska/catalog/enrichment.py`, `src/oska/learning/lifecycle.py`, `src/oska/cli/commands_enrich.py` | `tests/unit/test_enrichment.py`, `tests/unit/test_index.py` |
 | OSKA-COG-14 | `src/oska/catalog/enrichment.py` | `tests/unit/test_enrichment.py` |
 | OSKA-COG-15 | `src/oska/catalog/enrichment.py` | `tests/unit/test_enrichment.py` |
@@ -562,6 +742,11 @@ accident.
 | OSKA-COG-22 | `src/oska/planner/prompts.py`, `src/oska/router/model_router.py` | `tests/unit/test_labels.py` |
 | OSKA-COG-23 | `src/oska/engine/reply.py`, `src/oska/engine/outcomes.py` | `tests/unit/test_labels.py` |
 | OSKA-COG-24 | `src/oska/improvement/preferences.py`, `src/oska/engine/reply.py` | `tests/unit/test_labels.py` |
+| OSKA-COG-25 | `src/oska/engine/subject.py`, `src/oska/engine/presentation.py` | `tests/unit/test_subject.py` |
+| OSKA-COG-26 | `src/oska/engine/subject.py` | `tests/unit/test_subject.py` |
+| OSKA-COG-27 | `src/oska/engine/subject.py`, `src/oska/planner/prompts.py` | `tests/unit/test_subject.py`, `examples/ops/scenarios/27_subject_from_what_was_shown.json` |
+| OSKA-COG-28 | `src/oska/engine/subject.py`, `src/oska/planner/planner.py` | `tests/unit/test_subject.py`, `examples/ops/scenarios/29_comparative_on_shown_rows.json` |
+| OSKA-COG-29 | `src/oska/engine/engine.py`, `src/oska/engine/reply.py` | `tests/unit/test_presentation.py`, `examples/ops/scenarios/08_off_scope.json` |
 
 ### Interaction (L6)
 
@@ -569,24 +754,31 @@ accident.
 | --- | --- | --- |
 | OSKA-IXN-1 | `src/oska/engine/session_store.py` | `tests/unit/test_engine.py` |
 | OSKA-IXN-2 | `src/oska/engine/engine.py` | `tests/scenarios/test_scenarios.py` |
-| OSKA-IXN-3 | `src/oska/engine/engine.py` | `examples/ops/scenarios/13_approval_with_nothing_pending.json` |
+| OSKA-IXN-3 | `src/oska/engine/engine.py`, `src/oska/engine/approvals.py` | `examples/ops/scenarios/13_approval_with_nothing_pending.json` |
 | OSKA-IXN-4 | `src/oska/engine/engine.py` | `examples/ops/scenarios/11_approval_cancelled.json` |
 | OSKA-IXN-5 | `src/oska/engine/engine.py` | `tests/unit/test_engine.py` |
 | OSKA-IXN-6 | `src/oska/engine/engine.py` | `examples/ops/scenarios/05_goal_replacement.json` |
 | OSKA-IXN-7 | `src/oska/engine/engine.py`, `src/oska/engine/goals.py` | `examples/ops/scenarios/04_rollback_rejected.json` |
-| OSKA-IXN-8 | `src/oska/engine/engine.py`, `src/oska/engine/execution.py` | `examples/ops/scenarios/02_restart_staging.json`, `examples/ops/scenarios/14_composite_triage.json` |
-| OSKA-IXN-9 | `src/oska/engine/engine.py` | `tests/unit/test_engine.py`, `examples/ops/scenarios/14_composite_triage.json` |
+| OSKA-IXN-8 | `src/oska/engine/approvals.py`, `src/oska/engine/execution.py` | `examples/ops/scenarios/02_restart_staging.json`, `examples/ops/scenarios/14_composite_triage.json` |
+| OSKA-IXN-9 | `src/oska/engine/engine.py`, `src/oska/engine/goals.py` | `tests/unit/test_engine.py`, `examples/ops/scenarios/14_composite_triage.json` |
 | OSKA-IXN-10 | `src/oska/engine/execution.py` | `examples/ops/scenarios/02_restart_staging.json` |
 | OSKA-IXN-11 | `src/oska/engine/state.py`, `src/oska/governance/ledger.py` | `tests/unit/test_engine.py` |
 | OSKA-IXN-12 | `src/oska/contracts/common.py`, `src/oska/services.py`, `src/oska/cli/commands_run.py`, `src/oska/api/routes.py` | `tests/unit/test_cli.py`, `tests/unit/test_api.py` |
 | OSKA-IXN-13 | `src/oska/engine/engine.py`, `src/oska/engine/reply.py` | `tests/unit/test_engine.py` |
-| OSKA-IXN-14 | `src/oska/engine/engine.py`, `src/oska/engine/state.py` | `tests/unit/test_revision.py` |
-| OSKA-IXN-15 | `src/oska/catalog/registry.py`, `src/oska/engine/engine.py` | `tests/unit/test_revision.py` |
-| OSKA-IXN-16 | `src/oska/engine/engine.py` | `tests/unit/test_revision.py` |
-| OSKA-IXN-17 | `src/oska/engine/engine.py` | `tests/unit/test_pinning.py` |
-| OSKA-IXN-18 | `src/oska/engine/engine.py`, `src/oska/config.py` | `tests/unit/test_pinning.py` |
+| OSKA-IXN-14 | `src/oska/engine/binding.py`, `src/oska/engine/state.py` | `tests/unit/test_revision.py` |
+| OSKA-IXN-15 | `src/oska/catalog/registry.py`, `src/oska/engine/binding.py` | `tests/unit/test_revision.py` |
+| OSKA-IXN-16 | `src/oska/engine/binding.py` | `tests/unit/test_revision.py` |
+| OSKA-IXN-17 | `src/oska/engine/binding.py`, `src/oska/engine/approvals.py` | `tests/unit/test_pinning.py` |
+| OSKA-IXN-18 | `src/oska/engine/binding.py`, `src/oska/config.py` | `tests/unit/test_pinning.py` |
 | OSKA-IXN-19 | `src/oska/engine/factory.py`, `src/oska/governance/ledger.py` | `tests/unit/test_revision.py` |
-| OSKA-IXN-20 | `src/oska/engine/engine.py`, `src/oska/engine/state.py` | `tests/unit/test_pinning.py` |
+| OSKA-IXN-20 | `src/oska/engine/binding.py`, `src/oska/engine/state.py` | `tests/unit/test_pinning.py` |
+| OSKA-IXN-21 | `src/oska/engine/presentation.py`, `src/oska/engine/factory.py` | `tests/unit/test_presentation.py`, `tests/unit/test_conformance.py` |
+| OSKA-IXN-22 | `src/oska/engine/presentation.py` | `tests/unit/test_presentation.py`, `examples/ops/scenarios/28_directive_from_verified_write.json` |
+| OSKA-IXN-23 | `src/oska/engine/presentation.py`, `src/oska/contracts/common.py` | `tests/unit/test_presentation.py` |
+| OSKA-IXN-24 | `src/oska/engine/engine.py`, `src/oska/engine/presentation.py` | `tests/unit/test_presentation.py` |
+| OSKA-IXN-25 | `src/oska/ontology/naming.py`, `src/oska/catalog/checks/presentation.py` | `tests/unit/test_presentation.py` |
+| OSKA-IXN-26 | `src/oska/engine/presentation.py` | `tests/unit/test_presentation.py` |
+| OSKA-IXN-27 | `src/oska/engine/reply.py`, `src/oska/engine/outcomes.py` | `tests/unit/test_engine.py` |
 
 ### Evolution (L7)
 
@@ -628,6 +820,11 @@ accident.
 | OSKA-EVO-33 | `src/oska/improvement/preferences.py`, `src/oska/cli/commands_improve.py` | `tests/unit/test_improvement.py` |
 | OSKA-EVO-34 | `src/oska/improvement/report.py`, `src/oska/improvement/job.py` | `tests/unit/test_improvement.py` |
 | OSKA-EVO-35 | `src/oska/learning/quality.py` | `tests/unit/test_skill_evaluation.py` |
+| OSKA-EVO-36 | `src/oska/learning/publishers.py`, `src/oska/learning/lifecycle.py` | `tests/unit/test_publishers.py` |
+| OSKA-EVO-37 | `src/oska/learning/publishers.py` | `tests/unit/test_publishers.py` |
+| OSKA-EVO-38 | `src/oska/learning/publishers.py` | `tests/unit/test_publishers.py` |
+| OSKA-EVO-39 | `src/oska/learning/publishers.py`, `src/oska/cli/commands_change.py` | `tests/unit/test_publishers.py` |
+| OSKA-EVO-40 | `src/oska/learning/lifecycle.py` | `tests/unit/test_changes.py` |
 
 ### Cross-cutting
 
@@ -643,41 +840,119 @@ accident.
 | OSKA-XC-8 | `src/oska/learning/lifecycle.py` | `tests/unit/test_learning.py` |
 | OSKA-XC-9 | `src/oska/planner/scripted.py` | `tests/scenarios/test_scenarios.py` |
 | OSKA-XC-10 | `tests/scenarios/test_scenarios.py` | `tests/scenarios/test_scenarios.py` |
-| OSKA-XC-11 | `src/oska/audit/trace.py`, `src/oska/engine/engine.py` | `tests/unit/test_trace.py` |
+| OSKA-XC-11 | `src/oska/audit/trace.py`, `src/oska/engine/engine.py`, `src/oska/engine/collaborators.py` | `tests/unit/test_trace.py` |
 | OSKA-XC-12 | `src/oska/audit/trace.py`, `src/oska/config.py`, `configs/runtime.json` | `tests/unit/test_trace.py` |
-| OSKA-XC-13 | `src/oska/engine/engine.py` | `tests/unit/test_trace.py` |
-| OSKA-XC-14 | `src/oska/engine/engine.py`, `src/oska/engine/factory.py` | `tests/unit/test_trace.py` |
+| OSKA-XC-13 | `src/oska/engine/budget.py`, `src/oska/engine/engine.py` | `tests/unit/test_trace.py` |
+| OSKA-XC-14 | `src/oska/engine/budget.py`, `src/oska/engine/factory.py` | `tests/unit/test_trace.py` |
 | OSKA-XC-15 | `src/oska/governance/retention.py`, `src/oska/cli/commands_forget.py` | `tests/unit/test_retention.py` |
 | OSKA-XC-16 | `src/oska/governance/retention.py`, `src/oska/config.py` | `tests/unit/test_retention.py` |
 | OSKA-XC-17 | `src/oska/governance/retention.py`, `src/oska/audit/events.py` | `tests/unit/test_retention.py` |
 | OSKA-XC-18 | `src/oska/audit/sink.py`, `src/oska/governance/retention.py` | `tests/unit/test_retention.py` |
-| OSKA-XC-19 | `src/oska/engine/engine.py`, `src/oska/governance/guardrails.py` | `tests/unit/test_retention.py` |
+| OSKA-XC-19 | `src/oska/engine/boundary.py`, `src/oska/governance/guardrails.py` | `tests/unit/test_retention.py` |
 | OSKA-XC-20 | `src/oska/observability/metrics.py`, `src/oska/cli/commands_slo.py` | `tests/unit/test_observability.py` |
 | OSKA-XC-21 | `src/oska/observability/metrics.py`, `src/oska/observability/report.py` | `tests/unit/test_observability.py` |
 | OSKA-XC-22 | `src/oska/observability/metrics.py` | `tests/unit/test_observability.py` |
 | OSKA-XC-23 | `src/oska/governance/retention.py`, `src/oska/cli/commands_forget.py` | `tests/unit/test_retention.py` |
+| OSKA-XC-24 | `src/oska/observability/exposition.py`, `src/oska/api/metrics.py`, `src/oska/api/identity.py` | `tests/unit/test_metrics.py`, `tests/unit/test_channel_identity.py` |
+| OSKA-XC-25 | `src/oska/observability/exposition.py` | `tests/unit/test_metrics.py` |
+| OSKA-XC-26 | `src/oska/observability/exposition.py`, `src/oska/api/metrics.py` | `tests/unit/test_metrics.py` |
+| OSKA-XC-27 | `src/oska/observability/exposition.py`, `ops/slo.md`, `ops/alerts.yml` | `tests/unit/test_metrics.py` |
+| OSKA-XC-28 | `src/oska/catalog/evaluation.py` | `tests/unit/test_skill_evaluation.py` |
+| OSKA-XC-29 | `src/oska/catalog/evaluation.py`, `src/oska/cli/commands_evaluate.py` | `tests/unit/test_skill_evaluation.py` |
+| OSKA-XC-30 | `.github/workflows/ci.yml` | `tests/unit/test_ci_workflow.py` |
+| OSKA-XC-31 | `src/oska/cli/commands_forget.py`, `src/oska/cli/commands_improve.py`, `src/oska/governance/retention.py` | `tests/unit/test_retention.py`, `tests/unit/test_improvement.py` |
+| OSKA-XC-32 | `src/oska/learning/forgetting.py`, `src/oska/governance/retention.py`, `src/oska/cli/commands_forget.py` | `tests/unit/test_retention.py` (`test_forget_removes_what_was_drafted_and_keeps_an_applied_decision` holds forget, `test_expire_removes_what_was_drafted_and_keeps_an_applied_decision` holds expire) |
+| OSKA-XC-33 | `src/oska/observability/exposition.py`, `src/oska/observability/metrics.py` | `tests/unit/test_metrics.py` |
+| OSKA-XC-34 | `src/oska/api/metrics.py`, `src/oska/observability/metrics.py`, `src/oska/config.py` | `tests/unit/test_metrics.py` |
+| OSKA-XC-35 | `src/oska/config.py`, `src/oska/platform/tenants.py` | `tests/unit/test_config.py` |
+
+### Platform
+
+| Id | Module | Proof |
+| --- | --- | --- |
+| OSKA-PLT-1 | `src/oska/platform/packs.py` | `tests/unit/test_platform.py` |
+| OSKA-PLT-2 | `src/oska/platform/packs.py` | `tests/unit/test_platform.py` |
+| OSKA-PLT-3 | `src/oska/platform/packs.py`, `src/oska/platform/versions.py` | `tests/unit/test_platform.py` |
+| OSKA-PLT-4 | `src/oska/platform/packs.py` | `tests/unit/test_platform.py` |
+| OSKA-PLT-5 | `src/oska/platform/manifest.py` | `tests/unit/test_platform.py` |
+| OSKA-PLT-6 | `src/oska/platform/manifest.py`, `src/oska/platform/runtime.py` | `tests/unit/test_platform.py` |
+| OSKA-PLT-7 | `src/oska/platform/runtime.py`, `src/oska/platform/assembly.py` | `tests/unit/test_platform.py` |
+| OSKA-PLT-8 | `src/oska/platform/runtime.py`, `src/oska/api/routes.py` | `tests/unit/test_platform.py`, `tests/unit/test_api.py`, `tests/unit/test_channel_identity.py` |
+| OSKA-PLT-9 | `src/oska/platform/runtime.py`, `src/oska/platform/assembly.py` | `tests/unit/test_platform.py` |
+| OSKA-PLT-10 | `src/oska/platform/assembly.py` | `tests/unit/test_platform.py` |
+| OSKA-PLT-11 | `src/oska/platform/assembly.py` | `tests/unit/test_platform.py` |
+| OSKA-PLT-12 | `src/oska/platform/host.py` | `tests/unit/test_platform.py`, `tests/unit/test_api.py` |
+| OSKA-PLT-13 | `src/oska/platform/tenants.py` | `tests/unit/test_platform.py`, `tests/unit/test_overlays.py` |
+| OSKA-PLT-14 | `src/oska/api/routes.py`, `src/oska/platform/tenants.py`, `src/oska/config.py` | `tests/unit/test_api.py`, `tests/unit/test_platform.py`, `tests/unit/test_channel_identity.py` |
+| OSKA-PLT-15 | `src/oska/platform/conformance.py`, `src/oska/cli/commands_serve.py` | `tests/unit/test_cli.py` |
+| OSKA-PLT-16 | `src/oska/platform/runtime.py` | `tests/unit/test_platform.py` |
+| OSKA-PLT-17 | `src/oska/api/routes.py`, `src/oska/cli/options.py` | `tests/unit/test_api.py`, `tests/unit/test_cli.py` |
+| OSKA-PLT-18 | `src/oska/platform/runtime.py`, `src/oska/platform/assembly.py` | `tests/unit/test_platform.py` |
+| OSKA-PLT-19 | `src/oska/platform/runtime.py`, `src/oska/engine/reply.py` | `tests/unit/test_platform.py` |
+| OSKA-PLT-20 | `src/oska/platform/runtime.py`, `src/oska/storage/protocols.py` | `tests/unit/test_platform.py` |
+| OSKA-PLT-21 | `src/oska/platform/tenants.py`, `src/oska/platform/assembly.py` | `tests/unit/test_overlays.py` |
+| OSKA-PLT-22 | `src/oska/platform/assembly.py`, `src/oska/connectors/registry.py`, `src/oska/contracts/platform.py` | `tests/unit/test_overlays.py` |
+| OSKA-PLT-23 | `src/oska/connectors/registry.py`, `src/oska/platform/assembly.py`, `src/oska/kit/check.py` | `tests/unit/test_overlays.py`, `tests/unit/test_kit.py` |
+| OSKA-PLT-24 | `src/oska/platform/tenants.py` | `tests/unit/test_overlays.py` |
+| OSKA-PLT-25 | `src/oska/platform/runtime.py` | `tests/unit/test_platform.py` |
+| OSKA-PLT-26 | `src/oska/platform/runtime.py`, `src/oska/api/app.py` | `tests/unit/test_platform.py` |
+| OSKA-PLT-27 | `src/oska/kit/check.py`, `src/oska/kit/build.py`, `src/oska/cli/commands_pack.py` | `tests/unit/test_kit.py` |
+| OSKA-PLT-28 | `src/oska/api/routes.py`, `src/oska/api/identity.py` | `tests/unit/test_channel_identity.py` |
+| OSKA-PLT-29 | `src/oska/api/routes.py` | `tests/unit/test_api.py` |
+| OSKA-PLT-30 | `src/oska/platform/tenants.py`, `src/oska/config.py` | `tests/unit/test_config.py` |
 
 ## Open items
 
-No row of the checklist reads `pending`. The five that did are closed:
-`OSKA-SKL-22`, `OSKA-IXN-17` and `OSKA-IXN-18` in `tests/unit/test_pinning.py`,
-which interrupts a build part-way and reads the store, and then asks for an
-approval, publishes a second revision while it waits and answers it — once with
-session pinning on and once with it off; `OSKA-COG-22` in
-`tests/unit/test_labels.py`, which answers the same request as a turn in two
-languages and reads the prompts the router and the planner were handed;
-`OSKA-XC-19` in `tests/unit/test_retention.py`, which sends a turn carrying a
-credential and finds the redacted wording, and nothing else, in the audit trail
-and in the session store.
+Earlier pending rows are closed: `OSKA-SKL-22`, `OSKA-IXN-17` and `OSKA-IXN-18`
+in `tests/unit/test_pinning.py`, which interrupts a build part-way and reads
+the store, and then asks for an approval, publishes a second revision while it
+waits and answers it — once with session pinning on and once with it off;
+`OSKA-COG-22` in `tests/unit/test_labels.py`, which answers the same request as
+a turn in two languages and reads the prompts the router and the planner were
+handed; `OSKA-XC-19` in `tests/unit/test_retention.py`, which sends a turn
+carrying a credential and finds the redacted wording, and nothing else, in the
+audit trail and in the session store.
+
+The five rows that read `pending` are closed the same way, each by a test
+named on its checklist row: `OSKA-ONT-27` in `tests/unit/test_ontology.py`,
+which reads `noun` and `plural` off an entity node — declared and defaulted —
+and off the planner prompt that names an entity by them, the path the runtime
+reads the ontology through; `OSKA-SKL-33` in `tests/unit/test_signing.py`,
+which registers a second signer under another name and has a revision signed
+and verified through it, the same way the built-in signer is; `OSKA-IXN-23` in
+`tests/unit/test_presentation.py`, which runs the same turns with presentation
+on and off and finds the reply, the outcomes and what is pending identical,
+and directives only when it is on; `OSKA-XC-30` in
+`tests/unit/test_ci_workflow.py`, which reads `.github/workflows/ci.yml` and
+finds the lint, the suite, the validation, the evaluation gate and the
+conformance run, each over both reference catalogs; and `OSKA-PLT-4` in
+`tests/unit/test_platform.py`, which gives `check_requires` a pack whose
+`requires` names a runtime range the installed runtime falls outside of.
+`OSKA-ONT-27` now joins Level 1 and `OSKA-IXN-23` joins Level 2, as the level
+lists said they would once proven.
+
+The clauses that had a row but no assertion are closed too: that a
+client-supplied context never overrides the focus (`OSKA-COG-27`, in
+`tests/unit/test_subject.py`); that one skill identifier declared by two packs
+of one domain refuses the platform (`OSKA-PLT-7`, refused in
+`src/oska/platform/assembly.py` and asserted in `tests/unit/test_platform.py`);
+that two engines never share a connector (`OSKA-PLT-10`, in
+`tests/unit/test_platform.py`); and that a publisher never forces and the
+serving process never merges (`OSKA-EVO-38`, in `tests/unit/test_publishers.py`,
+against a temporary repository). What `OSKA-GOV-38`'s test proves and does not
+prove is stated on its own row, since the gap there is a limit of what a test
+can observe rather than something left to assert.
 
 Two things are still required by no level, and are open in the sense that a
 decision about them is owed. The revision store and the identity requirements
 were open in the same sense until the level lists were written out in full; they
 are now settled the other way, under "Required of a deployment, not of a level",
-and are not repeated here. Evaluation sets
-(`OSKA-SKL-25` to `OSKA-SKL-27`, `OSKA-EVO-35`) and the service-level numbers
-(`OSKA-XC-20` to `OSKA-XC-22`) are stated in the layer documents, which is
-what the level lists are written about, so nothing structural stands in the way.
+with the storage, publication, operations-surface and platform requirements,
+and are not repeated here. Evaluation sets and the catalog evaluation over them
+(`OSKA-SKL-25` to `OSKA-SKL-27`, `OSKA-EVO-35`, `OSKA-XC-28`, `OSKA-XC-29`) and
+the service-level numbers (`OSKA-XC-20` to `OSKA-XC-22`) are stated in the layer
+documents, which is what the level lists are written about, so nothing
+structural stands in the way.
 What is missing is a decision: a level that required `OSKA-SKL-26` would also
 have to say what a catalog whose skills carry no evaluation set is entitled to
 claim, and a level that required `OSKA-XC-20` would have to say the same about a

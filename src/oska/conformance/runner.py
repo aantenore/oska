@@ -17,12 +17,24 @@ A scenario may also carry a `learning` block. That block runs after the turns:
 it drafts a proposal from the session the turns built, moves it through the
 states it names, and checks where it ended up, whether the published procedure
 is in the catalog, and that a transition without an actor is refused.
+
+A scenario may ask for `presentation`, and then its engine is built with
+presentation on, as a domain that enables it builds its own. A turn that lists
+`directives` must produce that many, in that order, each naming the same
+procedure, moment and view and holding every listed field with the listed
+value. Fields it does not list are not compared, because some of them, such as
+a receipt identifier, are different on every run. An empty list means the turn
+must produce none; no list means directives are not checked.
+
+`build` lets a caller assemble the engine a scenario runs against, which is how
+a platform runs each domain's scenarios with that domain's engine.
 """
 
 from __future__ import annotations
 
 import json
 import tempfile
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -55,9 +67,13 @@ __all__ = [
     "TransitionSpec",
     "TurnSpec",
     "load_scenarios",
+    "run_directories",
     "run_scenario",
     "run_suite",
 ]
+
+EngineBuilder = Callable[..., Engine]
+"""Builds a scenario's engine from settings, taking `build_engine`'s keyword arguments."""
 
 DEFAULT_LEVEL = 2
 VERIFIED = "verified"
@@ -82,6 +98,7 @@ class Expect(BaseModel):
     pending: str | None = None
     receipts: int | None = None
     verification: str | None = None
+    directives: list[dict] | None = None
 
 
 class TurnSpec(BaseModel):
@@ -149,6 +166,7 @@ class ScenarioFile(BaseModel):
     description: str = ""
     level: int = DEFAULT_LEVEL
     principal: PrincipalSpec | None = None
+    presentation: bool = False
     provider_script: list[dict] = Field(default_factory=list)
     turns: list[TurnSpec] = Field(default_factory=list)
     learning: LearningSpec | None = None
@@ -200,8 +218,12 @@ def run_scenario(
     settings: Settings,
     *,
     state_dir: Path,
+    build: EngineBuilder | None = None,
 ) -> ScenarioResult:
-    """Replay one scenario against a fresh runtime and report what did not hold."""
+    """Replay one scenario against a fresh runtime and report what did not hold.
+
+    `build` assembles the engine; without it the settings name everything.
+    """
     provider = ScriptedModelProvider(scenario.provider_script)
     runtime = load_runtime_config(settings=settings)
     publish_root = state_path(Path(state_dir), runtime.learning.publish_root)
@@ -212,10 +234,12 @@ def run_scenario(
         scenario_settings = scenario_settings.model_copy(
             update={"skills_roots": [*scenario_settings.skills_roots, publish_root]}
         )
-    engine = build_engine(
+    options: dict[str, Any] = {"presentation": True} if scenario.presentation else {}
+    engine = (build or build_engine)(
         scenario_settings,
         provider=provider,
         audit_sink=MemorySink(),
+        **options,
     )
     principal = (
         None
@@ -265,15 +289,25 @@ def run_scenario(
     )
 
 
-def run_suite(directory: Path, settings: Settings) -> SuiteReport:
+def run_suite(
+    directory: Path, settings: Settings, *, build: EngineBuilder | None = None
+) -> SuiteReport:
     """Run every scenario of a directory, each against its own state."""
-    scenarios = load_scenarios(directory)
+    return SuiteReport.of(run_directories([Path(directory)], settings, build))
+
+
+def run_directories(
+    directories: list[Path], settings: Settings, build: EngineBuilder | None = None
+) -> list[ScenarioResult]:
+    """Run every scenario of several directories, each against its own state."""
     results: list[ScenarioResult] = []
     with tempfile.TemporaryDirectory(prefix="oska-conformance-") as workspace:
         root = Path(workspace)
-        for scenario in scenarios:
-            results.append(run_scenario(scenario, settings, state_dir=root / scenario.name))
-    return SuiteReport.of(results)
+        for position, directory in enumerate(directories):
+            for scenario in load_scenarios(directory):
+                state_dir = root / str(position) / scenario.name
+                results.append(run_scenario(scenario, settings, state_dir=state_dir, build=build))
+    return results
 
 
 def _check_turn(
@@ -309,6 +343,39 @@ def _check_turn(
             f"{where}: verification {verification!r}, "
             f"the scenario expects {expect.verification!r}"
         )
+    if expect.directives is not None:
+        failures.extend(_check_directives(where, expect.directives, result))
+    return failures
+
+
+def _check_directives(where: str, expected: list[dict], result: TurnResult) -> list[str]:
+    """The directives of the turn, in order, against the ones the scenario lists.
+
+    Procedure, moment and view must be equal; the listed fields must be present
+    with the listed values, and any others the directive holds are not read.
+    """
+    produced = [directive.model_dump(mode="json") for directive in result.directives]
+    if len(produced) != len(expected):
+        return [
+            f"{where}: {len(produced)} directive(s) {produced}, "
+            f"the scenario expects {len(expected)}"
+        ]
+    failures: list[str] = []
+    for position, (made, wanted) in enumerate(zip(produced, expected, strict=True), start=1):
+        at = f"{where}: directive {position}"
+        for key in ("procedure", "moment", "view"):
+            if made.get(key) != wanted.get(key):
+                failures.append(
+                    f"{at}: {key} {made.get(key)!r}, the scenario expects {wanted.get(key)!r}"
+                )
+        held = made.get("fields") or {}
+        for name, value in (wanted.get("fields") or {}).items():
+            if name not in held:
+                failures.append(f"{at}: no field {name!r}, the scenario expects {value!r}")
+            elif held[name] != value:
+                failures.append(
+                    f"{at}: field {name!r} is {held[name]!r}, the scenario expects {value!r}"
+                )
     return failures
 
 

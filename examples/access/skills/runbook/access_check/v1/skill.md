@@ -24,6 +24,18 @@ capabilities:
 guardrails:
   - guardrail.declared_operations_only
   - guardrail.identifiers_are_never_invented
+subject:
+  entity: entity.user
+  cardinality: one
+  joins: focus
+presentation:
+  on_single_result:
+    view: account
+    bind:
+      user: $item.username
+      name: $item.display_name
+      status: $item.status
+      groups: $item.groups
 runtime:
   action: check what access a person has
   action_on_selection: check their access

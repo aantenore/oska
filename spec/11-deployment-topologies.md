@@ -5,7 +5,8 @@ connectors point, where the approval is collected, where the policies come from,
 and what sits on the other side of the trust boundary. Three topologies are
 described here. All three satisfy the same invariants; none of them relaxes the
 write path. A fourth question cuts across them: how many processes serve the
-catalog, and how many catalogs one deployment serves.
+catalog, how many catalogs one deployment serves, and how many domains and
+tenants one process serves.
 
 ## Overlay on systems of record
 
@@ -149,6 +150,38 @@ connector bindings, ledgers, session stores and audit trails are per deployment,
 and a deployment that serves two tenants from one of those is putting two
 organizations' records in one place. The catalog being separable does not make
 the rest of it separable.
+
+## Several domains and tenants in one process
+
+A platform (see [14-platform-blueprint.md](14-platform-blueprint.md)) is what
+makes the rest of it separable. One process serves every domain a manifest
+declares, each for the tenants it names, and holds one runtime per (tenant,
+domain): its catalog is the catalog of its domain's packs, its bindings are
+those packs' bindings with the tenant's overlay put in place, and its state
+lives in a location of its own. Sessions, receipts, audit events, proposals and
+revisions of one tenant in one domain therefore never share a file with another,
+and a configuration that would make them share one is refused.
+
+The process keeps a bounded number of those runtimes built at once. That bound
+is a cost, not a boundary: a runtime that falls out of it is built again from
+the same declarations when it is next asked for, and finds its state where it
+left it, because the state was never in the process.
+
+The domain arrives with the turn, from the channel: the HTTP path names it, the
+command line takes `--domain`. Behind an authenticating proxy whose tenant
+header the configuration names, the tenant is read from that header only, and
+a tenant attribute does not override it; otherwise it is the authenticated
+principal's tenant attribute, else `default`; no header is read as a tenant
+unless the configuration names it. A
+session belongs to the tenant and the domain of its first turn, as it belongs
+to its principal, and a turn naming it elsewhere is refused with the refusal
+every other session call answers. What this does not change: a replica is
+still not a trust boundary, the ledger still keys per session, and a tenant's
+overlay can change wording, languages, connector cost and where an HTTP
+binding points, but never identity, guardrails, storage or where state lives.
+
+A catalog served without a manifest is a platform of one domain, and
+everything in the sections above holds for it as written.
 
 ## Trust boundaries
 

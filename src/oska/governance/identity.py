@@ -9,14 +9,23 @@ never accepted from it: they are filled here, after the plan is made and before
 the policy judges it, so the value a write is bound to is one the person on the
 other end could not choose for themselves.
 
-Nothing in this module authenticates anything. `authenticated` is what the
+Nothing in this module authenticates a person. `authenticated` is what the
 channel reported, and a principal that reports otherwise is treated as no
-principal at all.
+principal at all. What it does do is check a signed session token, when the
+channel hands one over instead of a trusted header: a compact HS256 token whose
+signature, algorithm, required claims, validity window and session binding are
+all checked here, with the standard library, before any claim is believed.
 """
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Sequence
+import base64
+import binascii
+import hashlib
+import hmac
+import json
+import time
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 
 from oska.contracts.skill import Skill
@@ -25,17 +34,36 @@ __all__ = [
     "IdentityError",
     "Principal",
     "PrincipalMismatch",
+    "TokenError",
     "declared_inputs",
+    "mint_token",
+    "principal_from_claims",
     "refused_fields",
     "requires_principal",
     "resolve_inputs",
+    "verify_token",
 ]
 
 SUBJECT = "subject"
+TENANT = "tenant"
+TOKEN_ALGORITHM = "HS256"
+REGISTERED_CLAIMS = frozenset({"sub", "sid", "exp", "nbf", "iat", "iss", "aud", "jti"})
 
 
 class IdentityError(Exception):
     """A declared principal input cannot be filled from the identity on the session."""
+
+
+class TokenError(Exception):
+    """A session token that does not hold up. `check` names the check it failed.
+
+    The message never carries the token or any part of it, so it may be shown
+    to the caller and written to a log.
+    """
+
+    def __init__(self, check: str, message: str) -> None:
+        super().__init__(message)
+        self.check = check
 
 
 class PrincipalMismatch(Exception):
@@ -141,3 +169,137 @@ def refused_fields(skill: Skill, payload: dict) -> list[str]:
 def _listed(names: Iterable[str]) -> str:
     listed = sorted(names)
     return ", ".join(listed) if listed else "nothing"
+
+
+def mint_token(claims: Mapping[str, object], key: bytes | str) -> str:
+    """A compact HS256 token over these claims.
+
+    This is for tests and for an operator's own tooling. The runtime verifies
+    tokens and never mints the ones it accepts: whoever issues a token is the
+    party that authenticated the person, and that is not the runtime.
+    """
+    header = _encode_part({"alg": TOKEN_ALGORITHM, "typ": "JWT"})
+    payload = _encode_part(dict(claims))
+    signed = f"{header}.{payload}"
+    return f"{signed}.{_b64encode(_mac(key, signed))}"
+
+
+def verify_token(
+    token: str,
+    key: bytes | str,
+    *,
+    session_id: str | None,
+    required_claims: Sequence[str] = ("sub", "sid", "exp"),
+    leeway_seconds: int = 0,
+    now: float | None = None,
+) -> dict:
+    """The claims of a token that holds up, or `TokenError` naming the check it failed.
+
+    The signature is compared in constant time before any claim is read. `alg`
+    must be HS256; `none` and every other value are refused rather than
+    honored. Every required claim must be present, so a token minted without
+    an expiry is refused instead of living forever. `exp` and `nbf` are held to
+    the clock with `leeway_seconds` of tolerance, and `sid` must name the
+    session of the call, so a token is good for one session and no other.
+
+    `session_id` of `None` is a call that acts in no session, such as reading
+    what a catalog offers: the token is verified in every other respect and
+    the session is not compared. An empty string is a session call that named
+    no session, and is refused.
+    """
+    try:
+        header_part, payload_part, signature_part = token.split(".")
+    except ValueError:
+        header_part = payload_part = signature_part = ""
+    if not header_part or not payload_part:
+        raise TokenError("format", "a session token is three base64url parts joined by dots")
+    header = _decode_part(header_part, "header")
+    if header.get("alg") != TOKEN_ALGORITHM:
+        raise TokenError("alg", f"only {TOKEN_ALGORITHM} session tokens are accepted")
+    try:
+        given = _b64decode(signature_part)
+    except ValueError:
+        given = b""
+    if not hmac.compare_digest(_mac(key, f"{header_part}.{payload_part}"), given):
+        raise TokenError("signature", "the signature does not match the token")
+    claims = _decode_part(payload_part, "payload")
+    for name in required_claims:
+        if name not in claims:
+            raise TokenError("claims", f"the token carries no {name} claim, which is required")
+    moment = time.time() if now is None else now
+    expires = _instant(claims, "exp")
+    if expires is not None and moment > expires + leeway_seconds:
+        raise TokenError("exp", "the token has expired")
+    begins = _instant(claims, "nbf")
+    if begins is not None and moment + leeway_seconds < begins:
+        raise TokenError("nbf", "the token is not valid yet")
+    if session_id is not None:
+        if not session_id:
+            raise TokenError("sid", "the token is bound to a session, and this call names none")
+        if claims.get("sid") != session_id:
+            raise TokenError("sid", "the token was issued for another session")
+    subject = claims.get("sub")
+    if not isinstance(subject, str) or not subject.strip():
+        raise TokenError("sub", "the token names no subject")
+    return claims
+
+
+def principal_from_claims(claims: Mapping[str, object], *, tenant_claim: str) -> Principal:
+    """The identity a verified token establishes.
+
+    The subject is `sub`. Every claim that is not a registered one travels as
+    an attribute, so a procedure can bind a field to it, and the claim the
+    deployment names as the tenant is also carried as the `tenant` attribute.
+    """
+    attributes = {
+        name: value for name, value in claims.items() if name not in REGISTERED_CLAIMS
+    }
+    if tenant_claim and tenant_claim in claims:
+        attributes[TENANT] = claims[tenant_claim]
+    return Principal(subject=str(claims["sub"]), attributes=attributes, authenticated=True)
+
+
+def _mac(key: bytes | str, signed: str) -> bytes:
+    material = key.encode("utf-8") if isinstance(key, str) else key
+    return hmac.new(material, signed.encode("ascii"), hashlib.sha256).digest()
+
+
+def _b64encode(raw: bytes) -> str:
+    return base64.urlsafe_b64encode(raw).rstrip(b"=").decode("ascii")
+
+
+def _b64decode(text: str) -> bytes:
+    """Unpadded base64url, strictly: a character outside the alphabet is an error."""
+    try:
+        raw = text.encode("ascii")
+    except UnicodeEncodeError as exc:
+        raise ValueError("not base64url") from exc
+    for padding in (b"", b"=", b"=="):
+        try:
+            return base64.b64decode(raw + padding, altchars=b"-_", validate=True)
+        except binascii.Error:
+            continue
+    raise ValueError("not base64url")
+
+
+def _encode_part(document: Mapping[str, object]) -> str:
+    return _b64encode(json.dumps(document, separators=(",", ":"), sort_keys=True).encode())
+
+
+def _decode_part(text: str, part: str) -> dict:
+    try:
+        document = json.loads(_b64decode(text))
+    except ValueError as exc:
+        raise TokenError("format", f"the token {part} is not base64url JSON") from exc
+    if not isinstance(document, dict):
+        raise TokenError("format", f"the token {part} is not a JSON object")
+    return document
+
+
+def _instant(claims: Mapping[str, object], name: str) -> float | None:
+    value = claims.get(name)
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        raise TokenError(name, f"the {name} claim is not a number of seconds")
+    return float(value)

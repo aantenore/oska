@@ -56,7 +56,11 @@ the model chose for a field the identity owns.
    the policy is evaluated against the entities as they are now, rather than as
    they were when the question was asked; and step 5 is made again against the
    state the object is in now, so a move that stopped being legal while the
-   approval waited ends the turn the same way, with nothing in the ledger. Only
+   approval waited ends the turn the same way, with nothing in the ledger. When
+   any of those reads cannot be performed again, the write is not sent either:
+   a policy judging without the state it is conditioned on would silently stop
+   matching, so the turn ends with an `unavailable` outcome saying the state
+   could not be confirmed, and nothing in the ledger. Only
    then is a receipt written with status `pending`, before the call goes out.
    An `execute` event with `"stage": "intent"` carries the receipt id and the
    ledger key.
@@ -129,47 +133,128 @@ that ran and left the object somewhere else is not a verified write.
 
 "I cannot do that" and "I usually can, but not right now" are different
 statements, and the connector is the only place that knows which one it is
-making. So every connector result says what kind of failure it was, and the
-kind decides everything that follows.
+making. So every connector result carries two things: a `failure` kind saying
+where in the transaction it went wrong, and a `classification` saying what
+that means for a retry, the breaker and the ledger. `failure` alone was the
+whole story once; a transport failure has since been split into two
+classifications, because "nothing was ever sent" and "it was sent and the
+answer is unknown" call for different handling, and conflating them is what
+used to make a timeout look exactly like a refused connection.
 
-| Kind | What it means | Classification |
+| `failure` | What it means | `classification` |
 | --- | --- | --- |
-| `transport` | The call did not reach the system, or the system did not complete it: a timeout, a refused connection, a host that is not there, a server reporting that it is broken, or a breaker that is open | `retryable` |
-| `refused` | The system answered and the answer was no: a record that does not exist, a value it would not take, a permission denied | `terminal` |
-| `rejected` | The request was never sent, because it was not well formed: an operation the binding does not declare, a payload missing a field the call needs | `terminal` |
+| `transport` | The request provably never left: a refused connection, a host that is not there, a breaker that is open | `retryable` |
+| `transport` | The request left and no usable answer came back: a read timeout, a connection reset mid-response, a server reporting it is broken (5xx) | `ambiguous` |
+| `refused` | The system answered and the answer was no: a record that does not exist, a value it would not take, a permission denied, a response larger than `resilience.max_response_bytes` | `terminal` |
+| `rejected` | The request was never sent, because it was not well formed: an operation the binding does not declare, a payload missing a field the call needs, an unfillable path | `terminal` |
 
 A result of unknown provenance — a connector that answers without classifying —
 is read as `terminal`, so nothing is ever repeated on this system's own
-initiative.
+initiative. Every adapter shipped with the runtime (`mock`, `http`, `shell`)
+classifies every path; only `http` and `shell` can produce `ambiguous`, since
+only they have a wire a response can go missing from — `mock` only ever
+reports `retryable` (an injected `unreachable`) or `terminal`.
 
-**The breaker.** After `resilience.failures_before_open` consecutive transport
-failures the connector stops being called: calls are refused locally, without
-reaching the system, for `resilience.recovery_seconds`. One attempt is then let
-through and either closes the breaker or opens it again. A system that answered
-— including one that refused — is a system that is up, and closes it. A request
-that was never sent counts for nothing. Only the operations of that one binding
-degrade; nothing else about a conversation changes.
+**In-call retries, reads only.** Before any of this reaches the write path, a
+**read** whose result is retryable, or whose HTTP status is in
+`resilience.retry_statuses`, is retried inside the same call, up to
+`resilience.retries` more times, with the pause between attempts doubling from
+`resilience.backoff_seconds`. A **write** is never retried inside a call,
+whatever its classification — the loop that retries a read simply does not run
+for one, so a write reaches the write path's own handling, below, on the first
+answer it gets. The circuit breaker is consulted before every attempt of the
+loop, not only the first, so a breaker that opens mid-retry stops the rest of
+the attempts.
 
-**What the ledger does with it.** `lookup` returns the most recent receipt for a
-key whatever its outcome, and is what the record shows. `settled` is what the
-write path asks, and it passes over a failure classified `retryable`: a write
-that never reached the system changed nothing there and is not a write, so it
-settles nothing and the same intent may be attempted again in the same session.
-The receipt of the attempt stays in the record either way, because what was
-tried is part of the account even when nothing came of it.
+**The breaker.** After `resilience.failures_before_open` consecutive results
+whose `failure` is `transport` — retryable or ambiguous, either counts — the
+connector stops being called: calls are refused locally, without reaching the
+system, for `resilience.recovery_seconds`. One attempt is then let through and
+either closes the breaker or opens it again. A system that answered —
+including one that refused, or one whose answer was too large to read — is a
+system that is up, and closes it. A request that was never sent counts for
+nothing. Only the operations of that one binding degrade; nothing else about a
+conversation changes.
 
-**The `unavailable` outcome.** An operation whose call never arrived is neither
-a result nor a refusal. It is recorded as an `unavailable` outcome naming the
-binding, the operation, the state of the breaker and when a call may go out
-again, and an `unavailable` audit event carries the same. The plan carries on
-past it. For a write, the receipt of the attempt is carried on the outcome, so
-the reply names it along with every other write of the session.
+**What a `retryable` write does to the ledger.** A write whose request
+provably never left settles nothing: the receipt stays `error` and
+`retryable`, and the same intent may be asked for again in the same session,
+because nothing over there was ever attempted.
+
+**What an `ambiguous` write does to the ledger.** This is the harder case, and
+nothing here is settled by assumption. The write's own read-back — the same
+`verify.expect` comparison every write goes through — is run on it exactly as
+it would be on one that reported success, because a failed send says nothing
+about whether the system performed it anyway. What that read-back shows
+decides which of three things happens next:
+
+- **It shows the write landed.** The receipt becomes an ordinary executed,
+  verified write, `classification: terminal`, and the key closes: the same
+  intent is not sent again, because it does not need to be.
+- **It shows the write did not land.** The receipt is reopened,
+  `classification: retryable`, and the same intent may be asked for again —
+  the system of record itself says nothing happened.
+- **The read-back cannot say either way.** The outcome is genuinely unknown.
+  If the operation declares `idempotency_fields`, or is a lifecycle move the
+  entity would itself refuse to repeat from the state it would be in, the
+  system of record would stop a duplicate on its own, so the receipt is
+  reopened as `retryable` and a repeat is safe to ask for. Otherwise nothing
+  stands between a repeat and a duplicate effect, so the key closes,
+  `classification: terminal`, with the error naming the outcome as unknown —
+  the runtime does not send a write again when it cannot tell whether the
+  first one happened.
+
+`WriteLedger.settled` is what the write path asks before sending anything, and
+it is exactly this: a receipt classified `retryable` never settles a key, a
+receipt classified `terminal` always does, whatever kind of failure or success
+produced it. `lookup` returns the most recent receipt for a key regardless,
+because what was tried is part of the account even when nothing came of it.
+
+**Claiming a key is atomic across processes, not only within one.**
+`WriteLedger.claim` opens a `BEGIN IMMEDIATE` SQLite transaction, checks
+whether the key is already settled, and inserts the receipt in the same
+transaction — so a second process asking for the same write blocks on the
+file's write lock rather than racing the check. The PostgreSQL backend
+(`docs/configuration.md#storage`) makes the same guarantee a different way: an
+`INSERT ... ON CONFLICT DO NOTHING` guarantees a row to lock, `SELECT ... FOR
+UPDATE` takes it, and the settlement check runs inside that row lock — replicas
+queue on the row rather than on the whole ledger file. Either way, two turns,
+two threads or two processes asking for the same write at once cannot both win
+it.
+
+**The `unavailable` outcome.** An operation whose call never arrived, or whose
+outcome could not be settled either way, is neither a result nor a refusal. It
+is recorded as an `unavailable` outcome naming the binding, the operation, the
+state of the breaker and when a call may go out again, and an `unavailable`
+audit event carries the same. The plan carries on past it. For a write, the
+receipt of the attempt is carried on the outcome, so the reply names it along
+with every other write of the session.
 
 The reply says it twice over, deliberately. The deterministic line reports that
 the operation could not be reached, that nothing was sent and nothing changed,
 and when it may be tried again. The reply writer is separately instructed not
 to say it was refused and not to say it was done, because those are the two
-mistakes available here and both are worse than saying nothing.
+mistakes available here and both are worse than saying nothing. Where an
+ambiguous write's outcome was actually resolved by its read-back — landed, or
+did not land — the reply reports exactly that, the same as any other write:
+the uncertainty was real but it did not last past this turn.
+
+An outcome marked unknown — the write's own answer was lost and its read-back
+could not be reached either — is never reported as failed. It is not sent
+again, because the system of record would stop a duplicate on its own; the
+deterministic line and the reply writer's instruction both say only that the
+write may or may not have landed, name the receipt that records the attempt,
+and say whether the runtime would send it again. An approved write whose
+state could not be confirmed by a re-read (the previous section) is worded the
+same way: not sent, not refused, not done, and askable again.
+
+A model-written reply is trusted with this only when every write of the turn
+landed and was confirmed. The reply writer is handed, per write, whether it
+landed; the moment any write of the turn was refused, never sent, not
+confirmed by its read-back, or unknown, the text a model returns is set aside
+and the deterministic form answers instead — the call still runs, because it
+is also what puts the offered actions into the turn's language, but its prose
+is not used. See [docs/architecture.md#l6-interaction](architecture.md#l6-interaction) (`reply.py`).
 
 ## Guardrails
 
@@ -410,9 +495,13 @@ it, and the receipt carries the reason.
 
 ## The ledger
 
-SQLite, at `state/ledger.sqlite` by default, one table of receipts. Every call
-opens and closes its own connection, so the file survives a restart and can be
-read by another process while the runtime is up.
+SQLite, at `state/ledger.sqlite` by default, one table of receipts; PostgreSQL
+behind the `storage.backend` setting for more than one process sharing a
+database rather than a file. Both satisfy the same `LedgerStore` protocol in
+`oska.storage`, exercised by one contract test suite — see
+[docs/configuration.md#storage](configuration.md#storage). Every call opens
+and closes its own connection, so a SQLite ledger survives a restart and can
+be read by another process while the runtime is up.
 
 The **ledger key** is `sha256(canonical_json([integration_id, operation,
 subject]))`, where `subject` is the payload narrowed to the declared
@@ -443,6 +532,13 @@ passed over by `settled`, so the same intent may be asked for again in the same
 session. That is not a weakening of the rule; it is the rule stated exactly. The
 ledger stops one conversation from doing the same thing twice, and a call that
 did not reach the system did not do it once.
+
+A write whose request left but whose answer was `ambiguous` is not treated as
+either case by assumption: its read-back decides whether it landed, whether it
+did not, or whether the runtime has to leave the key closed because it cannot
+tell — see
+[When the system does not answer](#when-the-system-does-not-answer) for what
+each of those three does to the receipt.
 
 ## Audit
 
@@ -485,17 +581,20 @@ trace, the answer is to raise an audit event, not to leave tracing on.
 
 ## Identity
 
-The HTTP application has no authentication. It assumes an authenticated proxy in
-front of it that decides who may reach it. The `by` field on a proposal
-transition is recorded exactly as it arrives and is not verified against
-anything. The same is true of `--by` on the command line.
+`identity.mode` in `configs/runtime.json` is `proxy` or `token`. Either way,
+identity now governs two things: a turn's principal, described in the two
+modes below, and who may reach which route and be recorded as whose actor,
+described in [Who may do what over HTTP](#who-may-do-what-over-http) after
+them.
 
-The boundary is drawn here on purpose. The runtime records who a caller said
-they were, and the channel is responsible for making that claim true. A
-deployment that exposes the API without such a proxy has no identity on its
-approvals or its lifecycle transitions, whatever the audit trail says.
+### Proxy mode
 
-### The identity a turn arrives under
+The default. The HTTP application has no authentication of its own; it assumes
+an authenticated proxy in front of it that decides who may reach it. The
+boundary is drawn here on purpose: the runtime records who a caller said they
+were, and the channel is responsible for making that claim true. A deployment
+that exposes the API without such a proxy has no identity on its approvals or
+its lifecycle transitions, whatever the audit trail says.
 
 A turn may carry a principal: the subject of whoever is signed in, and whatever
 else about them the deployment puts on the call. Over HTTP it arrives in
@@ -506,16 +605,115 @@ handed every session whatever identity the caller typed. There is no
 corresponding option on the command line, because there is no proxy there to
 believe.
 
+### Token mode
+
+`identity.mode: token` moves that verification into the runtime itself. A
+caller sends `Authorization: Bearer <token>`, and the runtime checks the
+signature before it reads a single claim out of it — `governance/identity.py`,
+`verify_token`. The algorithm is fixed at HS256; a token declaring `alg: none`
+or anything else is refused outright, the same as a bad signature, not treated
+as a lesser form of trust. The key is read from the environment variable
+`identity.key_env` names, `OSKA_SESSION_TOKEN_KEY` by default, and a missing
+key is a `500 identity_key_missing` at request time rather than a silent fall
+back to trusting the caller.
+
+`identity.required_claims` (`sub`, `sid`, `exp` by default) must all be
+present; `exp` and, when carried, `nbf` are checked against the clock within
+`identity.leeway_seconds`; `identity.tenant_claim` (`tenant` by default) is
+exposed as an attribute of the principal the same way any other claim is, and
+is what a platform reads to resolve which tenant a call is for — see
+[docs/packs-and-platforms.md#tenant](packs-and-platforms.md#tenant).
+
+One check is specific to the call being made rather than to the token itself:
+a call that acts inside a session compares the token's `sid` claim against
+that session's id, and a call that acts in no session — drafting a proposal,
+listing domains — skips the comparison entirely rather than requiring a `sid`
+that names nothing. Every other claim check that fails is a `401
+invalid_token` naming the check; the `sid` check alone comes back as a `403
+session_refused`, worded the same as any other refusal of a session, because a
+token issued for another session is a session problem, not a malformed token:
+
+```
+POST /sessions/demo-1/turns   Authorization: Bearer <token, sid=demo-1>   → 200
+POST /sessions/other/turns    Authorization: Bearer <token, sid=demo-1>   → 403 session_refused
+                                 "this call may not act in this session"
+```
+
+The runtime never mints a token it later accepts. Whoever authenticates the
+person issues it; `oska.governance.identity.mint_token` exists for tests and
+for an operator's own tooling, not as something the runtime calls on its own
+behalf. [docs/building-a-platform.md](building-a-platform.md#8-move-from-proxy-identity-to-token-identity)
+walks moving a deployment from proxy to token mode end to end.
+
 One check is made, and it is about consistency rather than authenticity. A
-session opened without an identity stays open to whoever arrives first. A
-session that holds one is that person's: a turn arriving under a different
-subject, or under none at all, is refused with a `409 principal_mismatch`, and
-nothing of it is run or recorded. A session is one conversation with one
-person, and a write bound to an identity halfway through would be bound to
-whichever identity happened to be on that turn.
+session opened without an identity stays anonymous: an identity arriving once
+the session holds anything of an earlier turn — a history, a goal waiting on
+a question, a write waiting on an approval — is refused the same `403
+session_refused`, so nobody takes over a conversation or answers an approval
+somebody else was asked. A session that holds an identity is that person's: a
+turn arriving under a different subject, or under none at all, is refused the
+same way, and nothing of it is run or recorded. A session is one conversation
+with one person, and a write bound to an identity halfway through would be
+bound to whichever identity happened to be on that turn.
 
 When it comes to filling a field, a principal the channel marked as not
 authenticated counts as no principal at all.
+
+### Who may do what over HTTP
+
+`identity.required` refuses, with `401 identity_required`, any call that
+carries no identity — except `GET /health`, which stays open whatever this
+says, and `GET /metrics`, which is read like the reviewer routes below are:
+by a principal carrying the reviewer role, or by any caller at all where
+`metrics.public` says so (`docs/configuration.md#metrics`). `identity.required`
+defaults to `false` in `proxy` mode; in `token` mode it defaults to `true`,
+because a deployment that verifies tokens and still answers a call without
+one has verified nothing. Either default is overridden by setting the key
+explicitly.
+
+Five routes read or move the review queue, and each requires a principal
+carrying `identity.reviewer_role` (`"reviewer"` by default); a principal
+without it is refused with `403 reviewer_required`, naming only the missing
+role:
+
+- `GET /proposals`, `GET /proposals/{proposal_id}` — read proposals.
+- `POST /proposals/{proposal_id}/transition` — move one.
+- `GET /changes`, `GET /changes/{request_id}` — read change requests.
+
+Drafting from a session, `POST /proposals/from-session/{session_id}` (and its
+per-domain form), is not one of the five: it stays open to the session's own
+principal and to a reviewer. Anyone else is refused: a non-reviewer caller
+that carries an identity is refused drafting from a session opened by another
+identity, or from one opened without one at all, with the same
+`403 session_refused` a turn on that session would get. A session with no
+history has nothing to draft from and is answered `404` the same whether or
+not the session exists, so a caller cannot tell the two apart. `GET /domains`
+is open to every caller, but names each domain's tenants only to a caller
+that may review; anyone else sees the domain and its host with an empty
+tenant list.
+
+A call passes the reviewer check either way it can be met: by carrying the
+reviewer role, or by carrying no identity at all in a deployment whose
+`identity.single_user` is `true` — the one person who reaches such a
+deployment without an identity does a reviewer's work as its one user. A call
+with no identity in any other deployment is refused there, `401
+identity_required` when none is required either, `403 reviewer_required`
+otherwise: no identity is never worth more than an identity that lacks the
+role. `single_user` and `token` mode never coexist — the configuration itself
+refuses to load that combination — so a deployment that verifies tokens is
+never reached this way.
+
+The actor recorded on a proposal transition, and on the change request it
+composes, is the caller's principal when the call carries one —
+`ActorSource.principal`. Only when it carries none, and the deployment
+declares `identity.single_user`, does a name given in the call's body count,
+and it is recorded as `ActorSource.stated` and marked unverified on the
+transition's history and on the change request. A transition run from the
+command line is always `ActorSource.operator`, and an operator counts as
+verified: the terminal running the command is the authority, the same way an
+authenticated proxy is over HTTP. `oska change publish` refuses to author a
+git commit under a stated, unverified actor unless
+`--allow-unverified-actor` says the operator means it.
 
 ### Fields taken from it
 
@@ -549,12 +747,14 @@ strength of a plan whose write names an identity the person chose.
 
 ## Retention
 
-A conversation is personal data. The account this system keeps of one is spread
-over three files — the receipts of what it wrote, the audit trail of how it
-decided, and the state it carried between turns — and a window or a request to
-be forgotten has to reach all three or it has reached none of them.
-`governance/retention.py` is the only thing in the system that takes anything
-out of the record.
+A conversation is personal data. The account this system keeps of one is
+spread over eight stores — the receipts of what it wrote, the audit trail of
+how it decided, the state it carried between turns, the judgments recorded on
+its turns, what was learned about how it reads, the trace spans that name it,
+the proposals drafted from it, and the change requests composed from those
+proposals — and a window or a request to be forgotten has to reach all eight
+or it has reached none of them. `governance/retention.py` is the only thing in
+the system that takes anything out of the record.
 
 ```sh
 oska forget session walk
@@ -575,6 +775,13 @@ deletion nobody can see having happened is indistinguishable from a file
 somebody edited. The audit trail is rewritten once for all the sessions named
 rather than once per session, and the events are written into the trail that
 replaced it.
+
+A proposal drafted from the session, and a change request composed from it,
+are removed the same way — except an applied change request, whose decision
+record survives: who asked, who decided, when, which version, and where it
+landed, with the drafted material itself cleared. A decision once made is
+kept; what it was made from is not. Both are counted alongside the other six
+stores, in the retention report and in the retention event.
 
 Neither command runs inside the serving process. A window is an operator's job
 on an operator's schedule, and a request to be forgotten is a decision somebody

@@ -1,0 +1,6 @@
+{
+  "${entities}": [
+    { "name": "demo-1", "owner": "ops-team", "status": "active" },
+    { "name": "demo-2", "owner": "ops-team", "status": "archived" }
+  ]
+}

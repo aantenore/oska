@@ -70,6 +70,13 @@ This specification covers:
 - Conformance: levels, the scenario format, and the checklist that maps every
   requirement to its proof.
 
+The standard is meant to be used to build platforms, not only to describe one
+runtime. An organization with several business areas builds one platform: the
+same runtime, a pack of declarations per area, and a manifest that groups the
+packs into the domains people talk to. What such a platform is made of, and
+which invariants hold between its parts, is stated in
+[14-platform-blueprint.md](14-platform-blueprint.md).
+
 ## Non-goals
 
 This specification does not cover:

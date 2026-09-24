@@ -1,0 +1,33 @@
+{
+  "name": "03_off_scope",
+  "description": "A request the catalog cannot answer is declined with the scope it does declare.",
+  "level": 1,
+  "provider_script": [
+    {
+      "purpose": "router classification",
+      "expect_contains": "book me a flight to Lisbon next Tuesday",
+      "response": {
+        "kind": "off_scope",
+        "runbook_id": null,
+        "confidence": 0.95,
+        "language": "en"
+      }
+    }
+  ],
+  "turns": [
+    {
+      "user": "book me a flight to Lisbon next Tuesday",
+      "expect": {
+        "kind": "off_scope",
+        "contains": [
+          "not something I can do here",
+          "check a ${entity}'s status"
+        ],
+        "outcomes": [],
+        "pending": null,
+        "receipts": 0,
+        "verification": null
+      }
+    }
+  ]
+}

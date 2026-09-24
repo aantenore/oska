@@ -105,30 +105,68 @@ class CaseResult(BaseModel):
 
 
 class SkillEvaluation(BaseModel):
-    """How one skill's own evaluation set went."""
+    """How one skill's own evaluation set went.
+
+    `true_positives`, `false_positives` and `false_negatives` come from the
+    same verdicts `results` already carries: a `this` case that held is a true
+    positive and one that did not is a false negative; a `not this` case that
+    did not hold is a false positive, because it means the skill was ranked
+    first for a request that must not reach it. Precision and recall are
+    computed from those three counts, and read zero rather than divide by
+    zero when a set runs no case in that direction -- an unproven number,
+    like an untested skill's precision, is reported as absent evidence rather
+    than a perfect score.
+    """
 
     skill_id: str
     cases: int = 0
     passed: int = 0
     results: list[CaseResult] = Field(default_factory=list)
+    true_positives: int = 0
+    false_positives: int = 0
+    false_negatives: int = 0
 
     @property
     def failed(self) -> int:
         """How many of this skill's cases did not hold."""
         return self.cases - self.passed
 
+    @property
+    def precision(self) -> float:
+        """Of the requests this skill was ranked first for, the share it should answer."""
+        return _ratio(self.true_positives, self.true_positives + self.false_positives)
+
+    @property
+    def recall(self) -> float:
+        """Of the requests that must reach this skill, the share that did."""
+        return _ratio(self.true_positives, self.true_positives + self.false_negatives)
+
 
 class CatalogEvaluation(BaseModel):
     """Every evaluation set in the catalog, run against one ranking.
 
-    `precision` is the share of cases that held, over every case that was run.
-    A catalog in which no skill carries a set has no cases and a precision of
-    zero, which `per_skill` being empty says plainly enough.
+    `precision` and `recall` are computed over every case run in the catalog,
+    the same way as `SkillEvaluation.precision` and `.recall`. A catalog in
+    which no skill carries a set has no cases and both read zero, which
+    `per_skill` being empty says plainly enough. `missing_sets` names every
+    published procedure -- a skill that declares triggers, so a conversation
+    can be routed to it -- that carries no evaluation set at all, whether or
+    not `require_sets` gates on it.
+
+    `ok` is the gate a catalog change is held to: precision and recall each
+    at or above the configured floor, and, when `require_sets` is set, no
+    procedure missing a set. It is not merely "no case failed" -- a floor
+    below 1.0 tolerates some failing cases on purpose.
     """
 
     per_skill: list[SkillEvaluation] = Field(default_factory=list)
     failures: list[CaseResult] = Field(default_factory=list)
+    missing_sets: list[str] = Field(default_factory=list)
     precision: float = 0.0
+    recall: float = 0.0
+    min_precision: float = 1.0
+    min_recall: float = 1.0
+    require_sets: bool = False
 
     @property
     def cases(self) -> int:
@@ -137,8 +175,14 @@ class CatalogEvaluation(BaseModel):
 
     @property
     def ok(self) -> bool:
-        """True when every case that was run held."""
-        return not self.failures
+        """True when the catalog clears its precision and recall floor.
+
+        When `require_sets` is set, every published procedure must also carry
+        an evaluation set of its own.
+        """
+        if self.precision < self.min_precision or self.recall < self.min_recall:
+            return False
+        return not (self.require_sets and self.missing_sets)
 
 
 def evaluation_path(skill: Skill) -> Path:
@@ -188,33 +232,62 @@ def run_cases(
     return [_run_case(case, skill_id, ranking) for case in cases]
 
 
-def evaluate_catalog(registry: Catalog, discovery: Ranking) -> CatalogEvaluation:
-    """Run the evaluation set of every published skill that carries one."""
+def evaluate_catalog(
+    registry: Catalog,
+    discovery: Ranking,
+    *,
+    min_precision: float = 1.0,
+    min_recall: float = 1.0,
+    require_sets: bool = False,
+) -> CatalogEvaluation:
+    """Run the evaluation set of every published skill that carries one.
+
+    `min_precision`, `min_recall` and `require_sets` are the floor a catalog
+    change is held to -- `EvaluationConfig` in a deployment's own
+    configuration -- and are carried on the returned report so `.ok` can be
+    read without passing them again.
+    """
     per_skill: list[SkillEvaluation] = []
     failures: list[CaseResult] = []
-    passed = 0
-    total = 0
+    covered: set[str] = set()
+    tp = fp = fn = 0
     for skill in registry.published():
         cases = load_cases(skill)
         if not cases:
             continue
+        covered.add(skill.id)
         results = run_cases(cases, skill.id, discovery)
         held = sum(1 for result in results if result.passed)
+        skill_tp, skill_fp, skill_fn = _confusion(results)
         per_skill.append(
             SkillEvaluation(
                 skill_id=skill.id,
                 cases=len(results),
                 passed=held,
                 results=results,
+                true_positives=skill_tp,
+                false_positives=skill_fp,
+                false_negatives=skill_fn,
             )
         )
         failures.extend(result for result in results if not result.passed)
-        passed += held
-        total += len(results)
+        tp += skill_tp
+        fp += skill_fp
+        fn += skill_fn
+    missing_sets = sorted(
+        skill.id
+        for skill in registry.published()
+        if skill.id not in covered and skill.frontmatter.triggers
+    )
     return CatalogEvaluation(
         per_skill=per_skill,
         failures=failures,
-        precision=round(passed / total, 4) if total else 0.0,
+        missing_sets=missing_sets,
+        precision=_ratio(tp, tp + fp),
+        recall=_ratio(tp, tp + fn),
+        min_precision=min_precision,
+        min_recall=min_recall,
+        require_sets=require_sets,
     )
 
 
@@ -263,6 +336,34 @@ def cases_from_neighbors(
             proposed.append(EvaluationCase(text=text, expects=NOT_THIS))
             taken += 1
     return proposed
+
+
+def _confusion(results: Sequence[CaseResult]) -> tuple[int, int, int]:
+    """True positives, false positives and false negatives of one skill's results.
+
+    A `this` case is a true positive when it held and a false negative when it
+    did not, whether it missed the top rank entirely or ranked first below the
+    floor -- both leave the request unanswered by the skill it must reach. A
+    `not this` case that did not hold is a false positive: the skill was
+    ranked first for a request that must not reach it. A `not this` case that
+    held counts toward neither; it is a true negative, and precision and
+    recall have no use for that count.
+    """
+    tp = fp = fn = 0
+    for result in results:
+        if result.expects == THIS:
+            if result.passed:
+                tp += 1
+            else:
+                fn += 1
+        elif not result.passed:
+            fp += 1
+    return tp, fp, fn
+
+
+def _ratio(numerator: int, denominator: int) -> float:
+    """`numerator / denominator`, rounded, or zero when there is nothing to divide."""
+    return round(numerator / denominator, 4) if denominator else 0.0
 
 
 def _run_case(case: EvaluationCase, skill_id: str, ranking: Ranking) -> CaseResult:

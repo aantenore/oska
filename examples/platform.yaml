@@ -1,0 +1,32 @@
+# A platform of two domains served from one process. Each domain answers as
+# its own host, reads only its own pack, and keeps its state apart.
+name: reference
+packs:
+  ops:
+    path: ops
+    version: "0.1.0"
+  access:
+    path: access
+    version: "0.1.0"
+domains:
+  - name: operations
+    packs: [ops]
+    host:
+      name: the operations desk
+      voice: brief and factual
+      languages: [en, it]
+    tenants: [default]
+  - name: access
+    packs: [access]
+    host:
+      name: the access desk
+      voice: careful and plain
+      languages: [en]
+    tenants: [default]
+default_domain: operations
+channels:
+  cli: true
+  http: true
+storage:
+  backend: sqlite
+target_level: 2

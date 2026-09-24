@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "resilience": {
+    "timeout_seconds": 30.0,
+    "failures_before_open": 3,
+    "recovery_seconds": 30.0
+  },
+  "integrations": {
+    "integration.${system}": {
+      "type": "mock",
+      "fixture": "../fixtures/${entities}.json",
+      "operations": {
+        "${entity}.get": {
+          "collection": "${entities}",
+          "match": "name",
+          "payload_field": "name",
+          "as": "${entity}"
+        },
+        "${entity}.archive": {
+          "collection": "${entities}",
+          "match": "name",
+          "payload_field": "name",
+          "as": "${entity}",
+          "set": { "status": "archived" }
+        }
+      }
+    }
+  }
+}

@@ -37,7 +37,6 @@ from oska.config import (
 )
 from oska.contracts.common import Message
 from oska.contracts.proposal import ProposalState, SkillProposal
-from oska.governance.ledger import WriteLedger
 from oska.improvement import learned as learned_phrases
 from oska.improvement.evaluation import RoutingCase, load_cases, run_evaluation
 from oska.improvement.feedback import FeedbackStore, feedback_root, scores
@@ -58,6 +57,7 @@ from oska.index.keyword import KeywordIndex
 from oska.learning.proposals import ProposalStore, draft_from_session
 from oska.ontology.graph import OntologyGraph
 from oska.planner.provider import ModelProvider
+from oska.storage import open_ledger
 
 __all__ = ["PROPOSALS_DIRNAME", "run_job"]
 
@@ -79,7 +79,7 @@ def run_job(
     improvement = runtime.improvement
     state_dir = Path(settings.state_dir)
     registry = SkillRegistry(settings.skills_roots)
-    ledger = WriteLedger(state_path(state_dir, runtime.ledger.path))
+    ledger = open_ledger(runtime, settings)
 
     judged = (feedback or FeedbackStore(feedback_root(state_dir))).all()
     signals = load_signals(state_path(state_dir, runtime.audit.path), ledger, judged)

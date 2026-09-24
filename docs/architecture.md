@@ -41,17 +41,25 @@ A connector receives an operation name and a payload. It never receives free
 text, and it never sees the conversation.
 
 Availability is part of what it answers, and `connectors/base.py` is where that
-lives. Every result says what kind of failure it was: `transport` for a call
-that did not reach the system or that the system did not complete, `refused`
-for a system that answered no, `rejected` for a request that was never well
-formed. Only `transport` is retryable, and only it counts toward the breaker,
-which sits in `BaseConnector` around every call. After
-`resilience.failures_before_open` consecutive transport failures the connector
-stops being called for `resilience.recovery_seconds`, then lets one attempt
-through, which either closes it or opens it again. An adapter implements
-`_perform` and says how a call failed; the timeout, the breaker and the health
-reporting belong to the base class, so a binding cannot forget them and a call
-the breaker refuses never reaches the adapter at all.
+lives. Every result carries a `failure` kind — `transport` for a call that did
+not reach the system or that the system did not complete, `refused` for a
+system that answered no, `rejected` for a request that was never well formed
+— and, only for `transport`, a `classification` of `retryable` (the request
+provably never left) or `ambiguous` (it left and no usable answer came back:
+a read timeout, a 5xx). `refused` and `rejected` are always `terminal`. Only
+`transport` — either classification — counts toward the breaker, which sits in
+`BaseConnector` around every call. After `resilience.failures_before_open`
+consecutive transport failures the connector stops being called for
+`resilience.recovery_seconds`, then lets one attempt through, which either
+closes it or opens it again. Inside that same call, a **read** whose result is
+retryable or whose status is in `resilience.retry_statuses` is retried up to
+`resilience.retries` more times, with a doubling backoff; a write is never
+retried inside a call. An adapter implements `_perform` and says how a call
+failed; the timeout, the retry loop, the breaker and the health reporting
+belong to the base class, so a binding cannot forget them and a call the
+breaker refuses never reaches the adapter at all. What an `ambiguous` write
+does to the ledger — never assumed, always settled by its own read-back — is
+in [governance.md](governance.md#when-the-system-does-not-answer).
 
 ### L2 Ontology
 
@@ -82,8 +90,11 @@ every `**/v*/skill.md` under the configured roots, keeps the effective version
 of each id — highest published, or highest of all when none is published — and
 reloads when the set of files, their sizes or their modification times change.
 `closure` hydrates a procedure into the entities, integrations and member
-runbooks it reaches. `validator` checks each skill against the JSON schema and
-against the rest of the catalog; the rules and their codes are in
+runbooks it reaches. `validator` is a facade over `checks/` — `common.py`
+holds the shared `ValidationIssue` and schema helpers, and `contract.py`,
+`ontology.py`, `governance.py`, `presentation.py` and `inputs.py` each check
+one part of a skill against the rest of the catalog — run in one call as
+`validate` and `validate_all`; the rules and their codes are in
 [skill-contract.md](skill-contract.md). `resolver` derives every sentence the
 runtime says about itself: the declared scope, the phrase for one procedure,
 the actions available on an entity. Where the entity declares a lifecycle,
@@ -129,6 +140,23 @@ in force belongs to the turn rather than to the process. Which revision a turn
 that pins nothing reads is re-resolved rather than cached — the configured
 revision, failing that the one the store records, failing that the newest — so
 a deployment moved to another release is followed without a restart.
+`catalog.mode` decides how far this goes: `"directory"` (the default) serves a
+revision when the tenant has one and the skill roots directly otherwise;
+`"revision"` refuses to serve anything but a built revision at all.
+
+`catalog.signing` is a fourth part of this layer, alongside revision, and
+it is optional. `oska.catalog.signing` signs a revision's manifest with a
+registered signer — `hmac-sha256` ships with the runtime — keyed from an
+environment variable, and `RevisionStore.verify` checks it before the runtime
+will serve the revision: a present signature that does not match, or a file
+whose hash disagrees with the signed manifest, is refused whether or not
+signing is `required`; only the case of no signature at all is let through
+when it is not. The check runs once, when the catalog is opened, not per
+request. `governance.md` is silent on this by design — signing is about
+which build of the catalog is trusted, not about what a turn inside it may
+do — see [configuration.md](configuration.md#catalog) for the keys and
+[building-a-platform.md](building-a-platform.md#7-sign-revisions) for signing
+one end to end.
 
 ### L4 Governance
 
@@ -137,8 +165,11 @@ declares an operation to be and whether a procedure may reach it. `policy_engine
 applies the policy file a procedure carries, defaulting to deny. `approval`
 freezes a pending write on a hash of its exact payload. `verification` runs the
 read-back the integration declares and compares the values it expects. `ledger`
-keeps every write attempt in SQLite, keyed on the idempotency fields, written
-before the call goes out. `guardrails` reads the catalog of promises this
+keeps every write attempt, keyed on the idempotency fields, written before the
+call goes out, against whichever backend `oska.storage` opens — SQLite by
+default, PostgreSQL behind the `postgres` extra, both satisfying one protocol
+and claiming a key atomically across processes by a different mechanism each.
+`guardrails` reads the catalog of promises this
 installation declares and builds, for each one kept by code, the check that
 keeps it; nothing in that module carries a pattern, a threshold or a word list
 of its own. `oska.audit` appends one typed event per step to a JSONL file,
@@ -147,10 +178,14 @@ read back by anything. See [governance.md](governance.md).
 
 Two more modules sit here. `identity` holds the `Principal` a channel
 authenticated and resolves the payload fields a procedure declares as taken
-from it; it authenticates nothing, because what the channel reported is the
-only thing it has. `retention` is the only place in the system that takes
-anything out of the record: it removes the receipts, the audit entries and the
-stored state of a session together, and writes one event saying that it did.
+from it. In `proxy` mode it authenticates nothing, because what the channel
+reported is the only thing it has; in `token` mode it verifies a signed HS256
+session token itself before trusting any claim in it. `retention` is the only
+place in the system that takes anything out of the record: it removes the
+eight stores of a session together — receipts, audit entries, session state,
+feedback, learned preferences, trace spans, drafted proposals and the change
+requests composed from them — and writes one event saying that it did. See
+[governance.md#retention](governance.md#retention).
 
 ### L5 Cognition
 
@@ -192,28 +227,57 @@ replays recorded answers offline.
 
 ### L6 Interaction
 
-`oska.engine` runs the turn. `engine.py` is the algorithm below.
-`execution.py` runs the operations of a plan under the declarations that govern
-them, and it is where a field declared as a principal input is filled: after
-the model has finished proposing operations and before anything judges or
-performs one. `goals.py` works a goal — one procedure, or the ordered
-procedures of a composite — forward until something stops it. `reply.py` builds
-the reply text, appending the deterministic line of every receipt and ledger
-hit to whatever a model wrote, so a write is always accounted for by its
-receipt. `session_store.py` keeps session state in SQLite. `factory.py` wires
-everything from settings, including which catalog is in force: a `ServedCatalog`
-over the revision store when this deployment has built one, the configured
-skill roots read directly when it has not. The ledger is wrapped either way, so
-every receipt opened in a turn names the revision the turn was decided under.
+`oska.engine` runs the turn, split by what each module decides. `engine.py` is
+the algorithm below: it loads the session, binds identity, pins a revision and
+calls the rest in order. `context.py` holds `TurnContext`, what one turn
+accumulates while it runs. `binding.py` binds the identity a channel
+authenticated to the turn, refuses a session under the wrong subject, and
+pins or adopts the catalog revision the turn reads through — an unsigned or
+mismatched principal field fills nothing. `goals.py` works a goal — one
+procedure, or the ordered procedures of a composite — forward until something
+stops it. `execution.py` runs the operations of a plan in order, under the
+declarations that govern them; `principal_inputs.py` is where a field declared
+as a principal input is filled, after the model has finished proposing
+operations and before anything judges or performs one, and where a plan that
+supplied one of those fields itself is refused. `calls.py` makes one connector
+call and says how it failed. `lifecycle.py` checks a write against the
+entity's declared lifecycle before an approval is even asked for.
+`approvals.py` is the approve/reject half of the write path — it checks the
+frozen payload's hash, re-evaluates the policy, and is the only place that
+lets the plan continue past a write, and only past one that was performed and
+confirmed by its own read-back. `settlement.py` claims the ledger key, records
+the intent, sends the call, and settles a retryable, ambiguous or terminal
+result, including the lost-answer read-back for a write whose outcome was
+never confirmed and the rule for what an unknown outcome does to the ledger.
+`outcomes.py` renders an outcome list into the summary a reply is built from.
+`budget.py` holds `ModelBudget` and `BudgetedProvider`, which count the
+completions one turn makes and refuse the one past `turn.max_model_calls`;
+embeddings are not counted, because they are how the index reads the catalog
+and cost the same whatever the turn decides. `boundary.py` holds
+`GuardrailChain`, run over what arrived and over the reply. `collaborators.py`
+is the executor and the planner as the turn loop uses them, timed and guided
+— the traced executor and the guided planner are the two places spans are
+opened around work the engine did not write itself.
 
-Three wrappers sit around that loop, all built in `factory.py` from the runtime
-configuration. `BudgetedProvider` counts the completions one turn makes and
-refuses the one past the limit; embeddings are not counted, because they are
-how the index reads the catalog and cost the same whatever the turn decides.
-`GuardrailChain` runs the checks of the input point over what arrived and the
-checks of the output point over the reply. The trace sink times the stretches
-of the turn, and a traced executor and a guided planner are the two places
-spans are opened around work the engine did not write itself.
+`subject.py` tracks what a conversation's follow-ups refer to — the focus a
+read or a verified write left behind — and resolves it for a procedure that
+joins it; `presentation.py` turns that, and the rest of a turn's evidence,
+into the `Directive` list a reply carries when presentation is enabled, one
+per procedure that ran, at the first named moment both declared and
+reachable, and is where `on_completion` is decided — reached only when the
+goal finished this turn and every write it performed or found was confirmed
+by its read-back. Neither writes anything back, and neither is read by
+anything that decides — see [presentation.md](presentation.md). `reply.py`
+builds the reply text, appending the deterministic line of every receipt and
+ledger hit to whatever a model wrote, so a write is always accounted for by
+its receipt. `state.py` and `session_store.py` are re-exports: session state
+is the `SessionState` contract declared in `oska.contracts.session`, kept
+through `oska.storage` — SQLite by default, PostgreSQL behind the `postgres`
+extra. `factory.py` wires everything from settings, including which catalog
+is in force: a `ServedCatalog` over the revision store when this deployment
+has built one, the configured skill roots read directly when it has not. The
+ledger is wrapped either way, so every receipt opened in a turn names the
+revision the turn was decided under.
 
 `oska.api` serves the runtime over HTTP; `oska.cli` serves it in a
 terminal. Both call the same engine methods.
@@ -224,7 +288,11 @@ terminal. Both call the same engine methods.
 the quality checks, and moves a proposal through its states with a named actor.
 Publishing one composes a change request in `changes.py` — the package, its
 origin and the quality report, under a root a person reads — and installing
-that package is a separate act by a person. See [learning.md](learning.md).
+that package is a separate act by a person: a directory copy
+(`oska change apply`) or, through `publishers.py`, a branch of a git
+repository opened for review there (`oska change publish`), never pushed
+unless asked and never opening a pull request without a push. See
+[learning.md](learning.md).
 
 `oska.improvement` is the scheduled half of the same layer: it reads the
 audit trail and the ledger back as signals, reads the judgments people
@@ -251,7 +319,55 @@ guardrail refused, and how often a request matched nothing in the catalog; from
 the traces, the median and the tail of how long a turn takes. `Measure` is the
 type that makes this honest — a number the deployment did not record carries
 the reason it is missing rather than a zero — and `report.py` prints the same
-thing as prose or as JSON, naming what is absent either way.
+thing as prose or as JSON, naming what is absent either way. `exposition.py`
+renders the same report as Prometheus text; `api/metrics.py` is the
+`GET /metrics` route, mounted into the application unconditionally and gated
+at request time by `metrics.enabled` — `false` answers `404 metrics_disabled`
+rather than an empty or zeroed body. Where `identity.required` is on, the
+route reads like the reviewer routes do: a principal carrying the reviewer
+role, or any caller where `metrics.public` opens it for a scraper on a
+private network that presents no identity. A computed report is served again
+for `metrics.cache_seconds` before it is read from the trail and the traces
+anew.
+
+`oska.storage` is in no layer either, because every layer above the write
+ledger and the session store already worked against an interface, not a file
+format — `oska.storage.protocols` names it, `oska.storage.sqlite*` and
+`oska.storage.postgres*` satisfy it, and `oska.storage.openers` picks one from
+`storage.backend`. Nothing in `oska.governance` or `oska.engine` imports
+either backend directly.
+
+`oska.platform` assembles a process from several packs rather than serving
+one catalog: `contracts.platform` holds the pack and manifest models,
+`platform.packs` loads and checks a pack, `platform.manifest` loads
+`platform.yaml`, `platform.assembly` builds one domain's merged catalog,
+connectors and guardrails, `platform.tenants` reads a tenant's overlay,
+`platform.host` wraps the resolver with a domain's identity, and
+`platform.runtime.Platform` is the orchestrator — one engine per (tenant,
+domain), in a bounded cache; an evicted runtime is closed, releasing the
+connection pools of its bindings, and a cold build of one (tenant, domain)
+pair never blocks another. The session stores a platform opens to bind
+sessions are cached the same way, but never closed while a binding is using
+one: the cache grows past its size while more stores are busy than it holds,
+and shrinks back as they are released, so eviction only ever takes the least
+recently used store nobody holds. Binding the first turn of a session takes a
+lock chosen from a small fixed set by that session's id, under the serving
+process: the first turns of two different sessions do not wait for each
+other, while two first turns of one session always meet on the same lock, and
+claiming a runtime for a turn is taken in the same step that finds or caches
+it, without a retry that could wait without bound. `oska.api.app` closes the platform it was given
+when the application shuts down. A deployment that never names a manifest never
+builds one: the HTTP layer imports the package to answer `GET /domains` with
+the single synthetic `default` domain and to fall through cleanly wherever a
+route takes an optional domain, but nothing about a plain catalog's turn goes
+through `Platform`. See [packs-and-platforms.md](packs-and-platforms.md).
+
+`oska.kit` is build-time only, and imports from every layer it generates
+files for without being imported back by any of them: `kit.scaffold` writes a
+pack or a platform from `src/oska/templates/`, `kit.check` runs a pack's own
+validation, evaluation and scenarios in isolation, `kit.build` writes a pack
+as a content-addressed tarball. Nothing that serves a turn imports
+`oska.kit`. See [building-a-platform.md](building-a-platform.md).
 
 ## The turn algorithm
 
@@ -264,12 +380,14 @@ Two things happen before step 1 and belong to the turn rather than to the
 engine, because one engine serves overlapping turns.
 
 **The identity is bound.** `principal` is what the channel authenticated. A
-session opened without one stays open to whoever arrives first; a session that
-holds one refuses a turn arriving under a different subject or under none,
-raising `PrincipalMismatch` before anything of the turn is run or recorded,
-because a session is one conversation with one person and a write bound to an
-identity halfway through would be bound to whichever one happened to be on that
-turn. Nothing here verifies anything: the runtime trusts the channel, and a
+session opened without one stays anonymous: an identity arriving once the
+session holds anything of an earlier turn — a history, a goal waiting on a
+question, a write waiting on an approval — is refused the same way; a session
+that holds one refuses a turn arriving under a different subject or under
+none, raising `PrincipalMismatch` before anything of the turn is run or
+recorded, because a session is one conversation with one person and a write
+bound to an identity halfway through would be bound to whichever one happened
+to be on that turn. Nothing here verifies anything: the runtime trusts the channel, and a
 principal the channel marked as not authenticated fills no declared field.
 
 **The revision is pinned.** A session that has never been served takes what the
@@ -326,10 +444,13 @@ becoming one.
 - **approve** — with nothing waiting, off scope. Check the payload hash; a
   mismatch cancels the approval and reports it. Increment the approvals given
   and emit `approval_decided`. If a second approval is still required, hold.
-  Otherwise re-read what the plan read before the write, re-evaluate the policy
-  against the state as it is now, and — if it still allows, and the move is
-  still a legal one for the object — record the intent, execute, verify, then
-  continue the rest of the plan and advance the goal.
+  Otherwise re-read what the plan read before the write. A read that cannot
+  be performed again stops here: nothing is sent, and the outcome is
+  `unavailable`, saying the state could not be confirmed. Otherwise
+  re-evaluate the policy against the state as it is now, and — if it still
+  allows, and the move is still a legal one for the object — record the
+  intent, execute, verify, then continue the rest of the plan and advance the
+  goal.
 - **provide_input**, **continue_task** — with a goal under way and no approval
   pending, store the answer against the first missing field and advance the
   goal. Otherwise treated as a new request.

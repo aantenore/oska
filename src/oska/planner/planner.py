@@ -10,6 +10,13 @@ because routing is asked in every language a person writes in.
 Presentation preferences travel the same road and only that road. They reach
 the reply writer as facts about how an answer should read. They are not in the
 planning prompt, they are not in a payload, and nothing here puts them there.
+
+Two more kinds of fact reach the model, each from the runtime and never from a
+model. The refinements the records on screen allow reach the planner next to
+the inputs already collected, so a comparative picks among what the shown
+records actually differ on. The scope the catalog declares reaches the reply
+writer when a request is outside it, so the answer that says so is written in
+the language of the conversation by the same one call that writes any reply.
 """
 
 from __future__ import annotations
@@ -129,16 +136,37 @@ class Planner:
         hydrated: Hydrated,
         conversation: list[Message],
         collected_inputs: dict | None = None,
+        *,
+        refinements: Sequence[dict] | None = None,
+        from_focus: dict | None = None,
     ) -> Plan:
-        """Ask for the operations of one procedure, and repair once if they do not hold up."""
+        """Ask for the operations of one procedure, and repair once if they do not hold up.
+
+        `refinements` are what the records on screen allow a comparative to
+        refine on. They are handed over as they are and the model may pick
+        among them; none is ever made up here. `from_focus` are the collected
+        inputs that name the record the conversation is about rather than
+        anything the person typed; they are stated apart from the rest, as the
+        default a request that names another record does not take.
+        """
         system = prompts.planner_system(
             hydrated,
             self._resolver.declared_scope(),
             ontology=self._vocabulary(),
         )
         messages = list(conversation)
-        if collected_inputs:
-            known = json.dumps(collected_inputs, sort_keys=True, ensure_ascii=False)
+        focused = dict(from_focus or {})
+        if focused:
+            about = json.dumps(focused, sort_keys=True, ensure_ascii=False)
+            messages.append(Message(role="system", content=f"{prompts.FOCUS_HEADING}: {about}"))
+        if refinements:
+            allowed = json.dumps(list(refinements), sort_keys=True, ensure_ascii=False)
+            messages.append(
+                Message(role="user", content=f"{prompts.REFINEMENTS_HEADING}: {allowed}")
+            )
+        told = {key: value for key, value in (collected_inputs or {}).items() if key not in focused}
+        if told:
+            known = json.dumps(told, sort_keys=True, ensure_ascii=False)
             messages.append(
                 Message(role="user", content=f"Inputs already collected: {known}")
             )
@@ -189,12 +217,15 @@ class Planner:
         language: str,
         conversation: list[Message] | None = None,
         preferences: Sequence[str] = (),
+        facts: Sequence[str] = (),
     ) -> str:
         """Phrase the reply from the outcomes of the turn and nothing else.
 
         The labels of `actions` are overwritten in place with whatever comes
         back for them, so the wording a turn offers is in the language the turn
-        answered in without a second call being made to get it there.
+        answered in without a second call being made to get it there. `facts`
+        are statements the runtime derived from the catalog, such as the scope
+        it declares, which the reply may state as they are.
         """
         brief: dict = {
             "reply_intent": reply_intent,
@@ -203,6 +234,8 @@ class Planner:
         }
         if preferences:
             brief["presentation_preferences"] = list(preferences)
+        if facts:
+            brief["facts"] = list(facts)
         messages = [
             *(conversation or []),
             Message(role="user", content=json.dumps(brief, sort_keys=True, ensure_ascii=False)),
