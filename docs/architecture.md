@@ -2,34 +2,34 @@
 
 How the runtime is put together, package by package, and what one turn actually
 does. The layer names come from [`spec/02-layers.md`](../spec/02-layers.md);
-this document is about the code under `src/opsdeck/`.
+this document is about the code under `src/oska/`.
 
 ## The runtime, layer by layer
 
 ### Contracts
 
-`opsdeck.contracts` holds the typed models every layer shares and no layer
+`oska.contracts` holds the typed models every layer shares and no layer
 owns: `skill` (frontmatter, operations, entities, sections), `policy`,
 `plan`, `receipt`, `proposal`, `events`, `operation`, and `common`, which
 carries the turn-level types — `Message`, `RouteDecision`, `Outcome`,
 `PendingApproval`, `PendingGoal`, `TurnResult`, `Hydrated`, `ConnectorResult`.
-Nothing in `contracts` imports another opsdeck package.
+Nothing in `contracts` imports another oska package.
 
 ### Configuration
 
-`opsdeck.config` reads three things: environment variables prefixed
-`OPSDECK_` for paths and provider selection, `configs/runtime.json` for
+`oska.config` reads three things: environment variables prefixed
+`OSKA_` for paths and provider selection, `configs/runtime.json` for
 thresholds and routing words, `configs/model.json` for provider access, with
 the environment overriding it. No threshold is written in code. See
 [configuration.md](configuration.md).
 
-`opsdeck.services` assembles the runtime once — engine, proposal store,
+`oska.services` assembles the runtime once — engine, proposal store,
 settings, publication root — and both channels work against that assembly, so a
 turn over HTTP and a turn in a terminal cannot drift apart.
 
 ### L1 Integration
 
-`opsdeck.connectors` runs a declared operation against a system. Three
+`oska.connectors` runs a declared operation against a system. Three
 adapters: `MockConnector` reads and writes an in-memory copy of a JSON fixture;
 `HttpConnector` fills a path template and sends the fields the binding lists as
 query or body; `ShellConnector` renders a declared argument vector, one payload
@@ -55,7 +55,7 @@ the breaker refuses never reaches the adapter at all.
 
 ### L2 Ontology
 
-`opsdeck.ontology` builds a graph from the catalog: entity nodes with their
+`oska.ontology` builds a graph from the catalog: entity nodes with their
 fields, identifier, state field and states; relation edges; operation nodes
 bound to the entity they act on; procedure edges for the runbooks that reach
 them. `queries` answers the structural questions — `operations_on`,
@@ -76,7 +76,7 @@ skills and the bindings from the `entity` field of each declared operation.
 
 ### L3 Skill
 
-`opsdeck.catalog` is the catalog. `loader` parses a skill file into typed
+`oska.catalog` is the catalog. `loader` parses a skill file into typed
 frontmatter plus H2 sections and fingerprints its text. `registry` discovers
 every `**/v*/skill.md` under the configured roots, keeps the effective version
 of each id — highest published, or highest of all when none is published — and
@@ -132,7 +132,7 @@ a deployment moved to another release is followed without a restart.
 
 ### L4 Governance
 
-`opsdeck.governance` is the write path. `capabilities` answers what the catalog
+`oska.governance` is the write path. `capabilities` answers what the catalog
 declares an operation to be and whether a procedure may reach it. `policy_engine`
 applies the policy file a procedure carries, defaulting to deny. `approval`
 freezes a pending write on a hash of its exact payload. `verification` runs the
@@ -141,7 +141,7 @@ keeps every write attempt in SQLite, keyed on the idempotency fields, written
 before the call goes out. `guardrails` reads the catalog of promises this
 installation declares and builds, for each one kept by code, the check that
 keeps it; nothing in that module carries a pattern, a threshold or a word list
-of its own. `opsdeck.audit` appends one typed event per step to a JSONL file,
+of its own. `oska.audit` appends one typed event per step to a JSONL file,
 and `audit.trace` opens diagnostic spans that are off by default and are never
 read back by anything. See [governance.md](governance.md).
 
@@ -154,7 +154,7 @@ stored state of a session together, and writes one event saying that it did.
 
 ### L5 Cognition
 
-`opsdeck.index` ranks the catalog against a request. `KeywordIndex` scores
+`oska.index` ranks the catalog against a request. `KeywordIndex` scores
 token overlap; `EmbeddingIndex` embeds trigger text and descriptions through the
 provider; `Discovery` chooses the top candidate when it clears `min_score` and
 reports a tie when the second is within `tie_margin`. Only published skills with
@@ -168,14 +168,14 @@ never written here: a turn ranks the catalog from what is already on disk. The
 cap on how many texts one skill contributes never drops a declared one, and
 `matched_on` says which text won.
 
-`opsdeck.router` decides what a turn is, in three layers: `RuleRouter` matches
+`oska.router` decides what a turn is, in three layers: `RuleRouter` matches
 the whole message against the configured approve, reject and cancel words, and
 only while the session is waiting for something; `FastPath` matches the message
 against the triggers authors wrote down, above a high threshold, and only when
 nothing is pending; `ModelRouter` asks the model to classify against a prompt
 that names the declared scope and the procedures on offer.
 
-`opsdeck.planner` turns one procedure into a typed plan. `Planner.plan` builds
+`oska.planner` turns one procedure into a typed plan. `Planner.plan` builds
 the prompt from the hydrated procedure — its sections, its entities, its
 ontology facts, its declared operations with input schemas — asks for a plan,
 validates it against those declarations, and on failure asks once more with the
@@ -192,7 +192,7 @@ replays recorded answers offline.
 
 ### L6 Interaction
 
-`opsdeck.engine` runs the turn. `engine.py` is the algorithm below.
+`oska.engine` runs the turn. `engine.py` is the algorithm below.
 `execution.py` runs the operations of a plan under the declarations that govern
 them, and it is where a field declared as a principal input is filled: after
 the model has finished proposing operations and before anything judges or
@@ -215,18 +215,18 @@ checks of the output point over the reply. The trace sink times the stretches
 of the turn, and a traced executor and a guided planner are the two places
 spans are opened around work the engine did not write itself.
 
-`opsdeck.api` serves the runtime over HTTP; `opsdeck.cli` serves it in a
+`oska.api` serves the runtime over HTTP; `oska.cli` serves it in a
 terminal. Both call the same engine methods.
 
 ### L7 Evolution
 
-`opsdeck.learning` drafts a candidate procedure from what a session did, runs
+`oska.learning` drafts a candidate procedure from what a session did, runs
 the quality checks, and moves a proposal through its states with a named actor.
 Publishing one composes a change request in `changes.py` — the package, its
 origin and the quality report, under a root a person reads — and installing
 that package is a separate act by a person. See [learning.md](learning.md).
 
-`opsdeck.improvement` is the scheduled half of the same layer: it reads the
+`oska.improvement` is the scheduled half of the same layer: it reads the
 audit trail and the ledger back as signals, reads the judgments people
 recorded against turns, keeps the phrasings they actually used in files it can
 delete again, proposes threshold changes inside declared bounds, routes a
@@ -237,12 +237,12 @@ the reply writer and nothing else. It imports neither the lifecycle that moves
 a proposal nor anything that writes a policy or a connector binding. See
 [improvement.md](improvement.md).
 
-`opsdeck.conformance` replays scenario files against a fresh runtime and reports
+`oska.conformance` replays scenario files against a fresh runtime and reports
 the level reached. See [conformance.md](conformance.md).
 
 ### Beside the layers
 
-`opsdeck.observability` is in no layer, because it decides nothing. It reads
+`oska.observability` is in no layer, because it decides nothing. It reads
 back two records written for other reasons: the audit trail, which is typed,
 durable and required, and the traces, which are optional and off by default.
 From the trail it computes how often a deterministic template spoke because no
@@ -408,19 +408,19 @@ the improvement job are.
 A layer depends only on the layers below it and on the contracts. Three things
 in the code carry it.
 
-**Cognition does not execute.** `opsdeck.planner` and `opsdeck.router` import
+**Cognition does not execute.** `oska.planner` and `oska.router` import
 `catalog`, `ontology` and `contracts`. Neither imports `connectors` or
 `governance`. The planner emits a `Plan`; `engine.execution` is what turns a
 planned operation into a connector call, and only after the governance checks.
 
-**Governance does not think.** `opsdeck.governance` imports `catalog` and
-`contracts`, and nothing else of opsdeck. The verifier needs a connector to
+**Governance does not think.** `oska.governance` imports `catalog` and
+`contracts`, and nothing else of oska. The verifier needs a connector to
 read back with, and declares the one method it uses as a local `Protocol`
 rather than importing an adapter. It never sees the planner or the provider. A
 policy decision is a function of the declarations, the payload, the entities
 that were read and the ledger.
 
-**Evolution proposes and does not install.** `opsdeck.learning` parses,
+**Evolution proposes and does not install.** `oska.learning` parses,
 validates and renders skill files, and publication composes a change request: a
 package written under the change request root for a person to read.
 `transition` takes no catalog root and cannot be given one. Copying that
@@ -428,7 +428,7 @@ package into a catalog root is `ChangeRequestStore.apply`, which takes the root
 from whoever calls it and is called from a terminal and from nowhere in the
 engine, the HTTP application or a job. So the process that answers people can
 propose a change to the catalog it answers from and can never make one.
-`opsdeck.improvement` sits under a tighter rule again: it reads the ledger and
+`oska.improvement` sits under a tighter rule again: it reads the ledger and
 the audit trail, writes only files under its own roots and one report, and
 imports neither the proposal lifecycle nor anything that writes a policy or a
 connector binding. A test walks the syntax tree of every module in the package

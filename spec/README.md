@@ -1,6 +1,6 @@
 # OSKA
 
-OSKA 0.1, draft. Reference implementation: opsdeck.
+OSKA 0.1, draft. Reference implementation: the `oska` package in this repository.
 
 OSKA is the Ontology-first, Skill-driven Agentic architecture: a layered
 architectural standard for systems in which a language model acts on real
@@ -64,7 +64,7 @@ scenario suite, not by inspection.
 
 ## Reference implementation
 
-`opsdeck` is the reference implementation, and there are two reference
+The `oska` package in this repository is the reference implementation, and there are two reference
 conformance domains over two catalogs that share no vocabulary. The reference
 implementation is normative only where this specification points at it; where
 the two disagree, this specification wins.
@@ -73,7 +73,7 @@ There are two reference suites, and a level is attained per suite. Run against
 `examples/ops/scenarios`, the operational suite attains Level 3 (Adaptive).
 Run against `examples/access/scenarios`, the access suite attains Level 2
 (Governed): it declares no scenario of level 3, so it claims none. Every
-scenario of both suites passes, as `opsdeck conform` reports for each.
+scenario of both suites passes, as `oska conform` reports for each.
 
 ## How to cite
 

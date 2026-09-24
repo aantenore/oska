@@ -6,13 +6,13 @@ from pathlib import Path
 
 import pytest
 
-from opsdeck.catalog.registry import SkillRegistry
-from opsdeck.catalog.resolver import CapabilityResolver
-from opsdeck.config import RuntimeConfig, load_runtime_config
-from opsdeck.contracts.common import Message, TurnKind
-from opsdeck.index.base import SkillIndex
-from opsdeck.index.keyword import KeywordIndex
-from opsdeck.router import FastPath, ModelRouter, RoutingContext, RuleRouter, TurnRouter
+from oska.catalog.registry import SkillRegistry
+from oska.catalog.resolver import CapabilityResolver
+from oska.config import RuntimeConfig, load_runtime_config
+from oska.contracts.common import Message, TurnKind
+from oska.index.base import SkillIndex
+from oska.index.keyword import KeywordIndex
+from oska.router import FastPath, ModelRouter, RoutingContext, RuleRouter, TurnRouter
 
 
 class RecordingProvider:

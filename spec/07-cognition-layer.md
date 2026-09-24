@@ -398,26 +398,26 @@ reply may call a write verified unless its receipt says so.
 
 ## In the reference implementation
 
-- `src/opsdeck/index/` — `base.py`, `keyword.py`, `embedding.py`,
+- `src/oska/index/` — `base.py`, `keyword.py`, `embedding.py`,
   `discovery.py`.
-- `src/opsdeck/catalog/enrichment.py` — deriving, writing and reading the
+- `src/oska/catalog/enrichment.py` — deriving, writing and reading the
   routing examples, and the fingerprint that tells an index one was written.
-- `src/opsdeck/index/base.py` — the texts a procedure is indexed under, the cap
+- `src/oska/index/base.py` — the texts a procedure is indexed under, the cap
   that declared texts survive, the label a ranking reports, and the learned
   phrasings read back from the state directory with their own fingerprint.
-- `src/opsdeck/cli/commands_enrich.py` — asking for a pass over the catalog and
+- `src/oska/cli/commands_enrich.py` — asking for a pass over the catalog and
   reading back what a procedure is indexed under.
-- `src/opsdeck/router/` — `base.py` (rules), `fast_path.py`,
+- `src/oska/router/` — `base.py` (rules), `fast_path.py`,
   `model_router.py`.
-- `src/opsdeck/planner/` — `provider.py` (the interface), `scripted.py`, the
+- `src/oska/planner/` — `provider.py` (the interface), `scripted.py`, the
   service-backed provider implementation, `planner.py`, `prompts.py`.
-- `src/opsdeck/engine/reply.py` — the deterministic renderer used when no
+- `src/oska/engine/reply.py` — the deterministic renderer used when no
   provider is configured, the lines that state what a turn leaves on offer, and
   the presentation preferences handed to the reply writer and to nothing else.
-- `src/opsdeck/catalog/resolver.py` — the offered action as a key and a label,
+- `src/oska/catalog/resolver.py` — the offered action as a key and a label,
   the rule that two actions never share a key, and the relabeling that keeps
   the declared wording where nothing came back.
-- `src/opsdeck/planner/planner.py` — the reply schema carrying `action_labels`,
+- `src/oska/planner/planner.py` — the reply schema carrying `action_labels`,
   and the brief the reply writer answers from.
 - `tests/unit/test_labels.py` — the offer in the language of the turn, the
   count that shows no call was added, and the preference that reaches the reply

@@ -9,10 +9,10 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from opsdeck.cli.commands_slo import app
-from opsdeck.contracts.events import AuditEvent, EventKind
-from opsdeck.observability.metrics import service_report
-from opsdeck.observability.report import render_json, render_text
+from oska.cli.commands_slo import app
+from oska.contracts.events import AuditEvent, EventKind
+from oska.observability.metrics import service_report
+from oska.observability.report import render_json, render_text
 
 runner = CliRunner()
 
@@ -246,8 +246,8 @@ def test_the_json_report_carries_the_same_reasons(trail: Path) -> None:
 @pytest.fixture
 def slo_env(monkeypatch: pytest.MonkeyPatch, repo_root: Path, tmp_path: Path) -> Path:
     """Point the command at a temporary state directory and the repository config."""
-    monkeypatch.setenv("OPSDECK_RUNTIME_CONFIG", str(repo_root / "configs" / "runtime.json"))
-    monkeypatch.setenv("OPSDECK_STATE_DIR", str(tmp_path / "state"))
+    monkeypatch.setenv("OSKA_RUNTIME_CONFIG", str(repo_root / "configs" / "runtime.json"))
+    monkeypatch.setenv("OSKA_STATE_DIR", str(tmp_path / "state"))
     return tmp_path
 
 

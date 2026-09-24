@@ -7,16 +7,16 @@ from pathlib import Path
 
 import pytest
 
-from opsdeck.catalog.registry import SkillRegistry
-from opsdeck.contracts.common import ConnectorResult
-from opsdeck.contracts.plan import Plan
-from opsdeck.contracts.receipt import VerificationStatus
-from opsdeck.contracts.skill import Skill
-from opsdeck.governance.approval import ApprovalGate, payload_hash
-from opsdeck.governance.capabilities import CapabilityRegistry
-from opsdeck.governance.ledger import WriteLedger
-from opsdeck.governance.policy_engine import PolicyEngine
-from opsdeck.governance.verification import Verifier
+from oska.catalog.registry import SkillRegistry
+from oska.contracts.common import ConnectorResult
+from oska.contracts.plan import Plan
+from oska.contracts.receipt import VerificationStatus
+from oska.contracts.skill import Skill
+from oska.governance.approval import ApprovalGate, payload_hash
+from oska.governance.capabilities import CapabilityRegistry
+from oska.governance.ledger import WriteLedger
+from oska.governance.policy_engine import PolicyEngine
+from oska.governance.verification import Verifier
 
 CONTAINER = "integration.container_runtime"
 RESTART = "runbook.service_restart"

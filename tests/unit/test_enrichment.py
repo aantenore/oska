@@ -10,8 +10,8 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from opsdeck.audit.sink import MemorySink
-from opsdeck.catalog.enrichment import (
+from oska.audit.sink import MemorySink
+from oska.catalog.enrichment import (
     EnrichmentError,
     enrich,
     enrich_catalog,
@@ -21,19 +21,19 @@ from opsdeck.catalog.enrichment import (
     source_hash,
     write_examples,
 )
-from opsdeck.catalog.registry import SkillRegistry
-from opsdeck.cli.commands_enrich import app
-from opsdeck.config import EnrichmentConfig, Settings, load_runtime_config
-from opsdeck.contracts.common import Message
-from opsdeck.contracts.proposal import ProposalState
-from opsdeck.contracts.receipt import WriteReceipt
-from opsdeck.contracts.skill import Skill
-from opsdeck.engine.factory import build_engine
-from opsdeck.learning.changes import ChangeRequestState, ChangeRequestStore
-from opsdeck.learning.lifecycle import transition
-from opsdeck.learning.proposals import ProposalStore, draft_from_session
-from opsdeck.planner.provider import ModelProviderError
-from opsdeck.planner.scripted import ScriptedModelProvider
+from oska.catalog.registry import SkillRegistry
+from oska.cli.commands_enrich import app
+from oska.config import EnrichmentConfig, Settings, load_runtime_config
+from oska.contracts.common import Message
+from oska.contracts.proposal import ProposalState
+from oska.contracts.receipt import WriteReceipt
+from oska.contracts.skill import Skill
+from oska.engine.factory import build_engine
+from oska.learning.changes import ChangeRequestState, ChangeRequestStore
+from oska.learning.lifecycle import transition
+from oska.learning.proposals import ProposalStore, draft_from_session
+from oska.planner.provider import ModelProviderError
+from oska.planner.scripted import ScriptedModelProvider
 
 runner = CliRunner()
 
@@ -350,8 +350,8 @@ def cli_catalog(
     queue_drain: Skill,
 ) -> Path:
     """The command line pointed at a catalog holding one unenriched procedure."""
-    monkeypatch.setenv("OPSDECK_RUNTIME_CONFIG", str(repo_root / "configs" / "runtime.json"))
-    monkeypatch.setenv("OPSDECK_MODEL_CONFIG", str(repo_root / "configs" / "model.json"))
+    monkeypatch.setenv("OSKA_RUNTIME_CONFIG", str(repo_root / "configs" / "runtime.json"))
+    monkeypatch.setenv("OSKA_MODEL_CONFIG", str(repo_root / "configs" / "model.json"))
     return catalog
 
 

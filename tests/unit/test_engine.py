@@ -9,24 +9,24 @@ from pathlib import Path
 import pytest
 import yaml
 
-from opsdeck.audit.sink import MemorySink
-from opsdeck.catalog.validator import CatalogError
-from opsdeck.config import Settings
-from opsdeck.contracts.common import (
+from oska.audit.sink import MemorySink
+from oska.catalog.validator import CatalogError
+from oska.config import Settings
+from oska.contracts.common import (
     ConnectorResult,
     Message,
     PendingGoal,
     TurnKind,
 )
-from opsdeck.contracts.receipt import VerificationStatus, WriteReceipt
-from opsdeck.engine import outcomes as build
-from opsdeck.engine.engine import Engine
-from opsdeck.engine.factory import build_engine
-from opsdeck.engine.outcomes import outcome_summary
-from opsdeck.engine.session_store import SessionStore
-from opsdeck.engine.state import SessionState
-from opsdeck.governance.ledger import WriteLedger
-from opsdeck.planner.scripted import ScriptedModelProvider
+from oska.contracts.receipt import VerificationStatus, WriteReceipt
+from oska.engine import outcomes as build
+from oska.engine.engine import Engine
+from oska.engine.factory import build_engine
+from oska.engine.outcomes import outcome_summary
+from oska.engine.session_store import SessionStore
+from oska.engine.state import SessionState
+from oska.governance.ledger import WriteLedger
+from oska.planner.scripted import ScriptedModelProvider
 
 RESTART_REQUEST = "the search service in staging needs a restart, it is wedged again"
 TRIAGE_REQUEST = "run triage on incident inc-501 for the payments service"

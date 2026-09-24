@@ -8,18 +8,18 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from opsdeck.cli.main import app
-from opsdeck.config import Settings
-from opsdeck.contracts.common import Message
-from opsdeck.engine.factory import build_engine
-from opsdeck.planner.provider import ModelProvider, ModelProviderError
-from opsdeck.planner.recording import (
+from oska.cli.main import app
+from oska.config import Settings
+from oska.contracts.common import Message
+from oska.engine.factory import build_engine
+from oska.planner.provider import ModelProvider, ModelProviderError
+from oska.planner.recording import (
     RecordingProvider,
     ReplayProvider,
     cassette_to_script,
     read_cassette,
 )
-from opsdeck.planner.scripted import ScriptedModelProvider, hash_bag_vector
+from oska.planner.scripted import ScriptedModelProvider, hash_bag_vector
 
 runner = CliRunner()
 
@@ -52,8 +52,8 @@ def cli_env(monkeypatch: pytest.MonkeyPatch, repo_root: Path, tmp_path: Path) ->
         ("SCENARIOS_DIR", repo_root / "examples" / "ops" / "scenarios"),
         ("STATE_DIR", state),
     ):
-        monkeypatch.setenv(f"OPSDECK_{name}", str(value))
-    monkeypatch.setenv("OPSDECK_PROVIDER", "none")
+        monkeypatch.setenv(f"OSKA_{name}", str(value))
+    monkeypatch.setenv("OSKA_PROVIDER", "none")
     return state
 
 

@@ -10,15 +10,15 @@ from pathlib import Path
 import pytest
 import yaml
 
-from opsdeck.catalog.registry import SkillRegistry
-from opsdeck.contracts.common import Message
-from opsdeck.contracts.proposal import ProposalState, QualityReport, SkillProposal
-from opsdeck.contracts.receipt import WriteReceipt
-from opsdeck.learning import quality
-from opsdeck.learning.changes import ChangeRequestState, ChangeRequestStore
-from opsdeck.learning.lifecycle import ALLOWED, LifecycleError, transition
-from opsdeck.learning.proposals import ProposalStore, build_policy, draft_from_session
-from opsdeck.planner.scripted import ScriptedModelProvider
+from oska.catalog.registry import SkillRegistry
+from oska.contracts.common import Message
+from oska.contracts.proposal import ProposalState, QualityReport, SkillProposal
+from oska.contracts.receipt import WriteReceipt
+from oska.learning import quality
+from oska.learning.changes import ChangeRequestState, ChangeRequestStore
+from oska.learning.lifecycle import ALLOWED, LifecycleError, transition
+from oska.learning.proposals import ProposalStore, build_policy, draft_from_session
+from oska.planner.scripted import ScriptedModelProvider
 
 SESSION_ID = "session-1"
 ACTOR = "reviewer"
@@ -646,7 +646,7 @@ def test_a_proposal_naming_a_guardrail_nothing_defines_does_not_pass(
     where the configured guardrail catalog defines it. The identifier that is
     defined is left alone; the invented one is what stops the publication.
     """
-    monkeypatch.setenv("OPSDECK_RUNTIME_CONFIG", str(repo_root / "configs" / "runtime.json"))
+    monkeypatch.setenv("OSKA_RUNTIME_CONFIG", str(repo_root / "configs" / "runtime.json"))
 
     report = quality.check(
         crafted(guardrails=["guardrail.identifiers_are_never_invented", "guardrail.invented"]),

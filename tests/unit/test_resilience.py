@@ -16,10 +16,10 @@ from pathlib import Path
 import httpx
 import pytest
 
-from opsdeck.audit.sink import MemorySink
-from opsdeck.catalog.registry import SkillRegistry
-from opsdeck.config import ResilienceConfig, Settings
-from opsdeck.connectors.base import (
+from oska.audit.sink import MemorySink
+from oska.catalog.registry import SkillRegistry
+from oska.config import ResilienceConfig, Settings
+from oska.connectors.base import (
     BaseConnector,
     CircuitBreaker,
     ConnectorOutcome,
@@ -29,24 +29,24 @@ from opsdeck.connectors.base import (
     succeeded,
     transport_failure,
 )
-from opsdeck.connectors.http import HttpConnector
-from opsdeck.connectors.mock import MockConnector
-from opsdeck.connectors.registry import ConnectorRegistry
-from opsdeck.connectors.shell import ShellConnector
-from opsdeck.contracts.common import ConnectorResult, TurnResult
-from opsdeck.contracts.receipt import VerificationStatus, WriteReceipt
-from opsdeck.contracts.skill import OperationSpec, VerifySpec
-from opsdeck.engine.engine import Engine
-from opsdeck.engine.execution import repeat_is_stopped
-from opsdeck.engine.factory import build_engine
-from opsdeck.engine.outcomes import (
+from oska.connectors.http import HttpConnector
+from oska.connectors.mock import MockConnector
+from oska.connectors.registry import ConnectorRegistry
+from oska.connectors.shell import ShellConnector
+from oska.contracts.common import ConnectorResult, TurnResult
+from oska.contracts.receipt import VerificationStatus, WriteReceipt
+from oska.contracts.skill import OperationSpec, VerifySpec
+from oska.engine.engine import Engine
+from oska.engine.execution import repeat_is_stopped
+from oska.engine.factory import build_engine
+from oska.engine.outcomes import (
     receipt_lines,
     unavailable_instruction,
     unavailable_outcome,
 )
-from opsdeck.governance.capabilities import CapabilityRegistry
-from opsdeck.governance.ledger import WriteLedger
-from opsdeck.planner.scripted import ScriptedModelProvider
+from oska.governance.capabilities import CapabilityRegistry
+from oska.governance.ledger import WriteLedger
+from oska.planner.scripted import ScriptedModelProvider
 
 RUNTIME = "integration.container_runtime"
 ALERTING = "integration.alerting"

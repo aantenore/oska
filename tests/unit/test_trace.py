@@ -11,17 +11,17 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from opsdeck.audit.sink import MemorySink
-from opsdeck.audit.trace import (
+from oska.audit.sink import MemorySink
+from oska.audit.trace import (
     JsonlTraceSink,
     MemoryTraceSink,
     NullTraceSink,
     destination,
 )
-from opsdeck.config import Settings
-from opsdeck.engine.engine import ModelBudget
-from opsdeck.engine.factory import build_engine
-from opsdeck.planner.scripted import ScriptedModelProvider
+from oska.config import Settings
+from oska.engine.engine import ModelBudget
+from oska.engine.factory import build_engine
+from oska.planner.scripted import ScriptedModelProvider
 
 RESTART_REQUEST = "the search service in staging needs a restart, it is wedged again"
 CONTAINER_RUNTIME = "integration.container_runtime"

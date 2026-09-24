@@ -12,9 +12,9 @@ from pathlib import Path
 
 import pytest
 
-from opsdeck.catalog.registry import SkillRegistry
-from opsdeck.catalog.resolver import CapabilityResolver
-from opsdeck.catalog.validator import validate_all
+from oska.catalog.registry import SkillRegistry
+from oska.catalog.resolver import CapabilityResolver
+from oska.catalog.validator import validate_all
 
 ACTIONS = (
     "check what access a person has",

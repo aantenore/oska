@@ -194,7 +194,7 @@ block:
     "point": "execution",
     "mechanism": "check",
     "validator": "member_of_declared",
-    "module": "opsdeck.governance.approval",
+    "module": "oska.governance.approval",
     "parameters": {
       "field": "payload_hash",
       "declared": "approved_hashes",
@@ -426,7 +426,7 @@ A **receipt** holds the receipt id, the session, the ledger key, the integration
 and operation, the payload, the response, the status (`pending`, `executed`,
 `error`), the failure classification, the catalog revision the turn was decided
 under, the verification status, the verification evidence, the creation time
-and the error text. `opsdeck receipts --session <id>` prints them oldest first,
+and the error text. `oska receipts --session <id>` prints them oldest first,
 `--json` in full.
 
 The receipt is written before the connector is called. That is deliberate, and
@@ -557,8 +557,8 @@ be forgotten has to reach all three or it has reached none of them.
 out of the record.
 
 ```sh
-opsdeck forget session walk
-opsdeck forget expired --days 90
+oska forget session walk
+oska forget expired --days 90
 ```
 
 `forget` answers a request. It runs whatever the configured window is and

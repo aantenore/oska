@@ -10,9 +10,9 @@ from pathlib import Path
 import pytest
 import yaml
 
-from opsdeck.catalog.registry import SkillRegistry
-from opsdeck.catalog.resolver import CapabilityResolver
-from opsdeck.config import Settings
+from oska.catalog.registry import SkillRegistry
+from oska.catalog.resolver import CapabilityResolver
+from oska.config import Settings
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 

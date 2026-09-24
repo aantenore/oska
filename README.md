@@ -3,11 +3,11 @@
 OSKA is a layered architectural standard for systems in which a language model
 acts on real systems on behalf of a person: ontology first, skill driven, with
 every effect on the world crossing a governance boundary no configuration can
-lower. `opsdeck` is its reference implementation, a Python package that runs a
+lower. `oska` is its reference implementation, a Python package that runs a
 catalog of declared skills and nothing else. The catalog under `examples/ops/`
 is the reference domain: services with their deployments, incidents and alerts,
 and the procedures an on-call engineer runs against them. The standard is in
-[`spec/`](spec/README.md); the implementation is in `src/opsdeck/`; the design
+[`spec/`](spec/README.md); the implementation is in `src/oska/`; the design
 notes for each package are in [`docs/`](docs/).
 
 ## The problem
@@ -87,16 +87,16 @@ arrived and is reported as a refusal.
 | Layer | Responsibility | Package |
 | --- | --- | --- |
 | L0 Systems | The world: systems of record, APIs, tools. Out of scope, reachable only through L1. | — |
-| L1 Integration | Declared operations and the adapters that run them: mock, HTTP, argv. Failure classification, timeout and circuit breaker. | `opsdeck.connectors` |
-| L2 Ontology | Entities, states, lifecycles, relations, operation bindings, the shared vocabulary. | `opsdeck.ontology` |
-| L3 Skill | The skill artifact, the catalog, the validator, the capability resolver, hydration, derived routing examples, evaluation sets, revisions. | `opsdeck.catalog`, `opsdeck.contracts.skill` |
-| L4 Governance | Capability registry, policy engine, approval gate, verifier, write ledger, authenticated identity, retention, guardrail catalog, audit and traces. | `opsdeck.governance`, `opsdeck.audit` |
-| L5 Cognition | Discovery, routing, planning, reply writing, and the provider behind them. | `opsdeck.index`, `opsdeck.router`, `opsdeck.planner` |
-| L6 Interaction | Session state, the turn engine, the model budget, the channels a person reaches it through. | `opsdeck.engine`, `opsdeck.api`, `opsdeck.cli` |
-| L7 Evolution | Proposals, quality gates, the lifecycle, change requests, the self-improvement job. | `opsdeck.learning`, `opsdeck.improvement` |
+| L1 Integration | Declared operations and the adapters that run them: mock, HTTP, argv. Failure classification, timeout and circuit breaker. | `oska.connectors` |
+| L2 Ontology | Entities, states, lifecycles, relations, operation bindings, the shared vocabulary. | `oska.ontology` |
+| L3 Skill | The skill artifact, the catalog, the validator, the capability resolver, hydration, derived routing examples, evaluation sets, revisions. | `oska.catalog`, `oska.contracts.skill` |
+| L4 Governance | Capability registry, policy engine, approval gate, verifier, write ledger, authenticated identity, retention, guardrail catalog, audit and traces. | `oska.governance`, `oska.audit` |
+| L5 Cognition | Discovery, routing, planning, reply writing, and the provider behind them. | `oska.index`, `oska.router`, `oska.planner` |
+| L6 Interaction | Session state, the turn engine, the model budget, the channels a person reaches it through. | `oska.engine`, `oska.api`, `oska.cli` |
+| L7 Evolution | Proposals, quality gates, the lifecycle, change requests, the self-improvement job. | `oska.learning`, `oska.improvement` |
 
 A layer depends only on the layers below it and on the contracts, which are
-owned by none of them. `opsdeck.observability` sits beside the layers rather
+owned by none of them. `oska.observability` sits beside the layers rather
 than inside one: it reads the audit trail and the traces back and computes the
 service-level numbers. See [`spec/02-layers.md`](spec/02-layers.md) for the
 rule and [`docs/architecture.md`](docs/architecture.md) for how the code keeps
@@ -116,13 +116,13 @@ Every command below runs from the repository root against the example catalog,
 which is what the defaults point at.
 
 ```sh
-opsdeck validate                 # parse and cross-check every skill
-opsdeck config                   # the settings in force, as JSON
-opsdeck capabilities             # the procedures on offer, in the catalog's words
-opsdeck ontology                 # entities, states, relations, what acts on them
-opsdeck ontology --format mermaid
-opsdeck evaluate catalog         # run the evaluation set each skill carries
-opsdeck conform                  # run the scenario suite, report the level reached
+oska validate                 # parse and cross-check every skill
+oska config                   # the settings in force, as JSON
+oska capabilities             # the procedures on offer, in the catalog's words
+oska ontology                 # entities, states, relations, what acts on them
+oska ontology --format mermaid
+oska evaluate catalog         # run the evaluation set each skill carries
+oska conform                  # run the scenario suite, report the level reached
 ```
 
 `validate` reports `15 skills, no issues`. `evaluate catalog` runs the eighteen
@@ -132,7 +132,7 @@ carry none. `conform` runs the twenty-three scenarios under
 is a separate run, because a suite belongs to its own catalog:
 
 ```sh
-opsdeck conform --skills examples/access/skills \
+oska conform --skills examples/access/skills \
   --scenarios examples/access/scenarios \
   --connectors examples/access/configs/connectors.json
 ```
@@ -141,50 +141,50 @@ Five more belong to whoever runs an installation rather than to whoever writes
 a catalog.
 
 ```sh
-opsdeck revision build           # validate the roots, release them under a content hash
-opsdeck revision list            # every revision, the served one marked
-opsdeck change list              # the catalog changes the runtime proposed
-opsdeck slo report               # the service-level numbers, and what is not computed
-opsdeck forget session walk      # remove receipts, audit entries and stored state
+oska revision build           # validate the roots, release them under a content hash
+oska revision list            # every revision, the served one marked
+oska change list              # the catalog changes the runtime proposed
+oska slo report               # the service-level numbers, and what is not computed
+oska forget session walk      # remove receipts, audit entries and stored state
 ```
 
 [`docs/operating.md`](docs/operating.md) is what each of them is for.
 
-Two more do work that never happens during a turn. `opsdeck enrich` derives
+Two more do work that never happens during a turn. `oska enrich` derives
 routing examples from the declared triggers, so a catalog written in one
-language is reached in another; `opsdeck improve` reads the record of what ran,
+language is reached in another; `oska improve` reads the record of what ran,
 keeps what is reversible and reports the rest.
 
 ```sh
-opsdeck enrich show runbook.service_restart   # declared phrases, then derived
-opsdeck improve evaluate                      # route the labeled set, change nothing
+oska enrich show runbook.service_restart   # declared phrases, then derived
+oska improve evaluate                      # route the labeled set, change nothing
 ```
 
 `enrich run` needs a model provider, `improve run` an audit trail to read. See
 [`docs/multilingual.md`](docs/multilingual.md) and
 [`docs/improvement.md`](docs/improvement.md).
 
-With no provider configured, `opsdeck run --session ops --text "hello"` answers
+With no provider configured, `oska run --session ops --text "hello"` answers
 what the runtime can do and declines to plan. To run turns against recorded
 answers, offline and deterministic — without `--text` it reads one request per
 line until the input ends:
 
 ```sh
-opsdeck run --session walk \
+oska run --session walk \
   --provider scripted \
   --script examples/ops/scenarios/02_restart_staging.json
 ```
 
 For a real provider, fill `.env` from `.env.example` — the endpoint, the key,
-the model names, `OPSDECK_PROVIDER=openai_compatible` — and export it, because
+the model names, `OSKA_PROVIDER=openai_compatible` — and export it, because
 nothing in the package reads it on its own:
 
 ```sh
 set -a; . ./.env; set +a
-opsdeck run --session ops --text "how is the checkout service doing"
+oska run --session ops --text "how is the checkout service doing"
 ```
 
-`opsdeck serve` serves the same runtime over HTTP. It authenticates nobody: an
+`oska serve` serves the same runtime over HTTP. It authenticates nobody: an
 identity arrives in headers an authenticated proxy sets, and the runtime trusts
 them and verifies nothing itself.
 
@@ -214,7 +214,7 @@ receipt  integration.container_runtime  service.restart  4a9bad9f-...
 
 Asking for the same restart again does not run it again: the ledger key covers
 the idempotency fields the integration declares, so the second request finds
-that receipt and reports it instead of sending anything. `opsdeck receipts
+that receipt and reports it instead of sending anything. `oska receipts
 --session walk --json` prints it in full, the catalog revision the turn was
 decided under included.
 
@@ -223,7 +223,7 @@ decided under included.
 ```
 configs/          runtime.json, model.json, guardrails.json: thresholds, provider access, declared promises
 schemas/          JSON schemas for skills, policies and proposals
-src/opsdeck/      the packages listed in the layer table
+src/oska/      the packages listed in the layer table
 examples/ops/     the reference domain: skills, fixtures, connectors, scenarios, the labeled routing set
 examples/access/  the second domain, same shape and a smaller catalog
 spec/             the OSKA standard
@@ -252,7 +252,7 @@ authenticated identity, so a session nobody signed in to is refused rather than
 asked which account was meant.
 
 ```sh
-opsdeck capabilities --skills examples/access/skills
+oska capabilities --skills examples/access/skills
 ```
 
 `examples/access/README.md` is the shorter of the two domain notes and the

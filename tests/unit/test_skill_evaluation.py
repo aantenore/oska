@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from opsdeck.catalog.evaluation import (
+from oska.catalog.evaluation import (
     EVALUATION_FILENAME,
     EvaluationCase,
     EvaluationSetError,
@@ -19,12 +19,12 @@ from opsdeck.catalog.evaluation import (
     load_cases,
     run_cases,
 )
-from opsdeck.catalog.registry import SkillRegistry
-from opsdeck.cli.commands_evaluate import app
-from opsdeck.config import Settings, load_runtime_config
-from opsdeck.index.discovery import Discovery
-from opsdeck.index.keyword import KeywordIndex
-from opsdeck.learning import quality
+from oska.catalog.registry import SkillRegistry
+from oska.cli.commands_evaluate import app
+from oska.config import Settings, load_runtime_config
+from oska.index.discovery import Discovery
+from oska.index.keyword import KeywordIndex
+from oska.learning import quality
 
 runner = CliRunner()
 

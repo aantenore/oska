@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://opsdeck.local/schemas/proposal.schema.json",
+  "$id": "https://oska.local/schemas/proposal.schema.json",
   "title": "Skill proposal",
   "type": "object",
   "required": ["proposal_id", "state", "source_session_id", "skill_markdown", "quality"],

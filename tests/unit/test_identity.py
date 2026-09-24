@@ -14,15 +14,15 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from opsdeck.api.app import create_app
-from opsdeck.api.routes import ATTRIBUTES_HEADER, SUBJECT_HEADER
-from opsdeck.audit.sink import MemorySink
-from opsdeck.catalog.registry import SkillRegistry
-from opsdeck.catalog.validator import validate
-from opsdeck.config import Settings
-from opsdeck.contracts.common import TurnResult
-from opsdeck.engine.factory import build_engine
-from opsdeck.governance.identity import (
+from oska.api.app import create_app
+from oska.api.routes import ATTRIBUTES_HEADER, SUBJECT_HEADER
+from oska.audit.sink import MemorySink
+from oska.catalog.registry import SkillRegistry
+from oska.catalog.validator import validate
+from oska.config import Settings
+from oska.contracts.common import TurnResult
+from oska.engine.factory import build_engine
+from oska.governance.identity import (
     IdentityError,
     Principal,
     PrincipalMismatch,
@@ -30,7 +30,7 @@ from opsdeck.governance.identity import (
     requires_principal,
     resolve_inputs,
 )
-from opsdeck.planner.scripted import ScriptedModelProvider
+from oska.planner.scripted import ScriptedModelProvider
 
 GRANT = "runbook.access_grant"
 CHECK = "runbook.access_check"

@@ -29,14 +29,14 @@ from pathlib import Path
 
 import pytest
 
-from opsdeck.audit.sink import MemorySink
-from opsdeck.catalog import revision as revision_module
-from opsdeck.catalog.registry import ServedCatalog, SkillRegistry
-from opsdeck.catalog.revision import MANIFEST_FILENAME, RevisionStore, build_revision
-from opsdeck.config import Settings
-from opsdeck.engine.engine import Engine
-from opsdeck.engine.factory import build_engine
-from opsdeck.planner.scripted import ScriptedModelProvider
+from oska.audit.sink import MemorySink
+from oska.catalog import revision as revision_module
+from oska.catalog.registry import ServedCatalog, SkillRegistry
+from oska.catalog.revision import MANIFEST_FILENAME, RevisionStore, build_revision
+from oska.config import Settings
+from oska.engine.engine import Engine
+from oska.engine.factory import build_engine
+from oska.planner.scripted import ScriptedModelProvider
 
 TENANT = "default"
 RESTART = "runbook.service_restart"

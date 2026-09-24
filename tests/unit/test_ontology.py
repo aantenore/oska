@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from opsdeck.catalog.registry import SkillRegistry
-from opsdeck.ontology.export import from_json, to_json, to_mermaid
-from opsdeck.ontology.graph import OntologyCache, OntologyGraph, operation_node_id
-from opsdeck.ontology.queries import (
+from oska.catalog.registry import SkillRegistry
+from oska.ontology.export import from_json, to_json, to_mermaid
+from oska.ontology.graph import OntologyCache, OntologyGraph, operation_node_id
+from oska.ontology.queries import (
     operations_on,
     path,
     procedures_for,

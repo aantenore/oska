@@ -13,24 +13,24 @@ from pathlib import Path
 
 import pytest
 
-from opsdeck.audit.sink import MemorySink
-from opsdeck.catalog.loader import load_skill
-from opsdeck.catalog.registry import SkillRegistry
-from opsdeck.catalog.resolver import CapabilityResolver
-from opsdeck.catalog.validator import validate, validate_all
-from opsdeck.config import Settings
-from opsdeck.contracts.common import ConnectorResult, Hydrated
-from opsdeck.contracts.plan import Plan
-from opsdeck.contracts.receipt import VerificationStatus
-from opsdeck.engine.engine import Engine
-from opsdeck.engine.factory import build_engine
-from opsdeck.governance.capabilities import CapabilityRegistry
-from opsdeck.governance.verification import Verifier, read_state
-from opsdeck.ontology.export import from_json, to_json, to_mermaid
-from opsdeck.ontology.graph import OntologyGraph, state_node_id
-from opsdeck.ontology.queries import legal_moves, lifecycle_of, required_move
-from opsdeck.planner.planner import validate_plan
-from opsdeck.planner.scripted import ScriptedModelProvider
+from oska.audit.sink import MemorySink
+from oska.catalog.loader import load_skill
+from oska.catalog.registry import SkillRegistry
+from oska.catalog.resolver import CapabilityResolver
+from oska.catalog.validator import validate, validate_all
+from oska.config import Settings
+from oska.contracts.common import ConnectorResult, Hydrated
+from oska.contracts.plan import Plan
+from oska.contracts.receipt import VerificationStatus
+from oska.engine.engine import Engine
+from oska.engine.factory import build_engine
+from oska.governance.capabilities import CapabilityRegistry
+from oska.governance.verification import Verifier, read_state
+from oska.ontology.export import from_json, to_json, to_mermaid
+from oska.ontology.graph import OntologyGraph, state_node_id
+from oska.ontology.queries import legal_moves, lifecycle_of, required_move
+from oska.planner.planner import validate_plan
+from oska.planner.scripted import ScriptedModelProvider
 
 ALERTING = "integration.alerting"
 SILENCED_ALERT = "alt-9003"

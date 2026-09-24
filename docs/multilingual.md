@@ -75,11 +75,11 @@ nothing about it is undone by a paraphrase that could not be produced.
 added to the configuration, or on a schedule:
 
 ```sh
-opsdeck enrich run                              # every procedure missing a language
-opsdeck enrich run --language it --language de  # these languages, not the configured ones
-opsdeck enrich run --dry-run                    # what a pass would write, asking nothing
-opsdeck enrich run --json
-opsdeck enrich show runbook.service_restart     # declared first, derived after
+oska enrich run                              # every procedure missing a language
+oska enrich run --language it --language de  # these languages, not the configured ones
+oska enrich run --dry-run                    # what a pass would write, asking nothing
+oska enrich run --json
+oska enrich show runbook.service_restart     # declared first, derived after
 ```
 
 Without `--language`, the languages come from `discovery.languages`. A pass
@@ -120,7 +120,7 @@ A skill is indexed under several texts — its description, each trigger, each
 derived phrase, and each phrasing the improvement job has learned — and scores
 the best of them rather than their average. More phrasings can therefore raise
 a score and never dilute one. `matched_on` reports which text won, with its
-language, which is how a routing surprise is explained: `opsdeck enrich show`
+language, which is how a routing surprise is explained: `oska enrich show`
 prints the declared phrases and then the derived ones, and one of them is the
 answer.
 

@@ -7,7 +7,7 @@
       "enforcement": {
         "point": "execution",
         "mechanism": "invariant",
-        "module": "opsdeck.governance.verification"
+        "module": "oska.governance.verification"
       }
     },
     "guardrail.exact_payload_approval": {
@@ -16,7 +16,7 @@
       "enforcement": {
         "point": "execution",
         "mechanism": "invariant",
-        "module": "opsdeck.governance.approval"
+        "module": "oska.governance.approval"
       }
     },
     "guardrail.declared_operations_only": {
@@ -25,7 +25,7 @@
       "enforcement": {
         "point": "planning",
         "mechanism": "invariant",
-        "module": "opsdeck.planner.planner"
+        "module": "oska.planner.planner"
       }
     },
     "guardrail.no_secret_material_in_a_turn": {
@@ -35,7 +35,7 @@
         "point": "input",
         "mechanism": "check",
         "validator": "forbidden_pattern",
-        "module": "opsdeck.governance.guardrails",
+        "module": "oska.governance.guardrails",
         "parameters": {
           "patterns": [
             "(?i)\\b(?:api[ _-]?key|secret|password|passphrase|credential|access[ _-]?token|auth[ _-]?token|private[ _-]?key)s?\\b\\s*(?:is|=|:)\\s*\\S+",
@@ -53,7 +53,7 @@
       "enforcement": {
         "point": "output",
         "mechanism": "instruction",
-        "module": "opsdeck.engine.reply"
+        "module": "oska.engine.reply"
       }
     },
     "guardrail.identifiers_are_never_invented": {
@@ -62,7 +62,7 @@
       "enforcement": {
         "point": "planning",
         "mechanism": "instruction",
-        "module": "opsdeck.planner.prompts"
+        "module": "oska.planner.prompts"
       }
     }
   }

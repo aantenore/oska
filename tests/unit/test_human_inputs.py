@@ -10,9 +10,9 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from opsdeck.catalog.registry import SkillRegistry
-from opsdeck.contracts.skill import SkillFrontmatter
-from opsdeck.planner.prompts import planner_system
+from oska.catalog.registry import SkillRegistry
+from oska.contracts.skill import SkillFrontmatter
+from oska.planner.prompts import planner_system
 
 
 def _frontmatter(skill_id: str, kind: str, **extra: object) -> SkillFrontmatter:

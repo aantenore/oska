@@ -16,8 +16,8 @@ shortens it.
 The steps and their order belong to this layer. Running them does not. The
 sequence is driven by the interaction layer, which holds the turn, the session
 and the plan the write sits inside; in the reference implementation that driver
-is `src/opsdeck/engine/execution.py`, with the second policy evaluation and the
-approval arithmetic in `src/opsdeck/engine/engine.py`. Governance decides what
+is `src/oska/engine/execution.py`, with the second policy evaluation and the
+approval arithmetic in `src/oska/engine/engine.py`. Governance decides what
 each step answers; interaction decides when each step is reached. An
 implementation MAY place the driver elsewhere, and MUST NOT let it reorder the
 path or skip a step.
@@ -548,7 +548,7 @@ limit at all, because the cheapest way to exceed it is to fail.
 
 ## In the reference implementation
 
-- `src/opsdeck/governance/` — `capabilities.py`, `policy_engine.py`,
+- `src/oska/governance/` — `capabilities.py`, `policy_engine.py`,
   `approval.py`, `verification.py`, `ledger.py`, `guardrails.py`.
 - `configs/guardrails.json` — the declared guardrails, each naming the point it
   acts at, the mechanism that keeps it and the module that keeps it. Three of
@@ -556,24 +556,24 @@ limit at all, because the cheapest way to exceed it is to fail.
   exact-payload approval are kept at `execution`, and planning from declared
   operations alone is kept at `planning`, all of them at points the chain does
   not run.
-- `src/opsdeck/audit/` — `events.py`, `sink.py` (memory, file and fan-out
+- `src/oska/audit/` — `events.py`, `sink.py` (memory, file and fan-out
   sinks).
-- `src/opsdeck/contracts/receipt.py`, `contracts/policy.py`,
+- `src/oska/contracts/receipt.py`, `contracts/policy.py`,
   `contracts/events.py`.
-- `src/opsdeck/governance/ledger.py` — `settled`, which is where the difference
+- `src/oska/governance/ledger.py` — `settled`, which is where the difference
   between a write that reached the system and one that never left is applied.
-- `src/opsdeck/engine/outcomes.py` — the `unavailable` outcome and the line it
+- `src/oska/engine/outcomes.py` — the `unavailable` outcome and the line it
   is reported in, which says neither that the write was refused nor that it was
   done.
-- `src/opsdeck/engine/execution.py` — the interaction layer's executor, which
+- `src/oska/engine/execution.py` — the interaction layer's executor, which
   sequences the path described above and refuses a write the declarations no
   longer cover by the time the approval comes back.
-- `src/opsdeck/engine/engine.py` — the second evaluation, run against the state
+- `src/oska/engine/engine.py` — the second evaluation, run against the state
   read after the approval was given: a refusal stops the write, and so does a
   rule that now asks for more approvals than stand.
-- `src/opsdeck/governance/identity.py` — the principal, the resolution of the
+- `src/oska/governance/identity.py` — the principal, the resolution of the
   fields a procedure binds to it, and the refusals when it is absent or when a
   plan supplies one of them.
-- `src/opsdeck/api/routes.py` — the headers an authenticated proxy sets, read as
+- `src/oska/api/routes.py` — the headers an authenticated proxy sets, read as
   given and verified by nothing here.
 - `schemas/policy.schema.json`, `spec/schemas/audit-event.schema.json`.

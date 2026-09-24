@@ -21,15 +21,15 @@ import pytest
 from fastapi.testclient import TestClient
 from typer.testing import CliRunner
 
-from opsdeck.api.app import create_app
-from opsdeck.audit.sink import MemorySink
-from opsdeck.cli.commands_change import app as change_app
-from opsdeck.config import Settings
-from opsdeck.conformance import load_scenarios
-from opsdeck.contracts.proposal import QualityReport
-from opsdeck.engine.factory import build_engine
-from opsdeck.improvement.job import run_job
-from opsdeck.learning.changes import (
+from oska.api.app import create_app
+from oska.audit.sink import MemorySink
+from oska.cli.commands_change import app as change_app
+from oska.config import Settings
+from oska.conformance import load_scenarios
+from oska.contracts.proposal import QualityReport
+from oska.engine.factory import build_engine
+from oska.improvement.job import run_job
+from oska.learning.changes import (
     ChangeRequestError,
     ChangeRequestState,
     ChangeRequestStore,
@@ -37,8 +37,8 @@ from opsdeck.learning.changes import (
     package_of,
     store_for,
 )
-from opsdeck.learning.proposals import ProposalStore
-from opsdeck.planner.scripted import ScriptedModelProvider
+from oska.learning.proposals import ProposalStore
+from oska.planner.scripted import ScriptedModelProvider
 
 SESSION = "changes-session"
 MARKDOWN = "---\nid: runbook.sample\n---\n\n## Steps\n\n1. Do it.\n"
@@ -204,8 +204,8 @@ def test_the_commands_read_apply_and_reject(
         ("SCHEMAS_DIR", example_settings.schemas_dir),
         ("STATE_DIR", example_settings.state_dir),
     ):
-        monkeypatch.setenv(f"OPSDECK_{name}", str(value))
-    monkeypatch.setenv("OPSDECK_PROVIDER", "none")
+        monkeypatch.setenv(f"OSKA_{name}", str(value))
+    monkeypatch.setenv("OSKA_PROVIDER", "none")
     store = store_for(example_settings)
     request_id = _saved(store)
     other = _saved(store, version=2)
@@ -225,7 +225,7 @@ def test_the_commands_read_apply_and_reject(
     )
     assert applied.exit_code == 0
     assert "skill.md" in applied.stdout
-    assert "opsdeck revision build" in applied.stdout
+    assert "oska revision build" in applied.stdout
     assert (catalog_root / "runbook" / "sample" / "v1" / "skill.md").is_file()
 
     rejected = runner.invoke(

@@ -8,18 +8,18 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from opsdeck.catalog.registry import ServedCatalog, SkillRegistry
-from opsdeck.catalog.revision import (
+from oska.catalog.registry import ServedCatalog, SkillRegistry
+from oska.catalog.revision import (
     CHOICE_FILENAME,
     MANIFEST_FILENAME,
     RevisionStore,
     build_revision,
     revision_id,
 )
-from opsdeck.catalog.validator import CatalogError
-from opsdeck.cli.commands_revision import app
-from opsdeck.config import Settings
-from opsdeck.engine.factory import build_engine, revision_ledger
+from oska.catalog.validator import CatalogError
+from oska.cli.commands_revision import app
+from oska.config import Settings
+from oska.engine.factory import build_engine, revision_ledger
 
 TENANT = "default"
 RESTART = "runbook.service_restart"
@@ -233,7 +233,7 @@ def test_the_revision_commands_build_list_show_and_choose(revision_settings: Set
     that line belongs, and this test is about what the commands do.
     """
     where = ["--skills", str(revision_settings.skills_roots[0])]
-    state = {"OPSDECK_STATE_DIR": str(revision_settings.state_dir)}
+    state = {"OSKA_STATE_DIR": str(revision_settings.state_dir)}
     built = runner.invoke(app, ["build", *where], env=state)
     assert built.exit_code == 0, built.output
     revision = built.stdout.split("\t")[0].strip()

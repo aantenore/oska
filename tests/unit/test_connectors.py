@@ -8,12 +8,12 @@ from pathlib import Path
 import httpx
 import pytest
 
-from opsdeck.connectors.base import Connector, ConnectorError, timed
-from opsdeck.connectors.http import HttpConnector
-from opsdeck.connectors.mock import MockConnector
-from opsdeck.connectors.registry import ConnectorRegistry
-from opsdeck.connectors.shell import ShellConnector
-from opsdeck.contracts.common import ConnectorResult
+from oska.connectors.base import Connector, ConnectorError, timed
+from oska.connectors.http import HttpConnector
+from oska.connectors.mock import MockConnector
+from oska.connectors.registry import ConnectorRegistry
+from oska.connectors.shell import ShellConnector
+from oska.contracts.common import ConnectorResult
 
 RUNTIME = "integration.container_runtime"
 DEPLOYMENTS = "integration.deployment_control"
@@ -488,7 +488,7 @@ def test_shell_refuses_an_undeclared_operation() -> None:
 def test_shell_reports_a_command_that_is_not_there() -> None:
     connector = ShellConnector(
         id="integration.sample",
-        operations={"sample.missing": {"argv": ["opsdeck-no-such-command"]}},
+        operations={"sample.missing": {"argv": ["oska-no-such-command"]}},
     )
     result = connector.execute("sample.missing", {})
     assert result.ok is False
@@ -545,8 +545,8 @@ def test_fixture_paths_resolve_against_the_configuration_file(
 def test_environment_variables_expand_in_headers_and_address(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("OPSDECK_TEST_HOST", "runtime.internal")
-    monkeypatch.setenv("OPSDECK_TEST_TOKEN", "secret")
+    monkeypatch.setenv("OSKA_TEST_HOST", "runtime.internal")
+    monkeypatch.setenv("OSKA_TEST_TOKEN", "secret")
     config = tmp_path / "connectors.json"
     config.write_text(
         json.dumps(
@@ -554,8 +554,8 @@ def test_environment_variables_expand_in_headers_and_address(
                 "integrations": {
                     RUNTIME: {
                         "type": "http",
-                        "base_url": "https://${OPSDECK_TEST_HOST}/api",
-                        "headers": {"Authorization": "Bearer ${OPSDECK_TEST_TOKEN}"},
+                        "base_url": "https://${OSKA_TEST_HOST}/api",
+                        "headers": {"Authorization": "Bearer ${OSKA_TEST_TOKEN}"},
                         "operations": {"service.status": {"method": "GET", "path": "/s"}},
                     }
                 }

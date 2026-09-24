@@ -5,8 +5,8 @@ from __future__ import annotations
 from collections.abc import Callable
 from pathlib import Path
 
-from opsdeck.catalog.registry import SkillRegistry
-from opsdeck.catalog.resolver import CapabilityResolver, join_phrases
+from oska.catalog.registry import SkillRegistry
+from oska.catalog.resolver import CapabilityResolver, join_phrases
 
 
 def test_processes_are_ordered_by_declared_order_then_id(resolver: CapabilityResolver) -> None:

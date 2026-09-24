@@ -8,12 +8,12 @@ from pathlib import Path
 
 import pytest
 
-from opsdeck.catalog.enrichment import write_examples
-from opsdeck.catalog.registry import SkillRegistry
-from opsdeck.config import DiscoveryConfig, EnrichmentConfig, FastPathConfig
-from opsdeck.contracts.common import Message
-from opsdeck.improvement.learned import LearnedPhrase, write_learned
-from opsdeck.index.base import (
+from oska.catalog.enrichment import write_examples
+from oska.catalog.registry import SkillRegistry
+from oska.config import DiscoveryConfig, EnrichmentConfig, FastPathConfig
+from oska.contracts.common import Message
+from oska.improvement.learned import LearnedPhrase, write_learned
+from oska.index.base import (
     DECLARED,
     DERIVED,
     LEARNED,
@@ -23,13 +23,13 @@ from opsdeck.index.base import (
     textualize,
     tokenize,
 )
-from opsdeck.index.discovery import Discovery
-from opsdeck.index.embedding import EmbeddingIndex
-from opsdeck.index.keyword import KeywordIndex
-from opsdeck.planner.provider import ModelProviderError
-from opsdeck.planner.scripted import ScriptedModelProvider
-from opsdeck.router.base import RoutingContext
-from opsdeck.router.fast_path import FastPath
+from oska.index.discovery import Discovery
+from oska.index.embedding import EmbeddingIndex
+from oska.index.keyword import KeywordIndex
+from oska.planner.provider import ModelProviderError
+from oska.planner.scripted import ScriptedModelProvider
+from oska.router.base import RoutingContext
+from oska.router.fast_path import FastPath
 
 VECTOR_SIZE = 4096
 

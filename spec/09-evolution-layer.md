@@ -673,24 +673,24 @@ catalog got worse or the labeled set got old.
 
 ## In the reference implementation
 
-- `src/opsdeck/learning/` — `proposals.py` (store and drafting), `quality.py`
+- `src/oska/learning/` — `proposals.py` (store and drafting), `quality.py`
   (lints and report), `lifecycle.py` (transitions and publication),
   `changes.py` (the change request, its store, and the only function that
   writes into a catalog root).
 - `configs/runtime.json` — the change request root under `changes`.
-- `src/opsdeck/cli/commands_change.py` — `change list`, `change show`,
+- `src/oska/cli/commands_change.py` — `change list`, `change show`,
   `change apply --into ROOT --by NAME` and `change reject`; applying names the
   root and then says that serving it means building a revision.
 - `tests/unit/test_changes.py` — the store, and the invariant as an executable
   document: a turn, a draft and a full lifecycle to `published` run with every
   write into the example catalog raised as an error, and the tree hashed
   before and after.
-- `src/opsdeck/contracts/proposal.py` — the proposal, its states and its
+- `src/oska/contracts/proposal.py` — the proposal, its states and its
   history.
 - `schemas/proposal.schema.json` — the normative proposal contract.
 - `configs/runtime.json` — the publish root under `learning`.
-- `src/opsdeck/cli/commands_propose.py` and the `/proposals` routes of
-  `src/opsdeck/api/routes.py` — the two surfaces that draft a candidate and
+- `src/oska/cli/commands_propose.py` and the `/proposals` routes of
+  `src/oska/api/routes.py` — the two surfaces that draft a candidate and
   move it, both calling the same `transition` with the actor the caller named,
   and both reporting the change request the move composed. `GET /changes` and
   `GET /changes/{id}` read those requests; there is no route that applies one,
@@ -698,20 +698,20 @@ catalog got worse or the labeled set got old.
 - `examples/ops/scenarios/15_learning_lifecycle.json` — the lifecycle as an
   executable document: a session, a drafted candidate, a move without an actor
   that is refused, and a publication the catalog picks up.
-- `src/opsdeck/improvement/feedback.py` — the judgment on an answer, one
+- `src/oska/improvement/feedback.py` — the judgment on an answer, one
   append-only file per session under the state directory, and the rule that the
   last judgment of a turn is the one that counts.
-- `src/opsdeck/improvement/preferences.py` — the classification done at job
+- `src/oska/improvement/preferences.py` — the classification done at job
   time, the comment asking for an action that is discarded rather than stored,
   and the preference file that `improve revert` deletes.
-- `src/opsdeck/engine/reply.py` — the one place a preference is read, which is
+- `src/oska/engine/reply.py` — the one place a preference is read, which is
   the only place it may travel to.
-- `src/opsdeck/improvement/` — `signals.py` (the run, read back), `learned.py`
+- `src/oska/improvement/` — `signals.py` (the run, read back), `learned.py`
   (phrasings kept beside a procedure, and reverted), `tuning.py` (bounded
   threshold search and the overrides file), `evaluation.py` (the labeled set
   and its report), `gaps.py` (clusters and ontology suggestions), `job.py` and
   `report.py` (the four steps and what they wrote).
-- `src/opsdeck/cli/commands_improve.py` — `improve run`, `improve show`,
+- `src/oska/cli/commands_improve.py` — `improve run`, `improve show`,
   `improve feedback`, `improve revert` and `improve evaluate`; a run whose
   precision is below the previous report leaves a non-zero status and changes
   nothing, and `improve revert` names either a procedure whose phrasings are
@@ -722,9 +722,9 @@ catalog got worse or the labeled set got old.
   and Italian, with two cases that expect a tie.
 - `examples/ops/evaluation/redactions.json` — the patterns applied to a learned
   phrasing before it is written.
-- `src/opsdeck/index/base.py` — where the learned files are read back and
+- `src/oska/index/base.py` — where the learned files are read back and
   fingerprinted, and where a ranking is labeled declared, derived or learned;
-  `src/opsdeck/engine/factory.py` wires them into the two layers that rank the
+  `src/oska/engine/factory.py` wires them into the two layers that rank the
   catalog.
 - `tests/unit/test_improvement.py` — the ladder as an executable document: the
   run against a store that refuses anything but a draft, which is what proves

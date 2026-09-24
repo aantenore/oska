@@ -1,4 +1,4 @@
-# Adopting opsdeck on an existing system
+# Adopting oska on an existing system
 
 The runtime owns no business data. It reads and writes through the integration
 layer and keeps only conversation state, receipts, audit and proposals. Putting
@@ -49,8 +49,8 @@ validation error later. Name fields the way your operators say them, not the
 way the database does — this vocabulary is what the model and the people
 share.
 
-Check it with `opsdeck validate`, and look at it with
-`opsdeck ontology --format mermaid`.
+Check it with `oska validate`, and look at it with
+`oska ontology --format mermaid`.
 
 ## 2. Declare the integrations, with verification
 
@@ -144,7 +144,7 @@ verification, rollback. It is not decoration — it goes into the planning
 prompt, and a `Steps` section naming the operations in order is what makes a
 plan hold up.
 
-Run `opsdeck capabilities`, then `opsdeck run --text "..."`. The scope
+Run `oska capabilities`, then `oska run --text "..."`. The scope
 sentence you get back is computed from the `runtime` block; if it reads
 badly, fix the wording there, not a prompt.
 
@@ -204,7 +204,7 @@ acting on somebody's own account should never ask which account that is.
 ## 7. Write the scenarios
 
 Turn what you just did by hand into files under a scenario directory and run
-`opsdeck conform --scenarios <dir>`. At minimum: the read-only procedure,
+`oska conform --scenarios <dir>`. At minimum: the read-only procedure,
 level 1; the governed write with its approval, verified receipt and a
 repeated request that hits the ledger, level 2; the policy denial; a
 verification failure, forced by making the write succeed and the read-back
@@ -225,7 +225,7 @@ installation rather than to whoever writes the catalog.
 The first of those jobs changes how everything above is deployed. Reading skill
 files from a directory is right for one process on its own disk, and wrong as
 soon as there are replicas: each picks a change up at its own moment. Build the
-catalog as a revision instead — `opsdeck revision build`, then `opsdeck
+catalog as a revision instead — `oska revision build`, then `oska
 revision use` — and every process serves the same content under the same
 content-derived name, a session keeps the revision it started on, and every
 receipt says which revision it was written under.

@@ -281,7 +281,7 @@ deployment back.
 ```
 
 The `runtime` block is the only place the runtime's wording for a procedure
-comes from. `opsdeck capabilities` prints it; the HTTP `/capabilities` route
+comes from. `oska capabilities` prints it; the HTTP `/capabilities` route
 returns it; the reply writer is given it as the list of things it may suggest.
 
 A runbook with an empty `writes` list needs no policy: reads are gated by
@@ -365,8 +365,8 @@ must not:
 rather than guessed, and an empty value means the author did not say.
 
 ```sh
-opsdeck evaluate catalog
-opsdeck evaluate suggest runbook.service_health
+oska evaluate catalog
+oska evaluate suggest runbook.service_health
 ```
 
 `evaluate catalog` runs every set in the catalog through the same ranking the
@@ -466,7 +466,7 @@ the model naming it, not by a semantic score competing with its own members.
 
 ## Validator rules
 
-`opsdeck validate` runs `registry.parse_errors()` and then every rule below over
+`oska validate` runs `registry.parse_errors()` and then every rule below over
 every skill. Each issue prints as `severity: skill_id: code: message`, and the
 command exits non-zero when there is at least one.
 
@@ -534,6 +534,6 @@ the same field named by both, `runbooks` on anything but a composite, a
 composite with no runbooks, and a write operation with no `verify`.
 
 An evaluation set is not part of validation. It is a file beside the skill
-rather than a declaration in it, and `opsdeck evaluate catalog` is what reads
+rather than a declaration in it, and `oska evaluate catalog` is what reads
 it; a set that cannot be read is reported there and by the quality gate, not by
 `validate`.

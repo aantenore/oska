@@ -416,246 +416,246 @@ accident.
 
 | Id | Module | Proof |
 | --- | --- | --- |
-| OSKA-INT-1 | `src/opsdeck/contracts/skill.py` | `tests/unit/test_catalog.py` |
-| OSKA-INT-2 | `src/opsdeck/connectors/mock.py`, `http.py`, `shell.py` | `tests/unit/test_connectors.py` |
-| OSKA-INT-3 | `src/opsdeck/planner/planner.py` | `tests/unit/test_planner.py` |
-| OSKA-INT-4 | `src/opsdeck/contracts/skill.py` | `tests/unit/test_catalog.py` |
-| OSKA-INT-5 | `src/opsdeck/catalog/validator.py`, `src/opsdeck/ontology/graph.py` | `tests/unit/test_catalog.py`, `tests/unit/test_ontology.py` |
-| OSKA-INT-6 | `src/opsdeck/connectors/base.py` | `tests/unit/test_connectors.py` |
-| OSKA-INT-7 | `src/opsdeck/connectors/shell.py` | `tests/unit/test_connectors.py` |
-| OSKA-INT-8 | `src/opsdeck/connectors/http.py` | `tests/unit/test_connectors.py` |
-| OSKA-INT-9 | `src/opsdeck/connectors/base.py`, `src/opsdeck/planner/planner.py` | `tests/unit/test_connectors.py` |
-| OSKA-INT-10 | `src/opsdeck/connectors/registry.py` | `tests/unit/test_connectors.py` |
-| OSKA-INT-11 | `src/opsdeck/governance/ledger.py` | `tests/unit/test_governance.py` |
-| OSKA-INT-12 | `src/opsdeck/connectors/mock.py` | `tests/unit/test_connectors.py` |
-| OSKA-INT-13 | `src/opsdeck/connectors/base.py`, `registry.py`, `src/opsdeck/config.py` | `tests/unit/test_resilience.py` |
-| OSKA-INT-14 | `src/opsdeck/connectors/base.py`, `http.py`, `shell.py`, `mock.py` | `tests/unit/test_resilience.py` |
-| OSKA-INT-15 | `src/opsdeck/connectors/base.py` | `tests/unit/test_resilience.py` |
-| OSKA-INT-16 | `src/opsdeck/connectors/base.py` | `tests/unit/test_resilience.py` |
-| OSKA-INT-17 | `src/opsdeck/connectors/base.py` | `tests/unit/test_resilience.py` |
-| OSKA-INT-18 | `src/opsdeck/engine/execution.py`, `src/opsdeck/engine/outcomes.py` | `tests/unit/test_resilience.py`, `examples/ops/scenarios/23_capability_unavailable.json` |
-| OSKA-INT-19 | `src/opsdeck/connectors/mock.py` | `tests/unit/test_resilience.py` |
+| OSKA-INT-1 | `src/oska/contracts/skill.py` | `tests/unit/test_catalog.py` |
+| OSKA-INT-2 | `src/oska/connectors/mock.py`, `http.py`, `shell.py` | `tests/unit/test_connectors.py` |
+| OSKA-INT-3 | `src/oska/planner/planner.py` | `tests/unit/test_planner.py` |
+| OSKA-INT-4 | `src/oska/contracts/skill.py` | `tests/unit/test_catalog.py` |
+| OSKA-INT-5 | `src/oska/catalog/validator.py`, `src/oska/ontology/graph.py` | `tests/unit/test_catalog.py`, `tests/unit/test_ontology.py` |
+| OSKA-INT-6 | `src/oska/connectors/base.py` | `tests/unit/test_connectors.py` |
+| OSKA-INT-7 | `src/oska/connectors/shell.py` | `tests/unit/test_connectors.py` |
+| OSKA-INT-8 | `src/oska/connectors/http.py` | `tests/unit/test_connectors.py` |
+| OSKA-INT-9 | `src/oska/connectors/base.py`, `src/oska/planner/planner.py` | `tests/unit/test_connectors.py` |
+| OSKA-INT-10 | `src/oska/connectors/registry.py` | `tests/unit/test_connectors.py` |
+| OSKA-INT-11 | `src/oska/governance/ledger.py` | `tests/unit/test_governance.py` |
+| OSKA-INT-12 | `src/oska/connectors/mock.py` | `tests/unit/test_connectors.py` |
+| OSKA-INT-13 | `src/oska/connectors/base.py`, `registry.py`, `src/oska/config.py` | `tests/unit/test_resilience.py` |
+| OSKA-INT-14 | `src/oska/connectors/base.py`, `http.py`, `shell.py`, `mock.py` | `tests/unit/test_resilience.py` |
+| OSKA-INT-15 | `src/oska/connectors/base.py` | `tests/unit/test_resilience.py` |
+| OSKA-INT-16 | `src/oska/connectors/base.py` | `tests/unit/test_resilience.py` |
+| OSKA-INT-17 | `src/oska/connectors/base.py` | `tests/unit/test_resilience.py` |
+| OSKA-INT-18 | `src/oska/engine/execution.py`, `src/oska/engine/outcomes.py` | `tests/unit/test_resilience.py`, `examples/ops/scenarios/23_capability_unavailable.json` |
+| OSKA-INT-19 | `src/oska/connectors/mock.py` | `tests/unit/test_resilience.py` |
 
 ### Ontology (L2)
 
 | Id | Module | Proof |
 | --- | --- | --- |
-| OSKA-ONT-1 | `src/opsdeck/contracts/skill.py`, `src/opsdeck/ontology/graph.py` | `tests/unit/test_catalog.py`, `tests/unit/test_ontology.py` |
-| OSKA-ONT-2 | `src/opsdeck/contracts/skill.py`, `src/opsdeck/catalog/validator.py` | `tests/unit/test_catalog.py`, `tests/unit/test_ontology.py` |
-| OSKA-ONT-3 | `src/opsdeck/catalog/validator.py` | `tests/unit/test_catalog.py` |
-| OSKA-ONT-4 | `src/opsdeck/contracts/skill.py`, `src/opsdeck/catalog/validator.py` | `tests/unit/test_catalog.py`, `tests/unit/test_ontology.py` |
-| OSKA-ONT-5 | `src/opsdeck/catalog/validator.py` | `tests/unit/test_catalog.py` |
-| OSKA-ONT-6 | `src/opsdeck/ontology/queries.py` | `tests/unit/test_ontology.py` |
-| OSKA-ONT-7 | `src/opsdeck/contracts/skill.py` | `tests/unit/test_catalog.py` |
-| OSKA-ONT-8 | `src/opsdeck/ontology/queries.py` | `tests/unit/test_ontology.py`, `tests/unit/test_cli.py` |
-| OSKA-ONT-9 | `src/opsdeck/catalog/registry.py` | `tests/unit/test_catalog.py` |
-| OSKA-ONT-10 | `src/opsdeck/catalog/validator.py` | `tests/unit/test_catalog.py` |
-| OSKA-ONT-11 | `src/opsdeck/catalog/validator.py` | `tests/unit/test_catalog.py` |
-| OSKA-ONT-12 | `src/opsdeck/ontology/graph.py` | `tests/unit/test_ontology.py` |
-| OSKA-ONT-13 | `src/opsdeck/ontology/export.py` | `tests/unit/test_ontology.py` |
-| OSKA-ONT-14 | `src/opsdeck/contracts/skill.py`, `src/opsdeck/catalog/validator.py` | `tests/unit/test_lifecycle.py` |
-| OSKA-ONT-15 | `src/opsdeck/catalog/validator.py` | `tests/unit/test_lifecycle.py` |
-| OSKA-ONT-16 | `src/opsdeck/catalog/validator.py` | `tests/unit/test_lifecycle.py` |
-| OSKA-ONT-17 | `src/opsdeck/catalog/validator.py`, `src/opsdeck/engine/execution.py` | `tests/unit/test_lifecycle.py` |
-| OSKA-ONT-18 | `src/opsdeck/catalog/validator.py` | `tests/unit/test_lifecycle.py` |
-| OSKA-ONT-19 | `src/opsdeck/catalog/validator.py` | `tests/unit/test_lifecycle.py` |
-| OSKA-ONT-20 | `src/opsdeck/engine/execution.py`, `src/opsdeck/governance/capabilities.py` | `tests/unit/test_lifecycle.py`, `examples/ops/scenarios/17_illegal_move.json` |
-| OSKA-ONT-21 | `src/opsdeck/governance/verification.py` | `tests/unit/test_lifecycle.py` |
-| OSKA-ONT-22 | `src/opsdeck/catalog/resolver.py`, `src/opsdeck/engine/goals.py`, `src/opsdeck/ontology/queries.py` | `tests/unit/test_lifecycle.py`, `examples/access/scenarios/07_required_next_step.json` |
-| OSKA-ONT-23 | `src/opsdeck/engine/execution.py`, `src/opsdeck/governance/verification.py`, `src/opsdeck/contracts/skill.py` | `tests/unit/test_lifecycle.py`, `examples/ops/scenarios/22_state_of_another_object.json` |
+| OSKA-ONT-1 | `src/oska/contracts/skill.py`, `src/oska/ontology/graph.py` | `tests/unit/test_catalog.py`, `tests/unit/test_ontology.py` |
+| OSKA-ONT-2 | `src/oska/contracts/skill.py`, `src/oska/catalog/validator.py` | `tests/unit/test_catalog.py`, `tests/unit/test_ontology.py` |
+| OSKA-ONT-3 | `src/oska/catalog/validator.py` | `tests/unit/test_catalog.py` |
+| OSKA-ONT-4 | `src/oska/contracts/skill.py`, `src/oska/catalog/validator.py` | `tests/unit/test_catalog.py`, `tests/unit/test_ontology.py` |
+| OSKA-ONT-5 | `src/oska/catalog/validator.py` | `tests/unit/test_catalog.py` |
+| OSKA-ONT-6 | `src/oska/ontology/queries.py` | `tests/unit/test_ontology.py` |
+| OSKA-ONT-7 | `src/oska/contracts/skill.py` | `tests/unit/test_catalog.py` |
+| OSKA-ONT-8 | `src/oska/ontology/queries.py` | `tests/unit/test_ontology.py`, `tests/unit/test_cli.py` |
+| OSKA-ONT-9 | `src/oska/catalog/registry.py` | `tests/unit/test_catalog.py` |
+| OSKA-ONT-10 | `src/oska/catalog/validator.py` | `tests/unit/test_catalog.py` |
+| OSKA-ONT-11 | `src/oska/catalog/validator.py` | `tests/unit/test_catalog.py` |
+| OSKA-ONT-12 | `src/oska/ontology/graph.py` | `tests/unit/test_ontology.py` |
+| OSKA-ONT-13 | `src/oska/ontology/export.py` | `tests/unit/test_ontology.py` |
+| OSKA-ONT-14 | `src/oska/contracts/skill.py`, `src/oska/catalog/validator.py` | `tests/unit/test_lifecycle.py` |
+| OSKA-ONT-15 | `src/oska/catalog/validator.py` | `tests/unit/test_lifecycle.py` |
+| OSKA-ONT-16 | `src/oska/catalog/validator.py` | `tests/unit/test_lifecycle.py` |
+| OSKA-ONT-17 | `src/oska/catalog/validator.py`, `src/oska/engine/execution.py` | `tests/unit/test_lifecycle.py` |
+| OSKA-ONT-18 | `src/oska/catalog/validator.py` | `tests/unit/test_lifecycle.py` |
+| OSKA-ONT-19 | `src/oska/catalog/validator.py` | `tests/unit/test_lifecycle.py` |
+| OSKA-ONT-20 | `src/oska/engine/execution.py`, `src/oska/governance/capabilities.py` | `tests/unit/test_lifecycle.py`, `examples/ops/scenarios/17_illegal_move.json` |
+| OSKA-ONT-21 | `src/oska/governance/verification.py` | `tests/unit/test_lifecycle.py` |
+| OSKA-ONT-22 | `src/oska/catalog/resolver.py`, `src/oska/engine/goals.py`, `src/oska/ontology/queries.py` | `tests/unit/test_lifecycle.py`, `examples/access/scenarios/07_required_next_step.json` |
+| OSKA-ONT-23 | `src/oska/engine/execution.py`, `src/oska/governance/verification.py`, `src/oska/contracts/skill.py` | `tests/unit/test_lifecycle.py`, `examples/ops/scenarios/22_state_of_another_object.json` |
 
 ### Skill (L3)
 
 | Id | Module | Proof |
 | --- | --- | --- |
-| OSKA-SKL-1 | `src/opsdeck/contracts/skill.py` | `tests/unit/test_catalog.py` |
-| OSKA-SKL-2 | `src/opsdeck/contracts/skill.py` | `tests/unit/test_catalog.py` |
-| OSKA-SKL-3 | `src/opsdeck/catalog/validator.py` | `tests/unit/test_catalog.py` |
-| OSKA-SKL-4 | `src/opsdeck/catalog/validator.py` | `tests/unit/test_catalog.py` |
-| OSKA-SKL-5 | `src/opsdeck/catalog/loader.py`, `validator.py` | `tests/unit/test_catalog.py` |
-| OSKA-SKL-6 | `src/opsdeck/catalog/registry.py` | `tests/unit/test_catalog.py` |
-| OSKA-SKL-7 | `src/opsdeck/catalog/registry.py` | `tests/unit/test_catalog.py` |
-| OSKA-SKL-8 | `src/opsdeck/catalog/validator.py` | `tests/unit/test_catalog.py` |
-| OSKA-SKL-9 | `src/opsdeck/catalog/validator.py`, `src/opsdeck/engine/factory.py` | `tests/unit/test_engine.py`, `tests/unit/test_cli.py` |
-| OSKA-SKL-10 | `src/opsdeck/catalog/registry.py` | `tests/unit/test_catalog.py` |
-| OSKA-SKL-11 | `src/opsdeck/catalog/resolver.py` | `tests/unit/test_resolver.py`, `examples/ops/scenarios/01_greeting.json` |
-| OSKA-SKL-12 | `src/opsdeck/catalog/resolver.py` | `tests/unit/test_resolver.py` |
-| OSKA-SKL-13 | `src/opsdeck/catalog/loader.py`, `registry.py` | `tests/unit/test_catalog.py` |
-| OSKA-SKL-14 | `src/opsdeck/governance/capabilities.py` | `tests/unit/test_governance.py` |
-| OSKA-SKL-15 | `src/opsdeck/contracts/skill.py` | `tests/unit/test_human_inputs.py` |
-| OSKA-SKL-16 | `src/opsdeck/planner/planner.py` | `tests/unit/test_lifecycle.py`, `examples/ops/scenarios/21_human_input.json` |
-| OSKA-SKL-17 | `src/opsdeck/planner/prompts.py`, `src/opsdeck/planner/planner.py` | `tests/unit/test_human_inputs.py`, `tests/unit/test_planner.py` |
-| OSKA-SKL-18 | `src/opsdeck/catalog/revision.py` | `tests/unit/test_revision.py` |
-| OSKA-SKL-19 | `src/opsdeck/catalog/revision.py` | `tests/unit/test_revision.py` |
-| OSKA-SKL-20 | `src/opsdeck/catalog/revision.py`, `src/opsdeck/catalog/validator.py` | `tests/unit/test_revision.py` |
-| OSKA-SKL-21 | `src/opsdeck/catalog/revision.py` | `tests/unit/test_revision.py` |
-| OSKA-SKL-22 | `src/opsdeck/catalog/revision.py` | `tests/unit/test_pinning.py` |
-| OSKA-SKL-23 | `src/opsdeck/catalog/registry.py` | `tests/unit/test_revision.py` |
-| OSKA-SKL-24 | `src/opsdeck/catalog/registry.py`, `src/opsdeck/engine/factory.py` | `tests/unit/test_revision.py` |
-| OSKA-SKL-25 | `src/opsdeck/catalog/evaluation.py` | `tests/unit/test_skill_evaluation.py` |
-| OSKA-SKL-26 | `src/opsdeck/catalog/evaluation.py`, `src/opsdeck/cli/commands_evaluate.py` | `tests/unit/test_skill_evaluation.py` |
-| OSKA-SKL-27 | `src/opsdeck/catalog/evaluation.py` | `tests/unit/test_skill_evaluation.py` |
+| OSKA-SKL-1 | `src/oska/contracts/skill.py` | `tests/unit/test_catalog.py` |
+| OSKA-SKL-2 | `src/oska/contracts/skill.py` | `tests/unit/test_catalog.py` |
+| OSKA-SKL-3 | `src/oska/catalog/validator.py` | `tests/unit/test_catalog.py` |
+| OSKA-SKL-4 | `src/oska/catalog/validator.py` | `tests/unit/test_catalog.py` |
+| OSKA-SKL-5 | `src/oska/catalog/loader.py`, `validator.py` | `tests/unit/test_catalog.py` |
+| OSKA-SKL-6 | `src/oska/catalog/registry.py` | `tests/unit/test_catalog.py` |
+| OSKA-SKL-7 | `src/oska/catalog/registry.py` | `tests/unit/test_catalog.py` |
+| OSKA-SKL-8 | `src/oska/catalog/validator.py` | `tests/unit/test_catalog.py` |
+| OSKA-SKL-9 | `src/oska/catalog/validator.py`, `src/oska/engine/factory.py` | `tests/unit/test_engine.py`, `tests/unit/test_cli.py` |
+| OSKA-SKL-10 | `src/oska/catalog/registry.py` | `tests/unit/test_catalog.py` |
+| OSKA-SKL-11 | `src/oska/catalog/resolver.py` | `tests/unit/test_resolver.py`, `examples/ops/scenarios/01_greeting.json` |
+| OSKA-SKL-12 | `src/oska/catalog/resolver.py` | `tests/unit/test_resolver.py` |
+| OSKA-SKL-13 | `src/oska/catalog/loader.py`, `registry.py` | `tests/unit/test_catalog.py` |
+| OSKA-SKL-14 | `src/oska/governance/capabilities.py` | `tests/unit/test_governance.py` |
+| OSKA-SKL-15 | `src/oska/contracts/skill.py` | `tests/unit/test_human_inputs.py` |
+| OSKA-SKL-16 | `src/oska/planner/planner.py` | `tests/unit/test_lifecycle.py`, `examples/ops/scenarios/21_human_input.json` |
+| OSKA-SKL-17 | `src/oska/planner/prompts.py`, `src/oska/planner/planner.py` | `tests/unit/test_human_inputs.py`, `tests/unit/test_planner.py` |
+| OSKA-SKL-18 | `src/oska/catalog/revision.py` | `tests/unit/test_revision.py` |
+| OSKA-SKL-19 | `src/oska/catalog/revision.py` | `tests/unit/test_revision.py` |
+| OSKA-SKL-20 | `src/oska/catalog/revision.py`, `src/oska/catalog/validator.py` | `tests/unit/test_revision.py` |
+| OSKA-SKL-21 | `src/oska/catalog/revision.py` | `tests/unit/test_revision.py` |
+| OSKA-SKL-22 | `src/oska/catalog/revision.py` | `tests/unit/test_pinning.py` |
+| OSKA-SKL-23 | `src/oska/catalog/registry.py` | `tests/unit/test_revision.py` |
+| OSKA-SKL-24 | `src/oska/catalog/registry.py`, `src/oska/engine/factory.py` | `tests/unit/test_revision.py` |
+| OSKA-SKL-25 | `src/oska/catalog/evaluation.py` | `tests/unit/test_skill_evaluation.py` |
+| OSKA-SKL-26 | `src/oska/catalog/evaluation.py`, `src/oska/cli/commands_evaluate.py` | `tests/unit/test_skill_evaluation.py` |
+| OSKA-SKL-27 | `src/oska/catalog/evaluation.py` | `tests/unit/test_skill_evaluation.py` |
 
 ### Governance (L4)
 
 | Id | Module | Proof |
 | --- | --- | --- |
-| OSKA-GOV-1 | `src/opsdeck/governance/capabilities.py` | `tests/unit/test_governance.py`, `examples/ops/scenarios/10_invalid_plan.json` |
-| OSKA-GOV-2 | `src/opsdeck/governance/policy_engine.py` | `tests/unit/test_governance.py` |
-| OSKA-GOV-3 | `src/opsdeck/governance/policy_engine.py` | `tests/unit/test_governance.py` |
-| OSKA-GOV-4 | `src/opsdeck/governance/approval.py`, `src/opsdeck/engine/execution.py` | `examples/ops/scenarios/02_restart_staging.json` |
-| OSKA-GOV-5 | `src/opsdeck/governance/approval.py` | `tests/unit/test_governance.py`, `tests/unit/test_engine.py` |
-| OSKA-GOV-6 | `src/opsdeck/engine/engine.py` | `examples/ops/scenarios/03_restart_production.json` |
-| OSKA-GOV-7 | `src/opsdeck/engine/engine.py`, `src/opsdeck/engine/execution.py` | `examples/ops/scenarios/16_denied_at_approval.json` |
-| OSKA-GOV-8 | `src/opsdeck/governance/ledger.py`, `src/opsdeck/engine/execution.py` | `tests/unit/test_engine.py` |
-| OSKA-GOV-9 | `src/opsdeck/governance/ledger.py` | `tests/unit/test_governance.py` |
-| OSKA-GOV-10 | `src/opsdeck/governance/verification.py` | `tests/unit/test_governance.py`, `examples/ops/scenarios/07_verification_failure.json` |
-| OSKA-GOV-11 | `src/opsdeck/governance/ledger.py`, `src/opsdeck/engine/execution.py` | `examples/ops/scenarios/02_restart_staging.json` |
-| OSKA-GOV-12 | `src/opsdeck/governance/ledger.py` | `tests/unit/test_governance.py`, `examples/ops/scenarios/12_max_per_session.json` |
-| OSKA-GOV-13 | `src/opsdeck/engine/reply.py`, `src/opsdeck/engine/outcomes.py` | `tests/scenarios/test_scenarios.py`, `tests/unit/test_engine.py` |
-| OSKA-GOV-14 | `src/opsdeck/audit/events.py`, `src/opsdeck/engine/execution.py` | `tests/unit/test_audit.py` |
-| OSKA-GOV-15 | `src/opsdeck/governance/guardrails.py`, `configs/guardrails.json` | `tests/unit/test_guardrails.py` |
-| OSKA-GOV-16 | `src/opsdeck/governance/guardrails.py`, `configs/guardrails.json` | `tests/unit/test_guardrails.py` |
-| OSKA-GOV-17 | `src/opsdeck/governance/guardrails.py` | `tests/unit/test_guardrails.py` |
-| OSKA-GOV-18 | `src/opsdeck/governance/guardrails.py` | `tests/unit/test_guardrails.py` |
-| OSKA-GOV-19 | `src/opsdeck/engine/engine.py`, `src/opsdeck/governance/guardrails.py` | `tests/unit/test_guardrails.py`, `examples/ops/scenarios/19_guardrail_block.json` |
-| OSKA-GOV-20 | `src/opsdeck/governance/guardrails.py`, `configs/guardrails.json` | `tests/unit/test_guardrails.py` |
-| OSKA-GOV-21 | `src/opsdeck/governance/ledger.py`, `src/opsdeck/engine/execution.py` | `tests/unit/test_resilience.py` |
-| OSKA-GOV-22 | `src/opsdeck/governance/ledger.py` | `tests/unit/test_resilience.py` |
-| OSKA-GOV-23 | `src/opsdeck/governance/ledger.py` | `tests/unit/test_resilience.py` |
-| OSKA-GOV-24 | `src/opsdeck/engine/outcomes.py`, `src/opsdeck/engine/execution.py` | `tests/unit/test_resilience.py`, `examples/ops/scenarios/23_capability_unavailable.json` |
-| OSKA-GOV-25 | `src/opsdeck/contracts/skill.py`, `src/opsdeck/catalog/validator.py` | `tests/unit/test_identity.py` |
-| OSKA-GOV-26 | `src/opsdeck/governance/identity.py`, `src/opsdeck/engine/execution.py` | `tests/unit/test_identity.py` |
-| OSKA-GOV-27 | `src/opsdeck/planner/prompts.py`, `src/opsdeck/engine/execution.py` | `tests/unit/test_identity.py` |
-| OSKA-GOV-28 | `src/opsdeck/governance/identity.py`, `src/opsdeck/engine/engine.py` | `tests/unit/test_identity.py` |
-| OSKA-GOV-29 | `src/opsdeck/engine/engine.py`, `src/opsdeck/engine/state.py`, `src/opsdeck/api/routes.py` | `tests/unit/test_identity.py` |
-| OSKA-GOV-30 | `src/opsdeck/engine/execution.py`, `src/opsdeck/governance/verification.py` | `tests/unit/test_resilience.py` |
-| OSKA-GOV-31 | `src/opsdeck/engine/execution.py`, `src/opsdeck/governance/ledger.py` | `tests/unit/test_resilience.py` |
-| OSKA-GOV-32 | `src/opsdeck/engine/execution.py`, `src/opsdeck/governance/ledger.py` | `tests/unit/test_resilience.py` |
+| OSKA-GOV-1 | `src/oska/governance/capabilities.py` | `tests/unit/test_governance.py`, `examples/ops/scenarios/10_invalid_plan.json` |
+| OSKA-GOV-2 | `src/oska/governance/policy_engine.py` | `tests/unit/test_governance.py` |
+| OSKA-GOV-3 | `src/oska/governance/policy_engine.py` | `tests/unit/test_governance.py` |
+| OSKA-GOV-4 | `src/oska/governance/approval.py`, `src/oska/engine/execution.py` | `examples/ops/scenarios/02_restart_staging.json` |
+| OSKA-GOV-5 | `src/oska/governance/approval.py` | `tests/unit/test_governance.py`, `tests/unit/test_engine.py` |
+| OSKA-GOV-6 | `src/oska/engine/engine.py` | `examples/ops/scenarios/03_restart_production.json` |
+| OSKA-GOV-7 | `src/oska/engine/engine.py`, `src/oska/engine/execution.py` | `examples/ops/scenarios/16_denied_at_approval.json` |
+| OSKA-GOV-8 | `src/oska/governance/ledger.py`, `src/oska/engine/execution.py` | `tests/unit/test_engine.py` |
+| OSKA-GOV-9 | `src/oska/governance/ledger.py` | `tests/unit/test_governance.py` |
+| OSKA-GOV-10 | `src/oska/governance/verification.py` | `tests/unit/test_governance.py`, `examples/ops/scenarios/07_verification_failure.json` |
+| OSKA-GOV-11 | `src/oska/governance/ledger.py`, `src/oska/engine/execution.py` | `examples/ops/scenarios/02_restart_staging.json` |
+| OSKA-GOV-12 | `src/oska/governance/ledger.py` | `tests/unit/test_governance.py`, `examples/ops/scenarios/12_max_per_session.json` |
+| OSKA-GOV-13 | `src/oska/engine/reply.py`, `src/oska/engine/outcomes.py` | `tests/scenarios/test_scenarios.py`, `tests/unit/test_engine.py` |
+| OSKA-GOV-14 | `src/oska/audit/events.py`, `src/oska/engine/execution.py` | `tests/unit/test_audit.py` |
+| OSKA-GOV-15 | `src/oska/governance/guardrails.py`, `configs/guardrails.json` | `tests/unit/test_guardrails.py` |
+| OSKA-GOV-16 | `src/oska/governance/guardrails.py`, `configs/guardrails.json` | `tests/unit/test_guardrails.py` |
+| OSKA-GOV-17 | `src/oska/governance/guardrails.py` | `tests/unit/test_guardrails.py` |
+| OSKA-GOV-18 | `src/oska/governance/guardrails.py` | `tests/unit/test_guardrails.py` |
+| OSKA-GOV-19 | `src/oska/engine/engine.py`, `src/oska/governance/guardrails.py` | `tests/unit/test_guardrails.py`, `examples/ops/scenarios/19_guardrail_block.json` |
+| OSKA-GOV-20 | `src/oska/governance/guardrails.py`, `configs/guardrails.json` | `tests/unit/test_guardrails.py` |
+| OSKA-GOV-21 | `src/oska/governance/ledger.py`, `src/oska/engine/execution.py` | `tests/unit/test_resilience.py` |
+| OSKA-GOV-22 | `src/oska/governance/ledger.py` | `tests/unit/test_resilience.py` |
+| OSKA-GOV-23 | `src/oska/governance/ledger.py` | `tests/unit/test_resilience.py` |
+| OSKA-GOV-24 | `src/oska/engine/outcomes.py`, `src/oska/engine/execution.py` | `tests/unit/test_resilience.py`, `examples/ops/scenarios/23_capability_unavailable.json` |
+| OSKA-GOV-25 | `src/oska/contracts/skill.py`, `src/oska/catalog/validator.py` | `tests/unit/test_identity.py` |
+| OSKA-GOV-26 | `src/oska/governance/identity.py`, `src/oska/engine/execution.py` | `tests/unit/test_identity.py` |
+| OSKA-GOV-27 | `src/oska/planner/prompts.py`, `src/oska/engine/execution.py` | `tests/unit/test_identity.py` |
+| OSKA-GOV-28 | `src/oska/governance/identity.py`, `src/oska/engine/engine.py` | `tests/unit/test_identity.py` |
+| OSKA-GOV-29 | `src/oska/engine/engine.py`, `src/oska/engine/state.py`, `src/oska/api/routes.py` | `tests/unit/test_identity.py` |
+| OSKA-GOV-30 | `src/oska/engine/execution.py`, `src/oska/governance/verification.py` | `tests/unit/test_resilience.py` |
+| OSKA-GOV-31 | `src/oska/engine/execution.py`, `src/oska/governance/ledger.py` | `tests/unit/test_resilience.py` |
+| OSKA-GOV-32 | `src/oska/engine/execution.py`, `src/oska/governance/ledger.py` | `tests/unit/test_resilience.py` |
 
 ### Cognition (L5)
 
 | Id | Module | Proof |
 | --- | --- | --- |
-| OSKA-COG-1 | `src/opsdeck/index/`, `src/opsdeck/router/`, `src/opsdeck/planner/` | `tests/unit/test_layering.py` |
-| OSKA-COG-2 | `src/opsdeck/index/discovery.py` | `tests/unit/test_index.py` |
-| OSKA-COG-3 | `src/opsdeck/index/discovery.py` | `tests/unit/test_index.py`, `examples/ops/scenarios/08_off_scope.json` |
-| OSKA-COG-4 | `src/opsdeck/index/discovery.py`, `src/opsdeck/planner/planner.py` | `tests/unit/test_index.py`, `tests/unit/test_planner.py` |
-| OSKA-COG-5 | `src/opsdeck/router/__init__.py` | `tests/unit/test_router.py` |
-| OSKA-COG-6 | `src/opsdeck/router/fast_path.py` | `tests/unit/test_router.py` |
-| OSKA-COG-7 | `src/opsdeck/planner/planner.py` | `tests/unit/test_planner.py` |
-| OSKA-COG-8 | `src/opsdeck/planner/planner.py` | `tests/unit/test_planner.py`, `examples/ops/scenarios/10_invalid_plan.json` |
-| OSKA-COG-9 | `src/opsdeck/planner/planner.py` | `tests/unit/test_planner.py`, `examples/ops/scenarios/04_rollback_rejected.json` |
-| OSKA-COG-10 | `src/opsdeck/planner/planner.py`, `src/opsdeck/engine/reply.py` | `tests/unit/test_planner.py` |
-| OSKA-COG-11 | `src/opsdeck/planner/scripted.py` | `tests/scenarios/test_scenarios.py` |
-| OSKA-COG-12 | `src/opsdeck/catalog/enrichment.py`, `src/opsdeck/engine/engine.py` | `tests/unit/test_index.py`, `tests/unit/test_trace.py` |
-| OSKA-COG-13 | `src/opsdeck/catalog/enrichment.py`, `src/opsdeck/learning/lifecycle.py`, `src/opsdeck/cli/commands_enrich.py` | `tests/unit/test_enrichment.py`, `tests/unit/test_index.py` |
-| OSKA-COG-14 | `src/opsdeck/catalog/enrichment.py` | `tests/unit/test_enrichment.py` |
-| OSKA-COG-15 | `src/opsdeck/catalog/enrichment.py` | `tests/unit/test_enrichment.py` |
-| OSKA-COG-16 | `src/opsdeck/index/base.py` | `tests/unit/test_index.py` |
-| OSKA-COG-17 | `src/opsdeck/index/base.py`, `src/opsdeck/contracts/common.py` | `tests/unit/test_index.py` |
-| OSKA-COG-17a | `src/opsdeck/index/base.py`, `src/opsdeck/index/discovery.py` | `tests/unit/test_index.py` |
-| OSKA-COG-18 | `src/opsdeck/learning/lifecycle.py` | `tests/unit/test_enrichment.py` |
-| OSKA-COG-19 | `src/opsdeck/engine/engine.py`, `src/opsdeck/engine/state.py`, `src/opsdeck/router/base.py` | `tests/unit/test_router.py`, `examples/ops/scenarios/20_other_language.json` |
-| OSKA-COG-20 | `src/opsdeck/catalog/resolver.py`, `src/opsdeck/engine/reply.py`, `src/opsdeck/planner/planner.py` | `tests/unit/test_labels.py` |
-| OSKA-COG-21 | `src/opsdeck/planner/planner.py`, `src/opsdeck/engine/reply.py` | `tests/unit/test_labels.py` |
-| OSKA-COG-22 | `src/opsdeck/planner/prompts.py`, `src/opsdeck/router/model_router.py` | `tests/unit/test_labels.py` |
-| OSKA-COG-23 | `src/opsdeck/engine/reply.py`, `src/opsdeck/engine/outcomes.py` | `tests/unit/test_labels.py` |
-| OSKA-COG-24 | `src/opsdeck/improvement/preferences.py`, `src/opsdeck/engine/reply.py` | `tests/unit/test_labels.py` |
+| OSKA-COG-1 | `src/oska/index/`, `src/oska/router/`, `src/oska/planner/` | `tests/unit/test_layering.py` |
+| OSKA-COG-2 | `src/oska/index/discovery.py` | `tests/unit/test_index.py` |
+| OSKA-COG-3 | `src/oska/index/discovery.py` | `tests/unit/test_index.py`, `examples/ops/scenarios/08_off_scope.json` |
+| OSKA-COG-4 | `src/oska/index/discovery.py`, `src/oska/planner/planner.py` | `tests/unit/test_index.py`, `tests/unit/test_planner.py` |
+| OSKA-COG-5 | `src/oska/router/__init__.py` | `tests/unit/test_router.py` |
+| OSKA-COG-6 | `src/oska/router/fast_path.py` | `tests/unit/test_router.py` |
+| OSKA-COG-7 | `src/oska/planner/planner.py` | `tests/unit/test_planner.py` |
+| OSKA-COG-8 | `src/oska/planner/planner.py` | `tests/unit/test_planner.py`, `examples/ops/scenarios/10_invalid_plan.json` |
+| OSKA-COG-9 | `src/oska/planner/planner.py` | `tests/unit/test_planner.py`, `examples/ops/scenarios/04_rollback_rejected.json` |
+| OSKA-COG-10 | `src/oska/planner/planner.py`, `src/oska/engine/reply.py` | `tests/unit/test_planner.py` |
+| OSKA-COG-11 | `src/oska/planner/scripted.py` | `tests/scenarios/test_scenarios.py` |
+| OSKA-COG-12 | `src/oska/catalog/enrichment.py`, `src/oska/engine/engine.py` | `tests/unit/test_index.py`, `tests/unit/test_trace.py` |
+| OSKA-COG-13 | `src/oska/catalog/enrichment.py`, `src/oska/learning/lifecycle.py`, `src/oska/cli/commands_enrich.py` | `tests/unit/test_enrichment.py`, `tests/unit/test_index.py` |
+| OSKA-COG-14 | `src/oska/catalog/enrichment.py` | `tests/unit/test_enrichment.py` |
+| OSKA-COG-15 | `src/oska/catalog/enrichment.py` | `tests/unit/test_enrichment.py` |
+| OSKA-COG-16 | `src/oska/index/base.py` | `tests/unit/test_index.py` |
+| OSKA-COG-17 | `src/oska/index/base.py`, `src/oska/contracts/common.py` | `tests/unit/test_index.py` |
+| OSKA-COG-17a | `src/oska/index/base.py`, `src/oska/index/discovery.py` | `tests/unit/test_index.py` |
+| OSKA-COG-18 | `src/oska/learning/lifecycle.py` | `tests/unit/test_enrichment.py` |
+| OSKA-COG-19 | `src/oska/engine/engine.py`, `src/oska/engine/state.py`, `src/oska/router/base.py` | `tests/unit/test_router.py`, `examples/ops/scenarios/20_other_language.json` |
+| OSKA-COG-20 | `src/oska/catalog/resolver.py`, `src/oska/engine/reply.py`, `src/oska/planner/planner.py` | `tests/unit/test_labels.py` |
+| OSKA-COG-21 | `src/oska/planner/planner.py`, `src/oska/engine/reply.py` | `tests/unit/test_labels.py` |
+| OSKA-COG-22 | `src/oska/planner/prompts.py`, `src/oska/router/model_router.py` | `tests/unit/test_labels.py` |
+| OSKA-COG-23 | `src/oska/engine/reply.py`, `src/oska/engine/outcomes.py` | `tests/unit/test_labels.py` |
+| OSKA-COG-24 | `src/oska/improvement/preferences.py`, `src/oska/engine/reply.py` | `tests/unit/test_labels.py` |
 
 ### Interaction (L6)
 
 | Id | Module | Proof |
 | --- | --- | --- |
-| OSKA-IXN-1 | `src/opsdeck/engine/session_store.py` | `tests/unit/test_engine.py` |
-| OSKA-IXN-2 | `src/opsdeck/engine/engine.py` | `tests/scenarios/test_scenarios.py` |
-| OSKA-IXN-3 | `src/opsdeck/engine/engine.py` | `examples/ops/scenarios/13_approval_with_nothing_pending.json` |
-| OSKA-IXN-4 | `src/opsdeck/engine/engine.py` | `examples/ops/scenarios/11_approval_cancelled.json` |
-| OSKA-IXN-5 | `src/opsdeck/engine/engine.py` | `tests/unit/test_engine.py` |
-| OSKA-IXN-6 | `src/opsdeck/engine/engine.py` | `examples/ops/scenarios/05_goal_replacement.json` |
-| OSKA-IXN-7 | `src/opsdeck/engine/engine.py`, `src/opsdeck/engine/goals.py` | `examples/ops/scenarios/04_rollback_rejected.json` |
-| OSKA-IXN-8 | `src/opsdeck/engine/engine.py`, `src/opsdeck/engine/execution.py` | `examples/ops/scenarios/02_restart_staging.json`, `examples/ops/scenarios/14_composite_triage.json` |
-| OSKA-IXN-9 | `src/opsdeck/engine/engine.py` | `tests/unit/test_engine.py`, `examples/ops/scenarios/14_composite_triage.json` |
-| OSKA-IXN-10 | `src/opsdeck/engine/execution.py` | `examples/ops/scenarios/02_restart_staging.json` |
-| OSKA-IXN-11 | `src/opsdeck/engine/state.py`, `src/opsdeck/governance/ledger.py` | `tests/unit/test_engine.py` |
-| OSKA-IXN-12 | `src/opsdeck/contracts/common.py`, `src/opsdeck/services.py`, `src/opsdeck/cli/commands_run.py`, `src/opsdeck/api/routes.py` | `tests/unit/test_cli.py`, `tests/unit/test_api.py` |
-| OSKA-IXN-13 | `src/opsdeck/engine/engine.py`, `src/opsdeck/engine/reply.py` | `tests/unit/test_engine.py` |
-| OSKA-IXN-14 | `src/opsdeck/engine/engine.py`, `src/opsdeck/engine/state.py` | `tests/unit/test_revision.py` |
-| OSKA-IXN-15 | `src/opsdeck/catalog/registry.py`, `src/opsdeck/engine/engine.py` | `tests/unit/test_revision.py` |
-| OSKA-IXN-16 | `src/opsdeck/engine/engine.py` | `tests/unit/test_revision.py` |
-| OSKA-IXN-17 | `src/opsdeck/engine/engine.py` | `tests/unit/test_pinning.py` |
-| OSKA-IXN-18 | `src/opsdeck/engine/engine.py`, `src/opsdeck/config.py` | `tests/unit/test_pinning.py` |
-| OSKA-IXN-19 | `src/opsdeck/engine/factory.py`, `src/opsdeck/governance/ledger.py` | `tests/unit/test_revision.py` |
-| OSKA-IXN-20 | `src/opsdeck/engine/engine.py`, `src/opsdeck/engine/state.py` | `tests/unit/test_pinning.py` |
+| OSKA-IXN-1 | `src/oska/engine/session_store.py` | `tests/unit/test_engine.py` |
+| OSKA-IXN-2 | `src/oska/engine/engine.py` | `tests/scenarios/test_scenarios.py` |
+| OSKA-IXN-3 | `src/oska/engine/engine.py` | `examples/ops/scenarios/13_approval_with_nothing_pending.json` |
+| OSKA-IXN-4 | `src/oska/engine/engine.py` | `examples/ops/scenarios/11_approval_cancelled.json` |
+| OSKA-IXN-5 | `src/oska/engine/engine.py` | `tests/unit/test_engine.py` |
+| OSKA-IXN-6 | `src/oska/engine/engine.py` | `examples/ops/scenarios/05_goal_replacement.json` |
+| OSKA-IXN-7 | `src/oska/engine/engine.py`, `src/oska/engine/goals.py` | `examples/ops/scenarios/04_rollback_rejected.json` |
+| OSKA-IXN-8 | `src/oska/engine/engine.py`, `src/oska/engine/execution.py` | `examples/ops/scenarios/02_restart_staging.json`, `examples/ops/scenarios/14_composite_triage.json` |
+| OSKA-IXN-9 | `src/oska/engine/engine.py` | `tests/unit/test_engine.py`, `examples/ops/scenarios/14_composite_triage.json` |
+| OSKA-IXN-10 | `src/oska/engine/execution.py` | `examples/ops/scenarios/02_restart_staging.json` |
+| OSKA-IXN-11 | `src/oska/engine/state.py`, `src/oska/governance/ledger.py` | `tests/unit/test_engine.py` |
+| OSKA-IXN-12 | `src/oska/contracts/common.py`, `src/oska/services.py`, `src/oska/cli/commands_run.py`, `src/oska/api/routes.py` | `tests/unit/test_cli.py`, `tests/unit/test_api.py` |
+| OSKA-IXN-13 | `src/oska/engine/engine.py`, `src/oska/engine/reply.py` | `tests/unit/test_engine.py` |
+| OSKA-IXN-14 | `src/oska/engine/engine.py`, `src/oska/engine/state.py` | `tests/unit/test_revision.py` |
+| OSKA-IXN-15 | `src/oska/catalog/registry.py`, `src/oska/engine/engine.py` | `tests/unit/test_revision.py` |
+| OSKA-IXN-16 | `src/oska/engine/engine.py` | `tests/unit/test_revision.py` |
+| OSKA-IXN-17 | `src/oska/engine/engine.py` | `tests/unit/test_pinning.py` |
+| OSKA-IXN-18 | `src/oska/engine/engine.py`, `src/oska/config.py` | `tests/unit/test_pinning.py` |
+| OSKA-IXN-19 | `src/oska/engine/factory.py`, `src/oska/governance/ledger.py` | `tests/unit/test_revision.py` |
+| OSKA-IXN-20 | `src/oska/engine/engine.py`, `src/oska/engine/state.py` | `tests/unit/test_pinning.py` |
 
 ### Evolution (L7)
 
 | Id | Module | Proof |
 | --- | --- | --- |
-| OSKA-EVO-1 | `src/opsdeck/learning/proposals.py` | `tests/unit/test_learning.py` |
-| OSKA-EVO-2 | `src/opsdeck/learning/quality.py` | `tests/unit/test_learning.py` |
-| OSKA-EVO-3 | `src/opsdeck/learning/lifecycle.py` | `tests/unit/test_learning.py` |
-| OSKA-EVO-4 | `src/opsdeck/learning/lifecycle.py` | `tests/unit/test_learning.py` |
-| OSKA-EVO-5 | `src/opsdeck/learning/lifecycle.py` | `tests/unit/test_learning.py` |
-| OSKA-EVO-6 | `src/opsdeck/learning/lifecycle.py` | `tests/unit/test_learning.py` |
-| OSKA-EVO-7 | `src/opsdeck/learning/lifecycle.py` | `tests/unit/test_learning.py` |
-| OSKA-EVO-8 | `src/opsdeck/catalog/registry.py`, `src/opsdeck/learning/lifecycle.py` | `tests/unit/test_learning.py` |
-| OSKA-EVO-9 | `src/opsdeck/learning/lifecycle.py`, `src/opsdeck/catalog/validator.py` | `tests/unit/test_learning.py`, `examples/ops/scenarios/15_learning_lifecycle.json` |
-| OSKA-EVO-10 | `src/opsdeck/improvement/report.py`, `src/opsdeck/improvement/job.py` | `tests/unit/test_improvement.py` |
-| OSKA-EVO-11 | `src/opsdeck/improvement/signals.py` | `tests/unit/test_improvement.py` |
-| OSKA-EVO-12 | `src/opsdeck/improvement/learned.py` | `tests/unit/test_improvement.py` |
-| OSKA-EVO-13 | `src/opsdeck/improvement/learned.py`, `examples/ops/evaluation/redactions.json` | `tests/unit/test_improvement.py` |
-| OSKA-EVO-13a | `src/opsdeck/index/base.py`, `src/opsdeck/improvement/learned.py` | `tests/unit/test_index.py`, `tests/unit/test_improvement.py` |
-| OSKA-EVO-14 | `src/opsdeck/improvement/tuning.py` | `tests/unit/test_improvement.py` |
-| OSKA-EVO-15 | `src/opsdeck/improvement/tuning.py` | `tests/unit/test_improvement.py` |
-| OSKA-EVO-16 | `src/opsdeck/improvement/evaluation.py`, `examples/ops/evaluation/routing.json` | `tests/unit/test_improvement.py` |
-| OSKA-EVO-17 | `src/opsdeck/improvement/evaluation.py`, `src/opsdeck/cli/commands_improve.py` | `tests/unit/test_improvement.py` |
-| OSKA-EVO-18 | `src/opsdeck/improvement/gaps.py` | `tests/unit/test_improvement.py` |
-| OSKA-EVO-19 | `src/opsdeck/improvement/job.py` | `tests/unit/test_improvement.py` |
-| OSKA-EVO-20 | `src/opsdeck/improvement/job.py` | `tests/unit/test_improvement.py` |
-| OSKA-EVO-21 | `src/opsdeck/improvement/report.py` | `tests/unit/test_improvement.py` |
-| OSKA-EVO-22 | `src/opsdeck/learning/lifecycle.py`, `src/opsdeck/learning/changes.py` | `tests/unit/test_changes.py` |
-| OSKA-EVO-23 | `src/opsdeck/learning/changes.py` | `tests/unit/test_changes.py` |
-| OSKA-EVO-24 | `src/opsdeck/learning/changes.py`, `src/opsdeck/cli/commands_change.py` | `tests/unit/test_changes.py` |
-| OSKA-EVO-25 | `src/opsdeck/learning/changes.py` | `tests/unit/test_changes.py` |
-| OSKA-EVO-26 | `src/opsdeck/learning/changes.py`, `src/opsdeck/learning/lifecycle.py` | `tests/unit/test_changes.py` |
-| OSKA-EVO-27 | `src/opsdeck/api/routes.py` | `tests/unit/test_api.py` |
-| OSKA-EVO-28 | `src/opsdeck/learning/lifecycle.py` | `tests/unit/test_learning.py` |
-| OSKA-EVO-29 | `src/opsdeck/improvement/feedback.py`, `src/opsdeck/cli/commands_improve.py` | `tests/unit/test_improvement.py` |
-| OSKA-EVO-30 | `src/opsdeck/improvement/feedback.py`, `src/opsdeck/improvement/signals.py` | `tests/unit/test_improvement.py` |
-| OSKA-EVO-31 | `src/opsdeck/improvement/preferences.py`, `src/opsdeck/improvement/job.py` | `tests/unit/test_improvement.py` |
-| OSKA-EVO-32 | `src/opsdeck/improvement/preferences.py`, `src/opsdeck/engine/reply.py` | `tests/unit/test_improvement.py`, `tests/unit/test_labels.py` |
-| OSKA-EVO-33 | `src/opsdeck/improvement/preferences.py`, `src/opsdeck/cli/commands_improve.py` | `tests/unit/test_improvement.py` |
-| OSKA-EVO-34 | `src/opsdeck/improvement/report.py`, `src/opsdeck/improvement/job.py` | `tests/unit/test_improvement.py` |
-| OSKA-EVO-35 | `src/opsdeck/learning/quality.py` | `tests/unit/test_skill_evaluation.py` |
+| OSKA-EVO-1 | `src/oska/learning/proposals.py` | `tests/unit/test_learning.py` |
+| OSKA-EVO-2 | `src/oska/learning/quality.py` | `tests/unit/test_learning.py` |
+| OSKA-EVO-3 | `src/oska/learning/lifecycle.py` | `tests/unit/test_learning.py` |
+| OSKA-EVO-4 | `src/oska/learning/lifecycle.py` | `tests/unit/test_learning.py` |
+| OSKA-EVO-5 | `src/oska/learning/lifecycle.py` | `tests/unit/test_learning.py` |
+| OSKA-EVO-6 | `src/oska/learning/lifecycle.py` | `tests/unit/test_learning.py` |
+| OSKA-EVO-7 | `src/oska/learning/lifecycle.py` | `tests/unit/test_learning.py` |
+| OSKA-EVO-8 | `src/oska/catalog/registry.py`, `src/oska/learning/lifecycle.py` | `tests/unit/test_learning.py` |
+| OSKA-EVO-9 | `src/oska/learning/lifecycle.py`, `src/oska/catalog/validator.py` | `tests/unit/test_learning.py`, `examples/ops/scenarios/15_learning_lifecycle.json` |
+| OSKA-EVO-10 | `src/oska/improvement/report.py`, `src/oska/improvement/job.py` | `tests/unit/test_improvement.py` |
+| OSKA-EVO-11 | `src/oska/improvement/signals.py` | `tests/unit/test_improvement.py` |
+| OSKA-EVO-12 | `src/oska/improvement/learned.py` | `tests/unit/test_improvement.py` |
+| OSKA-EVO-13 | `src/oska/improvement/learned.py`, `examples/ops/evaluation/redactions.json` | `tests/unit/test_improvement.py` |
+| OSKA-EVO-13a | `src/oska/index/base.py`, `src/oska/improvement/learned.py` | `tests/unit/test_index.py`, `tests/unit/test_improvement.py` |
+| OSKA-EVO-14 | `src/oska/improvement/tuning.py` | `tests/unit/test_improvement.py` |
+| OSKA-EVO-15 | `src/oska/improvement/tuning.py` | `tests/unit/test_improvement.py` |
+| OSKA-EVO-16 | `src/oska/improvement/evaluation.py`, `examples/ops/evaluation/routing.json` | `tests/unit/test_improvement.py` |
+| OSKA-EVO-17 | `src/oska/improvement/evaluation.py`, `src/oska/cli/commands_improve.py` | `tests/unit/test_improvement.py` |
+| OSKA-EVO-18 | `src/oska/improvement/gaps.py` | `tests/unit/test_improvement.py` |
+| OSKA-EVO-19 | `src/oska/improvement/job.py` | `tests/unit/test_improvement.py` |
+| OSKA-EVO-20 | `src/oska/improvement/job.py` | `tests/unit/test_improvement.py` |
+| OSKA-EVO-21 | `src/oska/improvement/report.py` | `tests/unit/test_improvement.py` |
+| OSKA-EVO-22 | `src/oska/learning/lifecycle.py`, `src/oska/learning/changes.py` | `tests/unit/test_changes.py` |
+| OSKA-EVO-23 | `src/oska/learning/changes.py` | `tests/unit/test_changes.py` |
+| OSKA-EVO-24 | `src/oska/learning/changes.py`, `src/oska/cli/commands_change.py` | `tests/unit/test_changes.py` |
+| OSKA-EVO-25 | `src/oska/learning/changes.py` | `tests/unit/test_changes.py` |
+| OSKA-EVO-26 | `src/oska/learning/changes.py`, `src/oska/learning/lifecycle.py` | `tests/unit/test_changes.py` |
+| OSKA-EVO-27 | `src/oska/api/routes.py` | `tests/unit/test_api.py` |
+| OSKA-EVO-28 | `src/oska/learning/lifecycle.py` | `tests/unit/test_learning.py` |
+| OSKA-EVO-29 | `src/oska/improvement/feedback.py`, `src/oska/cli/commands_improve.py` | `tests/unit/test_improvement.py` |
+| OSKA-EVO-30 | `src/oska/improvement/feedback.py`, `src/oska/improvement/signals.py` | `tests/unit/test_improvement.py` |
+| OSKA-EVO-31 | `src/oska/improvement/preferences.py`, `src/oska/improvement/job.py` | `tests/unit/test_improvement.py` |
+| OSKA-EVO-32 | `src/oska/improvement/preferences.py`, `src/oska/engine/reply.py` | `tests/unit/test_improvement.py`, `tests/unit/test_labels.py` |
+| OSKA-EVO-33 | `src/oska/improvement/preferences.py`, `src/oska/cli/commands_improve.py` | `tests/unit/test_improvement.py` |
+| OSKA-EVO-34 | `src/oska/improvement/report.py`, `src/oska/improvement/job.py` | `tests/unit/test_improvement.py` |
+| OSKA-EVO-35 | `src/oska/learning/quality.py` | `tests/unit/test_skill_evaluation.py` |
 
 ### Cross-cutting
 
 | Id | Module | Proof |
 | --- | --- | --- |
-| OSKA-XC-1 | `src/opsdeck/contracts/` | `tests/unit/test_layering.py` |
-| OSKA-XC-2 | `src/opsdeck/contracts/common.py` | `tests/unit/test_layering.py` |
-| OSKA-XC-3 | `src/opsdeck/config.py`, `configs/runtime.json` | `tests/unit/test_config.py` |
-| OSKA-XC-4 | `src/opsdeck/config.py`, `src/opsdeck/cli/main.py` | `tests/unit/test_cli.py` |
-| OSKA-XC-5 | `src/opsdeck/audit/events.py` | `tests/unit/test_audit.py` |
-| OSKA-XC-6 | `src/opsdeck/audit/sink.py` | `tests/unit/test_audit.py` |
-| OSKA-XC-7 | `src/opsdeck/governance/ledger.py` | `tests/unit/test_governance.py` |
-| OSKA-XC-8 | `src/opsdeck/learning/lifecycle.py` | `tests/unit/test_learning.py` |
-| OSKA-XC-9 | `src/opsdeck/planner/scripted.py` | `tests/scenarios/test_scenarios.py` |
+| OSKA-XC-1 | `src/oska/contracts/` | `tests/unit/test_layering.py` |
+| OSKA-XC-2 | `src/oska/contracts/common.py` | `tests/unit/test_layering.py` |
+| OSKA-XC-3 | `src/oska/config.py`, `configs/runtime.json` | `tests/unit/test_config.py` |
+| OSKA-XC-4 | `src/oska/config.py`, `src/oska/cli/main.py` | `tests/unit/test_cli.py` |
+| OSKA-XC-5 | `src/oska/audit/events.py` | `tests/unit/test_audit.py` |
+| OSKA-XC-6 | `src/oska/audit/sink.py` | `tests/unit/test_audit.py` |
+| OSKA-XC-7 | `src/oska/governance/ledger.py` | `tests/unit/test_governance.py` |
+| OSKA-XC-8 | `src/oska/learning/lifecycle.py` | `tests/unit/test_learning.py` |
+| OSKA-XC-9 | `src/oska/planner/scripted.py` | `tests/scenarios/test_scenarios.py` |
 | OSKA-XC-10 | `tests/scenarios/test_scenarios.py` | `tests/scenarios/test_scenarios.py` |
-| OSKA-XC-11 | `src/opsdeck/audit/trace.py`, `src/opsdeck/engine/engine.py` | `tests/unit/test_trace.py` |
-| OSKA-XC-12 | `src/opsdeck/audit/trace.py`, `src/opsdeck/config.py`, `configs/runtime.json` | `tests/unit/test_trace.py` |
-| OSKA-XC-13 | `src/opsdeck/engine/engine.py` | `tests/unit/test_trace.py` |
-| OSKA-XC-14 | `src/opsdeck/engine/engine.py`, `src/opsdeck/engine/factory.py` | `tests/unit/test_trace.py` |
-| OSKA-XC-15 | `src/opsdeck/governance/retention.py`, `src/opsdeck/cli/commands_forget.py` | `tests/unit/test_retention.py` |
-| OSKA-XC-16 | `src/opsdeck/governance/retention.py`, `src/opsdeck/config.py` | `tests/unit/test_retention.py` |
-| OSKA-XC-17 | `src/opsdeck/governance/retention.py`, `src/opsdeck/audit/events.py` | `tests/unit/test_retention.py` |
-| OSKA-XC-18 | `src/opsdeck/audit/sink.py`, `src/opsdeck/governance/retention.py` | `tests/unit/test_retention.py` |
-| OSKA-XC-19 | `src/opsdeck/engine/engine.py`, `src/opsdeck/governance/guardrails.py` | `tests/unit/test_retention.py` |
-| OSKA-XC-20 | `src/opsdeck/observability/metrics.py`, `src/opsdeck/cli/commands_slo.py` | `tests/unit/test_observability.py` |
-| OSKA-XC-21 | `src/opsdeck/observability/metrics.py`, `src/opsdeck/observability/report.py` | `tests/unit/test_observability.py` |
-| OSKA-XC-22 | `src/opsdeck/observability/metrics.py` | `tests/unit/test_observability.py` |
-| OSKA-XC-23 | `src/opsdeck/governance/retention.py`, `src/opsdeck/cli/commands_forget.py` | `tests/unit/test_retention.py` |
+| OSKA-XC-11 | `src/oska/audit/trace.py`, `src/oska/engine/engine.py` | `tests/unit/test_trace.py` |
+| OSKA-XC-12 | `src/oska/audit/trace.py`, `src/oska/config.py`, `configs/runtime.json` | `tests/unit/test_trace.py` |
+| OSKA-XC-13 | `src/oska/engine/engine.py` | `tests/unit/test_trace.py` |
+| OSKA-XC-14 | `src/oska/engine/engine.py`, `src/oska/engine/factory.py` | `tests/unit/test_trace.py` |
+| OSKA-XC-15 | `src/oska/governance/retention.py`, `src/oska/cli/commands_forget.py` | `tests/unit/test_retention.py` |
+| OSKA-XC-16 | `src/oska/governance/retention.py`, `src/oska/config.py` | `tests/unit/test_retention.py` |
+| OSKA-XC-17 | `src/oska/governance/retention.py`, `src/oska/audit/events.py` | `tests/unit/test_retention.py` |
+| OSKA-XC-18 | `src/oska/audit/sink.py`, `src/oska/governance/retention.py` | `tests/unit/test_retention.py` |
+| OSKA-XC-19 | `src/oska/engine/engine.py`, `src/oska/governance/guardrails.py` | `tests/unit/test_retention.py` |
+| OSKA-XC-20 | `src/oska/observability/metrics.py`, `src/oska/cli/commands_slo.py` | `tests/unit/test_observability.py` |
+| OSKA-XC-21 | `src/oska/observability/metrics.py`, `src/oska/observability/report.py` | `tests/unit/test_observability.py` |
+| OSKA-XC-22 | `src/oska/observability/metrics.py` | `tests/unit/test_observability.py` |
+| OSKA-XC-23 | `src/oska/governance/retention.py`, `src/oska/cli/commands_forget.py` | `tests/unit/test_retention.py` |
 
 ## Open items
 

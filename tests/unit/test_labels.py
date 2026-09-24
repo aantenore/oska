@@ -24,22 +24,22 @@ from pathlib import Path
 
 import pytest
 
-from opsdeck.audit.sink import MemorySink
-from opsdeck.catalog.registry import SkillRegistry
-from opsdeck.catalog.resolver import (
+from oska.audit.sink import MemorySink
+from oska.catalog.registry import SkillRegistry
+from oska.catalog.resolver import (
     CapabilityResolver,
     SuggestedAction,
     offer,
     relabel,
 )
-from opsdeck.config import ReplyConfig, Settings
-from opsdeck.contracts.common import Message, Outcome
-from opsdeck.engine.factory import build_engine
-from opsdeck.engine.reply import ReplyBuilder, offered_lines
-from opsdeck.engine.state import SessionState
-from opsdeck.improvement.preferences import Preference, preferences_root, write_preferences
-from opsdeck.planner.planner import Planner
-from opsdeck.planner.scripted import ScriptedModelProvider
+from oska.config import ReplyConfig, Settings
+from oska.contracts.common import Message, Outcome
+from oska.engine.factory import build_engine
+from oska.engine.reply import ReplyBuilder, offered_lines
+from oska.engine.state import SessionState
+from oska.improvement.preferences import Preference, preferences_root, write_preferences
+from oska.planner.planner import Planner
+from oska.planner.scripted import ScriptedModelProvider
 
 CONTAINER_RUNTIME = "integration.container_runtime"
 RESTART = "runbook.service_restart"
@@ -371,7 +371,7 @@ def _installation(monkeypatch: pytest.MonkeyPatch, settings: Settings) -> None:
     reads preferences from is the state directory of the installation the
     environment names.
     """
-    monkeypatch.setenv("OPSDECK_STATE_DIR", str(settings.state_dir))
+    monkeypatch.setenv("OSKA_STATE_DIR", str(settings.state_dir))
 
 
 def _settings(repo_root: Path, state_dir: Path) -> Settings:

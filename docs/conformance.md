@@ -8,27 +8,27 @@ the fastest way to tell whether a change broke something.
 ## Running it
 
 ```sh
-opsdeck conform
-opsdeck conform --scenarios examples/ops/scenarios
-opsdeck conform --json
-opsdeck conform --skills examples/ops/skills
+oska conform
+oska conform --scenarios examples/ops/scenarios
+oska conform --json
+oska conform --skills examples/ops/skills
 ```
 
-Without `--scenarios` the directory comes from `OPSDECK_SCENARIOS_DIR`, which
+Without `--scenarios` the directory comes from `OSKA_SCENARIOS_DIR`, which
 defaults to `examples/ops/scenarios`. The command exits non-zero when any
 scenario fails, so it drops into a build without further ceremony.
 
 ### The two reference catalogs
 
 A suite belongs to the catalog it was written for, so there are two runs, not
-one. The operational catalog is the default: `opsdeck conform` runs its
+one. The operational catalog is the default: `oska conform` runs its
 twenty-three scenarios and reports conformance level 3. The access catalog
 needs its own roots, its own scenarios and its own connector bindings, and
 `--skills` replaces the catalog roots rather than adding to them, which is what
 keeps either suite from seeing the other's procedures:
 
 ```sh
-opsdeck conform --skills examples/access/skills \
+oska conform --skills examples/access/skills \
   --scenarios examples/access/scenarios \
   --connectors examples/access/configs/connectors.json
 ```
@@ -289,9 +289,9 @@ The suite is one of three things a change to a catalog should pass, and they
 answer different questions.
 
 ```sh
-opsdeck validate          # does the catalog hold up against itself
-opsdeck evaluate catalog  # does each procedure still answer its own requests
-opsdeck conform           # does the runtime still behave the way the standard says
+oska validate          # does the catalog hold up against itself
+oska evaluate catalog  # does each procedure still answer its own requests
+oska conform           # does the runtime still behave the way the standard says
 ```
 
 The middle one is the newer half and the one a catalog change is most likely to
@@ -321,8 +321,8 @@ It says nothing about how a deployment is actually serving, and that is a
 different question with a different command:
 
 ```sh
-opsdeck slo report
-opsdeck slo report --since 7 --json
+oska slo report
+oska slo report --since 7 --json
 ```
 
 Six numbers, read back from records the deployment keeps anyway: the median and
@@ -341,7 +341,7 @@ switch it on rather than shown a healthy-looking zero.
 
 ## Writing a scenario for a new domain
 
-1. **Get the turns right by hand first.** Run the session with `opsdeck run`
+1. **Get the turns right by hand first.** Run the session with `oska run`
    against the scripted provider you are about to write, or against a real one,
    and read what comes back. The reply text you will assert on is the reply the
    runtime actually produces.
@@ -374,16 +374,16 @@ offline for good.
 Point the settings at the endpoint first:
 
 ```sh
-export OPSDECK_MODEL_BASE_URL=...
-export OPSDECK_MODEL_API_KEY=...
-export OPSDECK_MODEL_CHAT=...
-export OPSDECK_MODEL_EMBEDDING=...
+export OSKA_MODEL_BASE_URL=...
+export OSKA_MODEL_API_KEY=...
+export OSKA_MODEL_CHAT=...
+export OSKA_MODEL_EMBEDDING=...
 ```
 
 Then run the turns, recording every call:
 
 ```sh
-opsdeck run --provider openai_compatible \
+oska run --provider openai_compatible \
   --session restart --record cassettes/restart.json \
   --text "the search service in staging needs a restart, it is wedged again"
 ```
@@ -394,7 +394,7 @@ The cassette is read back and added to, so the two turns end up in one file, in
 order:
 
 ```sh
-opsdeck run --provider openai_compatible \
+oska run --provider openai_compatible \
   --session restart --record cassettes/restart.json --text "yes"
 ```
 
@@ -406,7 +406,7 @@ that dies half way keeps the steps it already had.
 Then seed a scenario with it:
 
 ```sh
-opsdeck cassette to-script cassettes/restart.json --out /tmp/script.json
+oska cassette to-script cassettes/restart.json --out /tmp/script.json
 ```
 
 That keeps the `purpose`, the `expect_contains` and the `response` of every
@@ -426,7 +426,7 @@ meant.
 ## Replaying
 
 ```sh
-opsdeck run --replay cassettes/restart.json --session restart --text "..."
+oska run --replay cassettes/restart.json --session restart --text "..."
 ```
 
 Replaying needs no endpoint and no key. Completions are spent in the recorded

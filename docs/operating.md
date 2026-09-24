@@ -7,7 +7,7 @@ stops answering. Each is a command, run by a person, outside the process that
 answers people.
 
 Every command below accepts `--skills` to point at other catalog roots, and
-reads the same settings as the runtime. `opsdeck config` prints what is in
+reads the same settings as the runtime. `oska config` prints what is in
 force.
 
 ## Releasing a catalog
@@ -18,7 +18,7 @@ a change up at its own moment. A revision closes that: validated once, copied
 where nothing writes again, named after a hash of its contents.
 
 ```sh
-opsdeck revision build
+oska revision build
 ```
 
 It prints the revision, the tenant and how many skills it holds, followed by
@@ -29,8 +29,8 @@ twice from the same files gives one identifier and one directory, because the
 identifier comes from the content.
 
 ```sh
-opsdeck revision list
-opsdeck revision show 1f0a4c29b8de7a63
+oska revision list
+oska revision show 1f0a4c29b8de7a63
 ```
 
 `list` prints every revision of the tenant, oldest build first, with a `*`
@@ -39,7 +39,7 @@ with the hash of the file that declared it, the validation report, the roots it
 was built from and when.
 
 ```sh
-opsdeck revision use 1f0a4c29b8de7a63
+oska revision use 1f0a4c29b8de7a63
 ```
 
 `use` writes one line into `CURRENT`, beside the revisions under the state
@@ -70,9 +70,9 @@ published, the record of who asked and what the quality gate said, and a
 summary to read without opening anything else.
 
 ```sh
-opsdeck change list
-opsdeck change list --state open
-opsdeck change show 8c20b659-10c1-4a04-ac36-defe0f734e7b
+oska change list
+oska change list --state open
+oska change show 8c20b659-10c1-4a04-ac36-defe0f734e7b
 ```
 
 `show` prints the request and then the files its package holds. Read the skill
@@ -81,7 +81,7 @@ every write it declares, with a per-session limit of one, until somebody edits
 it.
 
 ```sh
-opsdeck change apply 8c20b659-10c1-4a04-ac36-defe0f734e7b \
+oska change apply 8c20b659-10c1-4a04-ac36-defe0f734e7b \
   --into state/skills --by s.reyes
 ```
 
@@ -94,14 +94,14 @@ Applying is not serving. The command says what it copied and then says that a
 catalog root is a source: build a revision and point the runtime at it.
 
 ```sh
-opsdeck revision build
-opsdeck revision use <the revision that was printed>
+oska revision build
+oska revision use <the revision that was printed>
 ```
 
 A request that should not land is closed rather than left open:
 
 ```sh
-opsdeck change reject 8c20b659-10c1-4a04-ac36-defe0f734e7b \
+oska change reject 8c20b659-10c1-4a04-ac36-defe0f734e7b \
   --by s.reyes --note "the rollback section is a placeholder"
 ```
 
@@ -111,9 +111,9 @@ queue entry to reuse.
 ## Reading the service-level report
 
 ```sh
-opsdeck slo report
-opsdeck slo report --since 7
-opsdeck slo report --json
+oska slo report
+oska slo report --since 7
+oska slo report --json
 ```
 
 Six numbers, all derived from records the deployment keeps anyway: the median
@@ -144,7 +144,7 @@ wrote, the audit trail of how it decided, and the state it carried between
 turns. A request to be forgotten reaches all three or it has reached none.
 
 ```sh
-opsdeck forget session walk
+oska forget session walk
 ```
 
 That answers a person who asked. It runs whatever `retention.days` says and
@@ -155,8 +155,8 @@ was written. A deletion nobody can see having happened is indistinguishable from
 a file somebody edited.
 
 ```sh
-opsdeck forget expired
-opsdeck forget expired --days 90
+oska forget expired
+oska forget expired --days 90
 ```
 
 That applies the window, measured from when each session was last written.

@@ -89,7 +89,7 @@ currently hold.
 
 ## The scenarios
 
-Eight sessions under `scenarios/`, run with `opsdeck conform --skills
+Eight sessions under `scenarios/`, run with `oska conform --skills
 examples/access/skills --scenarios examples/access/scenarios --connectors
 examples/access/configs/connectors.json`. They reach conformance level 2: the
 greeting answered from this catalog's own wording, a standard grant with its

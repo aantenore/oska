@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://opsdeck.local/schemas/skill.schema.json",
+  "$id": "https://oska.local/schemas/skill.schema.json",
   "title": "Skill frontmatter",
   "type": "object",
   "required": [

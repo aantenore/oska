@@ -9,10 +9,10 @@ from pathlib import Path
 
 import pytest
 
-from opsdeck.catalog.loader import SkillParseError, discover, load_skill, parse_sections
-from opsdeck.catalog.registry import SkillRegistry
-from opsdeck.catalog.validator import validate, validate_all
-from opsdeck.contracts.skill import SkillType
+from oska.catalog.loader import SkillParseError, discover, load_skill, parse_sections
+from oska.catalog.registry import SkillRegistry
+from oska.catalog.validator import validate, validate_all
+from oska.contracts.skill import SkillType
 
 EXAMPLE_SKILL_COUNT = 15
 

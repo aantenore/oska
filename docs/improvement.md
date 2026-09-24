@@ -1,7 +1,7 @@
 # Self-improvement
 
 A system that learns from its own traffic has to say, once and in public, where
-it stops. This is that statement, and `opsdeck improve` is what it looks like
+it stops. This is that statement, and `oska improve` is what it looks like
 from a terminal. The ladder has four levels. The top one has no code path, and
 that is the part worth reading.
 
@@ -29,14 +29,14 @@ binding: none of it happens here, under any configuration, on any code path.
 ## Running the job
 
 ```sh
-opsdeck improve run                     # the five steps, then the report
-opsdeck improve run --apply-tuning      # also write the tuned thresholds
-opsdeck improve run --cases <path>      # evaluate against another labeled set
-opsdeck improve show                    # the report of the last run
-opsdeck improve show --json
-opsdeck improve evaluate                # route the labeled set, change nothing
-opsdeck improve feedback <session_id> --turn 2 --score down --comment "..."
-opsdeck improve revert <target>         # delete what was learned, or what was recorded
+oska improve run                     # the five steps, then the report
+oska improve run --apply-tuning      # also write the tuned thresholds
+oska improve run --cases <path>      # evaluate against another labeled set
+oska improve show                    # the report of the last run
+oska improve show --json
+oska improve evaluate                # route the labeled set, change nothing
+oska improve feedback <session_id> --turn 2 --score down --comment "..."
+oska improve revert <target>         # delete what was learned, or what was recorded
 ```
 
 All of them take `--skills` to point at other catalog roots. `run`, `show` and
@@ -72,7 +72,7 @@ whether a write was confirmed. None of it says whether the answer was any good.
 A person knows, and until they are asked the system never finds out.
 
 ```sh
-opsdeck improve feedback walk --turn 2 --score down --comment "too long, and I asked in Italian"
+oska improve feedback walk --turn 2 --score down --comment "too long, and I asked in Italian"
 ```
 
 That is the whole of it: `up` or `down` against one turn of one session, with an
@@ -141,8 +141,8 @@ Authored files are not on that list. That is the point of the list.
 By deleting, in every case.
 
 ```sh
-opsdeck improve revert runbook.service_restart   # what was learned for a procedure
-opsdeck improve revert walk                      # what was recorded about a session
+oska improve revert runbook.service_restart   # what was learned for a procedure
+oska improve revert walk                      # what was recorded about a session
 ```
 
 One argument, two things it may name, because both are files this job wrote and
@@ -187,7 +187,7 @@ cases that were missed so a person can decide. A drop usually means something
 moved — a new procedure, an edited trigger, a different provider — and that is
 a thing to look at, not a thing to correct automatically.
 
-`opsdeck improve evaluate` runs the same routing and writes nothing at all,
+`oska improve evaluate` runs the same routing and writes nothing at all,
 which is the right command to run against a change before committing it.
 
 Tuning uses the same set and is bounded by `improvement.bounds`. A search

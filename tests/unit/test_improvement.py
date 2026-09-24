@@ -14,24 +14,24 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from opsdeck.catalog.registry import SkillRegistry
-from opsdeck.cli.commands_improve import app
-from opsdeck.config import DiscoveryConfig, ImprovementConfig, Settings, load_runtime_config
-from opsdeck.contracts.common import RankedSkill
-from opsdeck.contracts.proposal import ProposalState, SkillProposal
-from opsdeck.contracts.receipt import VerificationStatus
-from opsdeck.governance.ledger import WriteLedger
-from opsdeck.improvement.evaluation import TIE, RoutingCase, load_cases, run_evaluation
-from opsdeck.improvement.feedback import (
+from oska.catalog.registry import SkillRegistry
+from oska.cli.commands_improve import app
+from oska.config import DiscoveryConfig, ImprovementConfig, Settings, load_runtime_config
+from oska.contracts.common import RankedSkill
+from oska.contracts.proposal import ProposalState, SkillProposal
+from oska.contracts.receipt import VerificationStatus
+from oska.governance.ledger import WriteLedger
+from oska.improvement.evaluation import TIE, RoutingCase, load_cases, run_evaluation
+from oska.improvement.feedback import (
     FeedbackStore,
     TurnFeedback,
     feedback_root,
     latest,
     scores,
 )
-from opsdeck.improvement.gaps import find_gaps, unmatched
-from opsdeck.improvement.job import run_job
-from opsdeck.improvement.learned import (
+from oska.improvement.gaps import find_gaps, unmatched
+from oska.improvement.job import run_job
+from oska.improvement.learned import (
     LearnedPhrase,
     learn,
     learned_path,
@@ -41,7 +41,7 @@ from opsdeck.improvement.learned import (
     revert,
     write_learned,
 )
-from opsdeck.improvement.preferences import (
+from oska.improvement.preferences import (
     Preference,
     classify_comment,
     learn_preferences,
@@ -50,17 +50,17 @@ from opsdeck.improvement.preferences import (
     revert_preferences,
     write_preferences,
 )
-from opsdeck.improvement.report import read_report, render_json, render_text
-from opsdeck.improvement.signals import TurnSignal, load_signals
-from opsdeck.improvement.tuning import rank_cases, tune, write_overrides
-from opsdeck.index.base import LearnedPhrases
-from opsdeck.index.discovery import Discovery
-from opsdeck.index.keyword import KeywordIndex
-from opsdeck.learning.proposals import ProposalStore
-from opsdeck.ontology.graph import OntologyGraph
-from opsdeck.planner.scripted import hash_bag_vector
+from oska.improvement.report import read_report, render_json, render_text
+from oska.improvement.signals import TurnSignal, load_signals
+from oska.improvement.tuning import rank_cases, tune, write_overrides
+from oska.index.base import LearnedPhrases
+from oska.index.discovery import Discovery
+from oska.index.keyword import KeywordIndex
+from oska.learning.proposals import ProposalStore
+from oska.ontology.graph import OntologyGraph
+from oska.planner.scripted import hash_bag_vector
 
-PACKAGE_ROOT = Path(__file__).resolve().parents[2] / "src" / "opsdeck"
+PACKAGE_ROOT = Path(__file__).resolve().parents[2] / "src" / "oska"
 IMPROVEMENT = PACKAGE_ROOT / "improvement"
 COMMANDS = PACKAGE_ROOT / "cli" / "commands_improve.py"
 
@@ -816,9 +816,9 @@ def test_no_call_of_the_package_names_a_state_beyond_draft() -> None:
 
 def test_the_package_imports_neither_the_lifecycle_nor_a_policy_or_connector_writer() -> None:
     forbidden = (
-        "opsdeck.learning.lifecycle",
-        "opsdeck.connectors",
-        "opsdeck.governance.policy_engine",
+        "oska.learning.lifecycle",
+        "oska.connectors",
+        "oska.governance.policy_engine",
     )
     imported: list[str] = []
     for path in package_sources():
@@ -844,8 +844,8 @@ def cli_state(monkeypatch: pytest.MonkeyPatch, repo_root: Path, tmp_path: Path) 
         ("SCHEMAS_DIR", repo_root / "schemas"),
         ("STATE_DIR", state),
     ):
-        monkeypatch.setenv(f"OPSDECK_{name}", str(value))
-    monkeypatch.setenv("OPSDECK_PROVIDER", "none")
+        monkeypatch.setenv(f"OSKA_{name}", str(value))
+    monkeypatch.setenv("OSKA_PROVIDER", "none")
     state.mkdir(parents=True, exist_ok=True)
     return state
 

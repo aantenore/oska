@@ -135,18 +135,18 @@ The reference implementation carries two channels. The command line:
 
 | Command | What it does |
 | --- | --- |
-| `opsdeck validate` | Check every skill in the catalog and report what is wrong |
-| `opsdeck config` | Print the settings in force and the configuration files they name, as JSON, with secrets masked |
-| `opsdeck capabilities` | Print the procedures on offer, in the words the catalog declares |
-| `opsdeck ontology` | Print the declared entities and what acts on them, as a summary, as JSON or as a diagram |
-| `opsdeck run` | Run one turn, or read turns until the input ends |
-| `opsdeck receipts` | Print every write receipt of one session, oldest first |
-| `opsdeck serve` | Serve the HTTP application |
-| `opsdeck conform` | Run a scenario directory and report the level it reaches |
-| `opsdeck propose from-session` | Draft a candidate procedure from what one session did |
-| `opsdeck propose list` | Print every proposal held |
-| `opsdeck propose show` | Print one proposal in full |
-| `opsdeck propose transition` | Move one proposal to another state, recording who asked |
+| `oska validate` | Check every skill in the catalog and report what is wrong |
+| `oska config` | Print the settings in force and the configuration files they name, as JSON, with secrets masked |
+| `oska capabilities` | Print the procedures on offer, in the words the catalog declares |
+| `oska ontology` | Print the declared entities and what acts on them, as a summary, as JSON or as a diagram |
+| `oska run` | Run one turn, or read turns until the input ends |
+| `oska receipts` | Print every write receipt of one session, oldest first |
+| `oska serve` | Serve the HTTP application |
+| `oska conform` | Run a scenario directory and report the level it reaches |
+| `oska propose from-session` | Draft a candidate procedure from what one session did |
+| `oska propose list` | Print every proposal held |
+| `oska propose show` | Print one proposal in full |
+| `oska propose transition` | Move one proposal to another state, recording who asked |
 
 The HTTP application:
 
@@ -163,7 +163,7 @@ The HTTP application:
 | `POST /proposals/{proposal_id}/transition` | Move one proposal to another state |
 | `GET /health` | Whether the runtime is up, and which catalog it holds |
 
-Only `opsdeck run` and `POST /sessions/{session_id}/turns` carry turns; the
+Only `oska run` and `POST /sessions/{session_id}/turns` carry turns; the
 rest read the catalog or drive the evolution layer. Neither channel
 authenticates: both assume an authenticated caller in front of them, and the
 actor of a proposal transition is recorded as it arrives.
@@ -353,13 +353,13 @@ whether it may run is current.
 
 ## In the reference implementation
 
-- `src/opsdeck/engine/` — `engine.py` (the algorithm), `execution.py` (plan
+- `src/oska/engine/` — `engine.py` (the algorithm), `execution.py` (plan
   execution and the write path), `goals.py`, `state.py`, `session_store.py`,
   `outcomes.py`, `reply.py`, `factory.py`.
-- `src/opsdeck/contracts/common.py` — `TurnResult`, `Outcome`, `PendingGoal`,
+- `src/oska/contracts/common.py` — `TurnResult`, `Outcome`, `PendingGoal`,
   `PendingApproval`, `PendingInfo`.
-- `src/opsdeck/services.py` — the one assembly both channels are built over:
+- `src/oska/services.py` — the one assembly both channels are built over:
   engine, catalog, proposal store, publication root.
-- `src/opsdeck/cli/` (`main.py`, `commands_run.py`, `commands_serve.py`,
-  `commands_propose.py`, `options.py`) and `src/opsdeck/api/` (`app.py`,
+- `src/oska/cli/` (`main.py`, `commands_run.py`, `commands_serve.py`,
+  `commands_propose.py`, `options.py`) and `src/oska/api/` (`app.py`,
   `routes.py`) — the two channels over that assembly.

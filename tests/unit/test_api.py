@@ -8,14 +8,14 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from opsdeck.api.app import create_app
-from opsdeck.audit.sink import MemorySink
-from opsdeck.config import Settings
-from opsdeck.conformance import load_scenarios
-from opsdeck.engine.factory import build_engine
-from opsdeck.learning.changes import ChangeRequestState, ChangeRequestStore, store_for
-from opsdeck.learning.proposals import ProposalStore
-from opsdeck.planner.scripted import ScriptedModelProvider
+from oska.api.app import create_app
+from oska.audit.sink import MemorySink
+from oska.config import Settings
+from oska.conformance import load_scenarios
+from oska.engine.factory import build_engine
+from oska.learning.changes import ChangeRequestState, ChangeRequestStore, store_for
+from oska.learning.proposals import ProposalStore
+from oska.planner.scripted import ScriptedModelProvider
 
 SESSION = "api-session"
 

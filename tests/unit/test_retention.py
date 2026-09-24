@@ -21,18 +21,18 @@ from pathlib import Path
 
 import pytest
 
-from opsdeck.audit.events import new_event
-from opsdeck.audit.sink import JsonlSink, rewrite_jsonl
-from opsdeck.audit.trace import JsonlTraceSink
-from opsdeck.config import Settings, load_runtime_config, state_path
-from opsdeck.contracts.events import AuditEvent
-from opsdeck.engine.factory import build_engine
-from opsdeck.engine.session_store import SessionStore
-from opsdeck.engine.state import SessionState
-from opsdeck.governance.ledger import WriteLedger
-from opsdeck.governance.retention import expire, forget
-from opsdeck.improvement.feedback import FeedbackStore, feedback_root
-from opsdeck.improvement.preferences import (
+from oska.audit.events import new_event
+from oska.audit.sink import JsonlSink, rewrite_jsonl
+from oska.audit.trace import JsonlTraceSink
+from oska.config import Settings, load_runtime_config, state_path
+from oska.contracts.events import AuditEvent
+from oska.engine.factory import build_engine
+from oska.engine.session_store import SessionStore
+from oska.engine.state import SessionState
+from oska.governance.ledger import WriteLedger
+from oska.governance.retention import expire, forget
+from oska.improvement.feedback import FeedbackStore, feedback_root
+from oska.improvement.preferences import (
     Preference,
     PreferenceStore,
     preferences_path,

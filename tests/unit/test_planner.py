@@ -8,14 +8,14 @@ from pathlib import Path
 import httpx
 import pytest
 
-from opsdeck.catalog.registry import SkillRegistry
-from opsdeck.catalog.resolver import CapabilityResolver, SuggestedAction
-from opsdeck.contracts.common import Hydrated, Message, Outcome, RankedSkill
-from opsdeck.contracts.plan import Plan
-from opsdeck.planner.openai_compatible import OpenAICompatibleProvider
-from opsdeck.planner.planner import InvalidPlanError, Planner, validate_plan
-from opsdeck.planner.provider import ModelProviderError
-from opsdeck.planner.scripted import ScriptedModelProvider
+from oska.catalog.registry import SkillRegistry
+from oska.catalog.resolver import CapabilityResolver, SuggestedAction
+from oska.contracts.common import Hydrated, Message, Outcome, RankedSkill
+from oska.contracts.plan import Plan
+from oska.planner.openai_compatible import OpenAICompatibleProvider
+from oska.planner.planner import InvalidPlanError, Planner, validate_plan
+from oska.planner.provider import ModelProviderError
+from oska.planner.scripted import ScriptedModelProvider
 
 RUNBOOK = "runbook.service_restart"
 INTEGRATION = "integration.container_runtime"

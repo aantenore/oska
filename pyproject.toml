@@ -3,7 +3,7 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "opsdeck"
+name = "oska"
 version = "0.1.0"
 description = "Governed execution of declared operational procedures."
 readme = "README.md"
@@ -23,7 +23,7 @@ api = ["fastapi>=0.111", "uvicorn>=0.30"]
 dev = ["pytest>=8.0", "ruff>=0.6"]
 
 [project.scripts]
-opsdeck = "opsdeck.cli.main:app"
+oska = "oska.cli.main:app"
 
 [tool.setuptools.packages.find]
 where = ["src"]

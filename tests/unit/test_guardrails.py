@@ -16,25 +16,25 @@ from pathlib import Path
 import pytest
 import yaml
 
-from opsdeck.audit.sink import MemorySink
-from opsdeck.catalog.registry import SkillRegistry
-from opsdeck.catalog.resolver import CapabilityResolver
-from opsdeck.catalog.validator import CatalogError, validate, validate_all
-from opsdeck.config import ReplyConfig, Settings
-from opsdeck.contracts.common import Message, Outcome
-from opsdeck.contracts.skill import Skill, SkillType
-from opsdeck.engine.factory import build_engine
-from opsdeck.engine.reply import ReplyBuilder, guided
-from opsdeck.engine.state import SessionState
-from opsdeck.governance.guardrails import (
+from oska.audit.sink import MemorySink
+from oska.catalog.registry import SkillRegistry
+from oska.catalog.resolver import CapabilityResolver
+from oska.catalog.validator import CatalogError, validate, validate_all
+from oska.config import ReplyConfig, Settings
+from oska.contracts.common import Message, Outcome
+from oska.contracts.skill import Skill, SkillType
+from oska.engine.factory import build_engine
+from oska.engine.reply import ReplyBuilder, guided
+from oska.engine.state import SessionState
+from oska.governance.guardrails import (
     CHAIN_POINTS,
     GuardrailCatalog,
     GuardrailChain,
     GuardrailError,
     instruction_block,
 )
-from opsdeck.planner.planner import Planner
-from opsdeck.planner.scripted import ScriptedModelProvider
+from oska.planner.planner import Planner
+from oska.planner.scripted import ScriptedModelProvider
 
 RESTART_REQUEST = "the search service in staging needs a restart, it is wedged again"
 CARRIES_A_CREDENTIAL = (
@@ -58,9 +58,9 @@ SEEDED_CHECKS = [
 # The promises kept at a point the chain does not run, and the module that keeps
 # each of them.
 SEEDED_INVARIANTS = {
-    READ_BACK: ("execution", "opsdeck.governance.verification"),
-    EXACT_PAYLOAD: ("execution", "opsdeck.governance.approval"),
-    DECLARED_OPERATIONS: ("planning", "opsdeck.planner.planner"),
+    READ_BACK: ("execution", "oska.governance.verification"),
+    EXACT_PAYLOAD: ("execution", "oska.governance.approval"),
+    DECLARED_OPERATIONS: ("planning", "oska.planner.planner"),
 }
 
 
@@ -252,7 +252,7 @@ def test_a_promise_kept_where_the_chain_runs_nothing_is_declared_an_invariant(
                 "point": "input",
                 "mechanism": "check",
                 "validator": "forbidden_pattern",
-                "module": "opsdeck.governance.guardrails",
+                "module": "oska.governance.guardrails",
                 "parameters": {"patterns": ["nothing"], "replacement": ""},
             },
             None,
@@ -262,13 +262,13 @@ def test_a_promise_kept_where_the_chain_runs_nothing_is_declared_an_invariant(
             {
                 "point": "execution",
                 "mechanism": "invariant",
-                "module": "opsdeck.governance.ledger",
+                "module": "oska.governance.ledger",
             },
             None,
         ),
         (
             "an instruction handed to a model",
-            {"point": "planning", "mechanism": "instruction", "module": "opsdeck.planner.prompts"},
+            {"point": "planning", "mechanism": "instruction", "module": "oska.planner.prompts"},
             None,
         ),
         (
@@ -277,7 +277,7 @@ def test_a_promise_kept_where_the_chain_runs_nothing_is_declared_an_invariant(
                 "point": "execution",
                 "mechanism": "invariant",
                 "validator": "value_in_set",
-                "module": "opsdeck.governance.ledger",
+                "module": "oska.governance.ledger",
             },
             "names no validator",
         ),
@@ -286,7 +286,7 @@ def test_a_promise_kept_where_the_chain_runs_nothing_is_declared_an_invariant(
             {
                 "point": "execution",
                 "mechanism": "invariant",
-                "module": "opsdeck.governance.ledger",
+                "module": "oska.governance.ledger",
                 "parameters": {"field": "verification"},
             },
             "declares none",
@@ -302,7 +302,7 @@ def test_a_promise_kept_where_the_chain_runs_nothing_is_declared_an_invariant(
                 "point": "planning",
                 "mechanism": "instruction",
                 "validator": "value_in_set",
-                "module": "opsdeck.planner.prompts",
+                "module": "oska.planner.prompts",
             },
             "names no validator",
         ),
@@ -311,7 +311,7 @@ def test_a_promise_kept_where_the_chain_runs_nothing_is_declared_an_invariant(
             {
                 "point": "planning",
                 "mechanism": "instruction",
-                "module": "opsdeck.planner.prompts",
+                "module": "oska.planner.prompts",
                 "parameters": {"field": "operation_key"},
             },
             "declares none",
@@ -361,7 +361,7 @@ def test_a_check_declared_where_the_chain_runs_nothing_is_refused_at_load(
                     "point": "planning",
                     "mechanism": "check",
                     "validator": "member_of_declared",
-                    "module": "opsdeck.planner.planner",
+                    "module": "oska.planner.planner",
                     "parameters": {"field": "operation_key", "declared": "declared_operations"},
                 },
             }
@@ -576,7 +576,7 @@ def test_the_output_chain_runs_over_the_reply_before_it_is_returned(
                     "point": "output",
                     "mechanism": "check",
                     "validator": "forbidden_pattern",
-                    "module": "opsdeck.engine.reply",
+                    "module": "oska.engine.reply",
                     "parameters": {
                         "patterns": ["(?i)not something I can do here"],
                         "replacement": "",

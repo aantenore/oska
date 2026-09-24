@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://opsdeck.local/schemas/policy.schema.json",
+  "$id": "https://oska.local/schemas/policy.schema.json",
   "title": "Policy",
   "type": "object",
   "required": ["skill_id", "rules"],

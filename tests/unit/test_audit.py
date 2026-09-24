@@ -6,8 +6,8 @@ import json
 from datetime import UTC, datetime
 from pathlib import Path
 
-from opsdeck.audit.events import new_event
-from opsdeck.audit.sink import AuditSink, JsonlSink, MemorySink, MultiSink
+from oska.audit.events import new_event
+from oska.audit.sink import AuditSink, JsonlSink, MemorySink, MultiSink
 
 
 def test_new_event_stamps_the_moment_it_was_raised() -> None:

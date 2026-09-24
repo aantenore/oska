@@ -6,8 +6,8 @@ import ast
 import re
 from pathlib import Path
 
-from opsdeck.catalog.registry import SkillRegistry
-from opsdeck.config import (
+from oska.catalog.registry import SkillRegistry
+from oska.config import (
     DiscoveryConfig,
     FastPathConfig,
     FastPathRoutes,
@@ -15,12 +15,12 @@ from opsdeck.config import (
     RuntimeConfig,
     load_runtime_config,
 )
-from opsdeck.contracts.common import TurnKind
-from opsdeck.index.discovery import Discovery
-from opsdeck.index.keyword import KeywordIndex
-from opsdeck.router import FastPath, RoutingContext, RuleRouter
+from oska.contracts.common import TurnKind
+from oska.index.discovery import Discovery
+from oska.index.keyword import KeywordIndex
+from oska.router import FastPath, RoutingContext, RuleRouter
 
-PACKAGE_ROOT = Path(__file__).resolve().parents[2] / "src" / "opsdeck"
+PACKAGE_ROOT = Path(__file__).resolve().parents[2] / "src" / "oska"
 SCANNED = ("index", "router", "governance", "engine")
 
 RESTART_REQUEST = "the search service in staging needs a restart, it is wedged again"

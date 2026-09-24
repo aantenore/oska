@@ -45,7 +45,7 @@ one, because reads are gated by declaration alone.
 
 Three of them — `runbook.service_restart`, `runbook.alert_silence` and
 `runbook.log_search` — also carry an `evaluation.json`, holding the requests
-that must reach them and the requests that must not. `opsdeck evaluate catalog`
+that must reach them and the requests that must not. `oska evaluate catalog`
 runs all of them and names the procedures carrying none, so a new runbook that
 starts taking another's requests fails there rather than in a conversation.
 

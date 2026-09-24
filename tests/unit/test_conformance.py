@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from opsdeck.config import Settings
-from opsdeck.conformance import (
+from oska.config import Settings
+from oska.conformance import (
     ScenarioFile,
     SuiteReport,
     attained_level,
@@ -18,7 +18,7 @@ from opsdeck.conformance import (
     run_scenario,
     run_suite,
 )
-from opsdeck.conformance.runner import DEFAULT_LEVEL
+from oska.conformance.runner import DEFAULT_LEVEL
 
 ABSENT = "no reply says anything remotely like this"
 ADAPTIVE = 3

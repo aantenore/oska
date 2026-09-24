@@ -377,17 +377,17 @@ an unbounded one.
 
 ## In the reference implementation
 
-- `src/opsdeck/catalog/` — `loader.py`, `registry.py`, `validator.py`,
+- `src/oska/catalog/` — `loader.py`, `registry.py`, `validator.py`,
   `resolver.py`.
-- `src/opsdeck/engine/factory.py` — the assembly, which raises `CatalogError`
+- `src/oska/engine/factory.py` — the assembly, which raises `CatalogError`
   rather than serve a catalog carrying an error.
-- `src/opsdeck/contracts/skill.py` — the frontmatter, sections and skill models.
+- `src/oska/contracts/skill.py` — the frontmatter, sections and skill models.
 - `schemas/skill.schema.json`, `schemas/policy.schema.json` — the normative
   machine-readable contracts.
-- `src/opsdeck/planner/planner.py` — `validate_plan`, which takes the inputs
+- `src/oska/planner/planner.py` — `validate_plan`, which takes the inputs
   already collected from the person and reports every field a procedure
   reserves to them that the model filled in anyway.
-- `src/opsdeck/planner/prompts.py` — the planning prompt, which lists the
+- `src/oska/planner/prompts.py` — the planning prompt, which lists the
   reserved fields and states the rule before the check has to.
 - `examples/ops/skills/` — the reference domain: four entity skills, four
   integration skills, six procedures and one composite.

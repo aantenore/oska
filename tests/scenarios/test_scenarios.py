@@ -1,6 +1,6 @@
 """The example scenarios of every domain, run end to end through the conformance runner.
 
-Each file is one session. The expectations are checked by `opsdeck.conformance`,
+Each file is one session. The expectations are checked by `oska.conformance`,
 so the suite a caller runs and the suite the tests run are the same code. The
 same test runs over every domain under `examples/`, each with the catalog, the
 connector bindings and the scenario directory of that domain and nothing else:
@@ -14,8 +14,8 @@ from pathlib import Path
 
 import pytest
 
-from opsdeck.config import Settings
-from opsdeck.conformance import ScenarioFile, load_scenarios, run_scenario
+from oska.config import Settings
+from oska.conformance import ScenarioFile, load_scenarios, run_scenario
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 EXAMPLES = REPO_ROOT / "examples"

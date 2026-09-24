@@ -136,10 +136,10 @@ A request is `open`, and a person makes it `applied` or `rejected`. Both are
 final: a change request is the record of one review, not a queue entry to reuse.
 
 ```sh
-opsdeck change list
-opsdeck change show <request_id>
-opsdeck change apply <request_id> --into state/skills --by <actor>
-opsdeck change reject <request_id> --by <actor> --note "..."
+oska change list
+oska change show <request_id>
+oska change apply <request_id> --into state/skills --by <actor>
+oska change reject <request_id> --by <actor> --note "..."
 ```
 
 `--into` has no default and no configured value it falls back to. This is the
@@ -185,7 +185,7 @@ package. What a person does is read the file and say yes.
 
 ## Where this sits on the autonomy ladder
 
-The scheduled improvement job in `opsdeck.improvement` describes how far the
+The scheduled improvement job in `oska.improvement` describes how far the
 system may improve itself without a person, in four levels, and this lifecycle
 is where the top two of them meet. Level 2 is drafting and stopping: the job
 turns a cluster of requests that reached nothing into a proposal in `draft`,
@@ -201,15 +201,15 @@ every step. See [improvement.md](improvement.md).
 ## Command line
 
 ```sh
-opsdeck propose from-session <session_id> --by <actor>
-opsdeck propose list [--state draft|submitted|approved|rejected|published]
-opsdeck propose show <proposal_id>
-opsdeck propose transition <proposal_id> --to <state> --by <actor> [--note "..."]
+oska propose from-session <session_id> --by <actor>
+oska propose list [--state draft|submitted|approved|rejected|published]
+oska propose show <proposal_id>
+oska propose transition <proposal_id> --to <state> --by <actor> [--note "..."]
 
-opsdeck change list [--state open|applied|rejected]
-opsdeck change show <request_id>
-opsdeck change apply <request_id> --into <catalog root> --by <actor>
-opsdeck change reject <request_id> --by <actor> [--note "..."]
+oska change list [--state open|applied|rejected]
+oska change show <request_id>
+oska change apply <request_id> --into <catalog root> --by <actor>
+oska change reject <request_id> --by <actor> [--note "..."]
 ```
 
 All of them accept `--skills` to point at other catalog roots.
@@ -226,13 +226,13 @@ prints the lifecycle's message on standard error and exits non-zero.
 A worked sequence, against the example catalog:
 
 ```sh
-opsdeck propose from-session walk --by s.reyes
-opsdeck propose transition <id> --to submitted --by s.reyes --note "ran it once"
-opsdeck propose transition <id> --to approved  --by s.reyes --note "wording read"
-opsdeck propose transition <id> --to published --by s.reyes
-opsdeck change show <request id>              # read the package before it lands
-opsdeck change apply <request id> --into state/skills --by s.reyes
-opsdeck capabilities        # the new procedure is in the list
+oska propose from-session walk --by s.reyes
+oska propose transition <id> --to submitted --by s.reyes --note "ran it once"
+oska propose transition <id> --to approved  --by s.reyes --note "wording read"
+oska propose transition <id> --to published --by s.reyes
+oska change show <request id>              # read the package before it lands
+oska change apply <request id> --into state/skills --by s.reyes
+oska capabilities        # the new procedure is in the list
 ```
 
 The last two are the part a person does. Up to `published` the runtime has

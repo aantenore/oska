@@ -50,7 +50,7 @@ scenario carrying one belongs to level 3. See
 implementation may record more. The conventional keys per kind are listed in
 the schema so a reader of an audit file knows what to expect. This schema is
 consistent with the event contract of the reference implementation
-(`src/opsdeck/contracts/events.py`).
+(`src/oska/contracts/events.py`).
 
 **Plan.** The schema uses `procedure_id` where the reference implementation
 uses `runbook_id`; the two denote the same field. A plan that validates against

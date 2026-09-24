@@ -250,12 +250,12 @@ named field, then be substituted into a position the adapter chose.
 
 ## In the reference implementation
 
-- `src/opsdeck/connectors/` — `base.py` (protocol, result, classification and
+- `src/oska/connectors/` — `base.py` (protocol, result, classification and
   breaker), `mock.py`, `http.py`, `shell.py`, `registry.py`.
-- `src/opsdeck/config.py` — `ResilienceConfig`: the timeout, the run of
+- `src/oska/config.py` — `ResilienceConfig`: the timeout, the run of
   failures that opens a breaker and the recovery window.
-- `src/opsdeck/contracts/skill.py` — `OperationSpec`, `VerifySpec`.
-- `src/opsdeck/governance/capabilities.py` — the operation registry view over
+- `src/oska/contracts/skill.py` — `OperationSpec`, `VerifySpec`.
+- `src/oska/governance/capabilities.py` — the operation registry view over
   the catalog.
 - `examples/ops/configs/connectors.json` — the fixture binding;
   `connectors.real.example.json` — the same catalog bound to an HTTP API and

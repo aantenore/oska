@@ -10,7 +10,7 @@ import pytest
 from click.testing import Result
 from typer.testing import CliRunner
 
-from opsdeck.cli.main import MASK, app
+from oska.cli.main import MASK, app
 
 runner = CliRunner()
 
@@ -67,8 +67,8 @@ def cli_env(
         ("SCENARIOS_DIR", repo_root / "examples" / "ops" / "scenarios"),
         ("STATE_DIR", state),
     ):
-        monkeypatch.setenv(f"OPSDECK_{name}", str(value))
-    monkeypatch.setenv("OPSDECK_PROVIDER", "none")
+        monkeypatch.setenv(f"OSKA_{name}", str(value))
+    monkeypatch.setenv("OSKA_PROVIDER", "none")
     return state
 
 
@@ -251,12 +251,12 @@ def test_a_catalog_that_carries_an_error_stops_a_run(
 def test_config_prints_the_settings_in_force(repo_root: Path, tmp_path: Path) -> None:
     state = tmp_path / "elsewhere"
     environment = {
-        "OPSDECK_SKILLS_ROOTS": str(repo_root / "examples" / "ops" / "skills"),
-        "OPSDECK_RUNTIME_CONFIG": str(repo_root / "configs" / "runtime.json"),
-        "OPSDECK_MODEL_CONFIG": str(repo_root / "configs" / "model.json"),
-        "OPSDECK_STATE_DIR": str(state),
-        "OPSDECK_MODEL_CHAT": "a-model-the-environment-names",
-        "OPSDECK_MODEL_API_KEY": "not-to-be-printed",
+        "OSKA_SKILLS_ROOTS": str(repo_root / "examples" / "ops" / "skills"),
+        "OSKA_RUNTIME_CONFIG": str(repo_root / "configs" / "runtime.json"),
+        "OSKA_MODEL_CONFIG": str(repo_root / "configs" / "model.json"),
+        "OSKA_STATE_DIR": str(state),
+        "OSKA_MODEL_CHAT": "a-model-the-environment-names",
+        "OSKA_MODEL_API_KEY": "not-to-be-printed",
     }
 
     result = CliRunner(env=environment).invoke(app, ["config"])

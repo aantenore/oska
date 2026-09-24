@@ -7,13 +7,13 @@ and no matchable word is written in code.
 
 ## Environment
 
-To see the values in force, including every override, run `opsdeck config`.
+To see the values in force, including every override, run `oska config`.
 It prints the settings, `runtime.json` and `model.json` as JSON; any scalar
 under a key that contains `key`, `token`, `secret` or `password` is shown as
 `***`. The guardrail catalog is not among them: it is a document rather than a
 set of settings, and `guardrails.catalog` says where to read it.
 
-Every variable is prefixed `OPSDECK_`. Relative paths resolve against the
+Every variable is prefixed `OSKA_`. Relative paths resolve against the
 current working directory. `.env.example` is a starting point; nothing in the
 package loads a `.env` file, so export it yourself:
 
@@ -23,18 +23,18 @@ set -a; . ./.env; set +a
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
-| `OPSDECK_SKILLS_ROOTS` | `examples/ops/skills`, `state/skills` | Catalog roots. Separate several with `:` or `,` |
-| `OPSDECK_RUNTIME_CONFIG` | `configs/runtime.json` | The runtime configuration file |
-| `OPSDECK_MODEL_CONFIG` | `configs/model.json` | The model configuration file |
-| `OPSDECK_CONNECTORS_CONFIG` | `examples/ops/configs/connectors.json` | The connector bindings |
-| `OPSDECK_SCHEMAS_DIR` | `schemas` | Where the JSON schemas live |
-| `OPSDECK_SCENARIOS_DIR` | `examples/ops/scenarios` | Default directory for `opsdeck conform` |
-| `OPSDECK_STATE_DIR` | `state` | Where sessions, receipts, audit and proposals are kept |
-| `OPSDECK_PROVIDER` | unset | `openai_compatible`, `scripted` or `none`. Overrides `provider` in `model.json` |
-| `OPSDECK_MODEL_BASE_URL` | unset | Overrides `base_url` |
-| `OPSDECK_MODEL_API_KEY` | unset | Overrides `api_key` |
-| `OPSDECK_MODEL_CHAT` | unset | Overrides `chat_model` |
-| `OPSDECK_MODEL_EMBEDDING` | unset | Overrides `embedding_model` |
+| `OSKA_SKILLS_ROOTS` | `examples/ops/skills`, `state/skills` | Catalog roots. Separate several with `:` or `,` |
+| `OSKA_RUNTIME_CONFIG` | `configs/runtime.json` | The runtime configuration file |
+| `OSKA_MODEL_CONFIG` | `configs/model.json` | The model configuration file |
+| `OSKA_CONNECTORS_CONFIG` | `examples/ops/configs/connectors.json` | The connector bindings |
+| `OSKA_SCHEMAS_DIR` | `schemas` | Where the JSON schemas live |
+| `OSKA_SCENARIOS_DIR` | `examples/ops/scenarios` | Default directory for `oska conform` |
+| `OSKA_STATE_DIR` | `state` | Where sessions, receipts, audit and proposals are kept |
+| `OSKA_PROVIDER` | unset | `openai_compatible`, `scripted` or `none`. Overrides `provider` in `model.json` |
+| `OSKA_MODEL_BASE_URL` | unset | Overrides `base_url` |
+| `OSKA_MODEL_API_KEY` | unset | Overrides `api_key` |
+| `OSKA_MODEL_CHAT` | unset | Overrides `chat_model` |
+| `OSKA_MODEL_EMBEDDING` | unset | Overrides `embedding_model` |
 
 An empty or whitespace-only value is treated as unset. The four model overrides
 apply on top of `model.json`, so credentials stay out of the repository while
@@ -61,7 +61,7 @@ integrations are never ranked whatever this says. Composites are excluded by
 default: they are reached by their triggers on the fast path, or by the model
 naming one, rather than competing on a score with the runbooks they contain.
 
-`languages` changes nothing on its own. It is the list `opsdeck enrich run`
+`languages` changes nothing on its own. It is the list `oska enrich run`
 derives routing examples for when no `--language` is given, so adding one is
 how a deployment says which languages it expects and then asks for a pass. The
 cost of adding one is one enrichment pass over the catalog, at publish time.
@@ -108,15 +108,15 @@ call on phrasings an author wrote down, not to guess.
 | `learning.publish_root` | `state/skills` | The catalog root a change request is meant to land in |
 
 These are resolved through the state directory: a relative path keeps only its
-last segment and is placed under `OPSDECK_STATE_DIR`, an absolute path is used
+last segment and is placed under `OSKA_STATE_DIR`, an absolute path is used
 as it stands. Every other path in this file that names something mutable —
 `tracing.path`, `improvement.learned_root`, `improvement.report_path`,
 `catalog.revisions_root`, `changes.root` — is resolved the same way. So setting
-`OPSDECK_STATE_DIR=/var/lib/opsdeck` moves them all at once, and nothing in
+`OSKA_STATE_DIR=/var/lib/oska` moves them all at once, and nothing in
 `runtime.json` needs to change.
 
 `learning.publish_root` names a root rather than causing anything to be written
-there. Nothing publishes into it on its own: `opsdeck change apply` takes the
+there. Nothing publishes into it on its own: `oska change apply` takes the
 root as a required argument, and this is the value a person would usually pass.
 The conformance runner is the one caller that reads it, standing in for the
 person so a level 3 scenario can see the procedure it published.
@@ -135,10 +135,10 @@ keeps it until another turn changes it.
 
 | Key | Default | Meaning |
 | --- | --- | --- |
-| `api.host` | `127.0.0.1` | Address `opsdeck serve` listens on |
+| `api.host` | `127.0.0.1` | Address `oska serve` listens on |
 | `api.port` | `8000` | Port it listens on |
 
-`--host` and `--port` on `opsdeck serve` override these for one run.
+`--host` and `--port` on `oska serve` override these for one run.
 
 ### `guardrails`
 
@@ -209,7 +209,7 @@ and read by the index. See [multilingual.md](multilingual.md).
 | `enrichment.cap_per_route` | `24` | How many texts one skill may contribute to the index |
 | `enrichment.filename` | `generated-examples.json` | Name of the derived file, written inside the skill's version directory |
 
-`enabled` is what the runtime consults, not what `opsdeck enrich run` consults:
+`enabled` is what the runtime consults, not what `oska enrich run` consults:
 a person running the command is asking for the files whatever the flag says.
 With the flag off, the files are written and ignored; turning it on is what
 makes them count in routing, and costs nothing per turn, because the phrases
@@ -267,7 +267,7 @@ a revision, because a directory tells each of them about a change at a
 different moment.
 
 Naming a `revision` pins the deployment to it and takes the choice away from
-`opsdeck revision use`, which is right for a rollback under review and wrong as
+`oska revision use`, which is right for a rollback under review and wrong as
 a standing setting, because the file then has to be edited and redeployed to
 move a release. A named revision the store does not hold falls back to the
 configured skill roots rather than to another revision, and the catalog check
@@ -286,7 +286,7 @@ person approved was composed from it.
 
 One directory per request, holding the package laid out the way a catalog root
 is laid out, the request record and a summary. Moving it moves where a reviewer
-looks; it changes nothing about who may apply one, because `opsdeck change
+looks; it changes nothing about who may apply one, because `oska change
 apply` takes the catalog root as a required argument and there is no configured
 value it could fall back to.
 
@@ -318,11 +318,11 @@ still be broken.
 | --- | --- | --- |
 | `retention.days` | `0` | How long the record of a conversation is kept. Zero keeps everything |
 
-The window is what `opsdeck forget expired` applies when it is given no
+The window is what `oska forget expired` applies when it is given no
 `--days`, measured from the moment each session was last written. Nothing
 applies it on its own: no turn expires anything, and the serving process
 removes nothing, so a deployment that wants a window has to run the command on
-a schedule. Deletion on request, `opsdeck forget session`, is answered whatever
+a schedule. Deletion on request, `oska forget session`, is answered whatever
 this says.
 
 Setting it costs what it sounds like it costs. The receipts, the audit entries
@@ -373,7 +373,7 @@ first JSON object in the answer is taken.
 pointing at a file: a JSON list of steps, or an object with a `provider_script`
 or `script` key — which is why a scenario file can be handed to it directly.
 
-Keep the key out of the file. `OPSDECK_MODEL_API_KEY` exists for that.
+Keep the key out of the file. `OSKA_MODEL_API_KEY` exists for that.
 
 ## Connectors
 
@@ -447,7 +447,7 @@ which is the point: swapping the file swaps the systems, not the catalog.
 
 ## The state directory
 
-Everything mutable lives under `OPSDECK_STATE_DIR`, `state/` by default, and
+Everything mutable lives under `OSKA_STATE_DIR`, `state/` by default, and
 `state/` is in `.gitignore`.
 
 ```
@@ -469,7 +469,7 @@ state/
 
 `sessions.sqlite` always sits directly under the state directory; the others
 are placed there by the resolution rule described above. `state/skills` is one
-of the default catalog roots, which is where `opsdeck change apply` is usually
+of the default catalog roots, which is where `oska change apply` is usually
 pointed. Nothing under `learned/`, `feedback/` or `preferences/` is authored:
 deleting a file undoes what it held and nothing else.
 

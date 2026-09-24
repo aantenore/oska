@@ -432,41 +432,41 @@ they are small enough that a reviewer can read them all.
 
 ## In the reference implementation
 
-- `src/opsdeck/ontology/graph.py` — `Node`, `Edge`, `OntologyGraph` and
+- `src/oska/ontology/graph.py` — `Node`, `Edge`, `OntologyGraph` and
   `OntologyCache`, built over the published catalog and keyed on its
   fingerprint.
-- `src/opsdeck/ontology/queries.py` — `operations_on`, `writers_of`,
+- `src/oska/ontology/queries.py` — `operations_on`, `writers_of`,
   `procedures_for`, `related`, `path` and `vocabulary`, and the lifecycle
   queries `lifecycle_of`, `legal_moves` and `required_move`.
-- `src/opsdeck/ontology/export.py` — `to_json`, `from_json` and `to_mermaid`.
-- `src/opsdeck/contracts/skill.py` — `EntityField`, `Relation`,
+- `src/oska/ontology/export.py` — `to_json`, `from_json` and `to_mermaid`.
+- `src/oska/contracts/skill.py` — `EntityField`, `Relation`,
   `LifecycleTransition`, the entity frontmatter fields `state_field`, `states`,
   `initial_state`, `final_states`, `lifecycle` and `state_read`, and the
   `entity` and `transitions` fields of `OperationSpec`.
 - `examples/ops/skills/entity/` — the reference domain's entity declarations.
-- `src/opsdeck/catalog/validator.py` — the cross-reference checks that enforce
+- `src/oska/catalog/validator.py` — the cross-reference checks that enforce
   `OSKA-ONT-3`, `OSKA-ONT-5` and `OSKA-ONT-11`, reported under the
   `ontology_*` codes listed above.
-- `src/opsdeck/governance/verification.py` — where the closed set of states is
+- `src/oska/governance/verification.py` — where the closed set of states is
   read at run time and not only at validation. The verifier resolves the entity
   the executed write is bound to, turns a declared transition into the expected
   value for the state field when the `expect` block does not already name that
   field, and fails the read-back with `state_outside_declared_set` when the
   value it returns is not one the entity declares.
-- `src/opsdeck/engine/execution.py` — where a write named by a lifecycle is
+- `src/oska/engine/execution.py` — where a write named by a lifecycle is
   judged before it runs: the current state is taken from the reads the plan
   already performed when one of them was about the object the write names, and
   from `state_read` for that object when none was, an illegal move produces an
   `invalid_plan` outcome naming the state and the legal moves, and nothing
   reaches the ledger. `_identity` is where the payload is turned into the
   fields that name the object, and `read_state` in
-  `src/opsdeck/governance/verification.py` is where a record is matched against
+  `src/oska/governance/verification.py` is where a record is matched against
   them.
-- `src/opsdeck/governance/capabilities.py` — `lifecycle_entity`, `move_for` and
+- `src/oska/governance/capabilities.py` — `lifecycle_entity`, `move_for` and
   `legal_operations`, which answer which move a write is making.
-- `src/opsdeck/catalog/resolver.py` and `src/opsdeck/engine/goals.py` — where
+- `src/oska/catalog/resolver.py` and `src/oska/engine/goals.py` — where
   the suggestions after a read come from the lifecycle: the moves legal from
   the state just read, minus the ones that are not offered, with the required
   one named as the step the object still needs.
-- `src/opsdeck/cli/main.py` — `opsdeck ontology`, which prints the graph as a
+- `src/oska/cli/main.py` — `oska ontology`, which prints the graph as a
   summary, as JSON or as a diagram.

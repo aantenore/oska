@@ -346,21 +346,21 @@ would simply be removed the first time it fired.
 
 ## In the reference implementation
 
-- `src/opsdeck/config.py`, `configs/runtime.json`, `configs/model.json` —
+- `src/oska/config.py`, `configs/runtime.json`, `configs/model.json` —
   settings and the tunable values.
-- `src/opsdeck/cli/main.py` — `opsdeck config`, which prints the settings in
+- `src/oska/cli/main.py` — `oska config`, which prints the settings in
   force after the environment has been applied, with secrets masked.
-- `src/opsdeck/audit/sink.py` — memory, file and fan-out sinks.
-- `src/opsdeck/audit/trace.py` — the diagnostic span sinks: none, memory and
+- `src/oska/audit/sink.py` — memory, file and fan-out sinks.
+- `src/oska/audit/trace.py` — the diagnostic span sinks: none, memory and
   file, with the null sink in force whenever tracing is off.
-- `src/opsdeck/engine/engine.py` — the per-turn model budget and the provider
+- `src/oska/engine/engine.py` — the per-turn model budget and the provider
   wrapper that counts every call through it.
-- `src/opsdeck/governance/ledger.py` — durable receipts, and the one operation
+- `src/oska/governance/ledger.py` — durable receipts, and the one operation
   that takes a session's receipts out of them.
-- `src/opsdeck/governance/retention.py` — `forget` and `expire`, over the three
+- `src/oska/governance/retention.py` — `forget` and `expire`, over the three
   stores together, and the event each of them leaves.
-- `src/opsdeck/cli/commands_forget.py` — the two commands an operator runs, and
+- `src/oska/cli/commands_forget.py` — the two commands an operator runs, and
   what each of them reports having removed.
-- `src/opsdeck/contracts/` — the shared types, owned by no layer.
+- `src/oska/contracts/` — the shared types, owned by no layer.
 - `tests/scenarios/test_scenarios.py` — the scenario runner, including the check
   that the scripted model calls were consumed in the recorded order.

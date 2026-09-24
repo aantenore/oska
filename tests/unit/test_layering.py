@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-PACKAGE_ROOT = Path(__file__).resolve().parents[2] / "src" / "opsdeck"
+PACKAGE_ROOT = Path(__file__).resolve().parents[2] / "src" / "oska"
 
 LAYERS: dict[str, int] = {
     "connectors": 1,
@@ -42,7 +42,7 @@ CHANNELS = frozenset({"api", "cli", "services", "conformance"})
 # What the evolution layer may reach: the catalog it publishes into, and the
 # provider interface it drafts wording with.
 LEARNING_MAY_IMPORT = frozenset({"catalog", "learning"}) | SHARED
-LEARNING_MAY_IMPORT_MODULES = frozenset({"opsdeck.planner.provider"})
+LEARNING_MAY_IMPORT_MODULES = frozenset({"oska.planner.provider"})
 
 # What cognition may reach: the catalog it ranks and plans over, the ontology it
 # describes to a model, and the shared contracts and configuration.
@@ -59,7 +59,7 @@ def _package_of(path: Path) -> str:
 
 
 def _imports(path: Path) -> list[str]:
-    """Every `opsdeck` module this file imports, by dotted name."""
+    """Every `oska` module this file imports, by dotted name."""
     tree = ast.parse(path.read_text(encoding="utf-8"))
     imported: list[str] = []
     for node in ast.walk(tree):
@@ -67,7 +67,7 @@ def _imports(path: Path) -> list[str]:
             imported.extend(alias.name for alias in node.names)
         elif isinstance(node, ast.ImportFrom) and node.module and not node.level:
             imported.append(node.module)
-    return [name for name in imported if name.split(".")[0] == "opsdeck"]
+    return [name for name in imported if name.split(".")[0] == "oska"]
 
 
 def _target_package(module: str) -> str | None:

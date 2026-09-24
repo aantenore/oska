@@ -16,12 +16,12 @@ from pathlib import Path
 
 import pytest
 
-from opsdeck.audit.sink import MemorySink
-from opsdeck.config import Settings
-from opsdeck.contracts.common import Message, TurnResult
-from opsdeck.engine.engine import ModelBudget
-from opsdeck.engine.factory import build_engine
-from opsdeck.planner.scripted import hash_bag_vector
+from oska.audit.sink import MemorySink
+from oska.config import Settings
+from oska.contracts.common import Message, TurnResult
+from oska.engine.engine import ModelBudget
+from oska.engine.factory import build_engine
+from oska.planner.scripted import hash_bag_vector
 
 RESTART_REQUEST = "the search service in staging needs a restart, it is wedged again"
 CONTAINER_RUNTIME = "integration.container_runtime"
