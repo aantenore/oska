@@ -3,8 +3,9 @@
 Everything the engine needs is assembled here, so the command line, the API and
 the tests all start from the same wiring. With no model provider the engine
 still routes by rule and by trigger, still answers what it can do, and declines
-to plan; with one, discovery ranks by embedding and the model classifies,
-plans, breaks ties and phrases the reply. Whatever the provider is, it is
+to plan; with one, the model classifies, plans, breaks ties and phrases the
+reply, and discovery ranks by embedding when the provider embeds and by keyword
+when it does not. Whatever the provider is, it is
 wrapped in the turn's model budget before anything is given it, so every call
 the runtime makes is counted in one place.
 
@@ -24,7 +25,9 @@ off unless it switches them on. The enrichment configuration and the learned
 phrasings reach the two layers that rank the catalog, so a deployment that has
 derived the phrases of its procedures, or has run the improvement job over its
 traffic, routes by them without anything else being told. Both are read from
-disk; neither is written here.
+disk; neither is written here. The phrase catalog the runtime speaks its own
+sentences from is loaded here once, and refused when the words an approval
+request would tell a person to type are not ones the approval rules accept.
 
 A caller that assembles several engines in one process, one per domain and
 tenant, hands over what it has already resolved: the runtime configuration
@@ -62,6 +65,7 @@ from oska.connectors.registry import ConnectorRegistry
 from oska.contracts.platform import HostIdentity
 from oska.contracts.receipt import WriteReceipt
 from oska.engine.engine import BudgetedProvider, Engine, ModelBudget
+from oska.engine.phrases import load_phrases
 from oska.governance.approval import ApprovalGate
 from oska.governance.capabilities import CapabilityRegistry
 from oska.governance.guardrails import GuardrailCatalog
@@ -74,7 +78,7 @@ from oska.index.discovery import Discovery
 from oska.index.embedding import EmbeddingIndex
 from oska.index.keyword import KeywordIndex
 from oska.planner.planner import Planner
-from oska.planner.provider import ModelProvider
+from oska.planner.provider import ModelProvider, provider_embeds
 from oska.router import FastPath, ModelRouter, RuleRouter, TurnRouter
 from oska.storage import DEFAULT_NAMESPACE, LedgerStore, open_ledger, open_sessions
 
@@ -122,7 +126,9 @@ def build_engine(
     wording = (resolver or CapabilityResolver)(registry)
 
     def make_index() -> SkillIndex:
-        return KeywordIndex() if provider is None else EmbeddingIndex(provider)
+        if provider is None or not provider_embeds(provider):
+            return KeywordIndex()
+        return EmbeddingIndex(provider)
 
     learned = LearnedPhrases(
         state_path(settings.state_dir, runtime.improvement.learned_root)
@@ -150,6 +156,7 @@ def build_engine(
     )
     audit = audit_sink or JsonlSink(state_path(settings.state_dir, runtime.audit.path))
     preferences = preferences_root(settings.state_dir)
+    phrases = load_phrases(runtime, settings)
     return Engine(
         registry=registry,
         resolver=wording,
@@ -172,6 +179,7 @@ def build_engine(
         presentation=presentation,
         synonyms=synonyms,
         host=host,
+        phrases=phrases,
     )
 
 

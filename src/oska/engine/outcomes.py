@@ -14,6 +14,12 @@ has a line of its own too. It did not fail: it may or may not have landed, and
 a person told it failed may do it again by hand. The line says that nothing is
 known, whether the runtime will send it again, and which receipt holds the
 attempt. "Failed" is kept for a write the system answered and refused.
+
+The lines are said in the language of the conversation, from the phrase
+catalog; the values in them (operation, integration, payload, receipt, reason)
+are inserted as they are. What is handed to a model instead, the landing facts
+and the instruction about a capability that is down, stays in English and out
+of the catalog: it is read by a model, not by a person.
 """
 
 from __future__ import annotations
@@ -23,6 +29,7 @@ from collections.abc import Sequence
 from oska.connectors.base import health_of
 from oska.contracts.common import ConnectorResult, Outcome, PendingApproval, PolicyDecision
 from oska.contracts.receipt import VerificationStatus, WriteReceipt
+from oska.engine.phrases import Phrases
 from oska.governance.ledger import canonical_json
 
 __all__ = [
@@ -196,13 +203,18 @@ def denied_outcome(
     )
 
 
-def rejected_outcome(pending: PendingApproval, reason: str = "") -> Outcome:
+def rejected_outcome(
+    pending: PendingApproval, reason: str = "", *, phrase: str | None = None
+) -> Outcome:
     """A write that did not run: the user refused it, or it left what was approved."""
+    data: dict = {"approval_id": pending.approval_id, "payload": pending.exact_payload}
+    if phrase:
+        data["phrase"] = phrase
     return Outcome(
         kind="rejected",
         integration_id=pending.integration_id,
         operation=pending.operation,
-        data={"approval_id": pending.approval_id, "payload": pending.exact_payload},
+        data=data,
         reason=reason,
     )
 
@@ -231,9 +243,17 @@ def approval_pending_outcome(pending: PendingApproval) -> Outcome:
     )
 
 
-def cancelled_outcome(reason: str, pending: PendingApproval | None = None) -> Outcome:
-    """Something that was under way and is not any more."""
-    data = {"approval_id": pending.approval_id} if pending else {}
+def cancelled_outcome(
+    reason: str, pending: PendingApproval | None = None, *, phrase: str | None = None
+) -> Outcome:
+    """Something that was under way and is not any more.
+
+    `phrase` names the catalog phrase that says it to a person; `reason` stays
+    the record's own wording for the audit trail.
+    """
+    data: dict = {"approval_id": pending.approval_id} if pending else {}
+    if phrase:
+        data["phrase"] = phrase
     return Outcome(
         kind="cancelled",
         integration_id=pending.integration_id if pending else None,
@@ -243,14 +263,20 @@ def cancelled_outcome(reason: str, pending: PendingApproval | None = None) -> Ou
     )
 
 
-def outcome_summary(outcomes: Sequence[Outcome]) -> list[str]:
-    """One English line per outcome, stating only what the outcome holds."""
-    return [_line(outcome) for outcome in outcomes]
+def outcome_summary(
+    outcomes: Sequence[Outcome], phrases: Phrases, language: str
+) -> list[str]:
+    """One line per outcome, in this language, stating only what the outcome holds."""
+    return [_line(outcome, phrases, language) for outcome in outcomes]
 
 
-def receipt_lines(outcomes: Sequence[Outcome]) -> list[str]:
+def receipt_lines(outcomes: Sequence[Outcome], phrases: Phrases, language: str) -> list[str]:
     """One line per write this turn performed, replayed, or could not send at all."""
-    return [_line(outcome) for outcome in outcomes if _names_a_receipt(outcome)]
+    return [
+        _line(outcome, phrases, language)
+        for outcome in outcomes
+        if _names_a_receipt(outcome)
+    ]
 
 
 def is_write(outcome: Outcome) -> bool:
@@ -325,126 +351,166 @@ def _names_a_receipt(outcome: Outcome) -> bool:
     )
 
 
-def _line(outcome: Outcome) -> str:
+def _line(outcome: Outcome, phrases: Phrases, language: str) -> str:
+    say = phrases.say
+    operation = outcome.operation
     match outcome.kind:
         case "read":
-            return _read_line(outcome)
+            return _read_line(outcome, phrases, language)
         case "receipt":
-            return _receipt_line(outcome)
+            return _receipt_line(outcome, phrases, language)
         case "unavailable":
-            return _unavailable_line(outcome)
+            return _unavailable_line(outcome, phrases, language)
         case "ledger_hit":
             if landed(outcome):
-                return (
-                    f"{outcome.operation} was already done in this session, "
-                    f"receipt {outcome.receipt_id}."
+                return say(
+                    language, "already_done", operation=operation, receipt_id=outcome.receipt_id
                 )
-            return (
-                f"{outcome.operation} was already asked for in this session and is not "
-                f"confirmed: receipt {outcome.receipt_id} is {outcome.data.get('status')}, "
-                f"{outcome.data.get('verification')}. It is not sent again."
+            return say(
+                language,
+                "already_asked",
+                operation=operation,
+                receipt_id=outcome.receipt_id,
+                status=outcome.data.get("status"),
+                verification=outcome.data.get("verification"),
             )
         case "denied":
-            return f"{outcome.operation} was refused. {outcome.reason or ''}".strip()
+            return say(
+                language, "denied", operation=operation, reason=outcome.reason or ""
+            ).strip()
         case "rejected":
+            if outcome.data.get("phrase"):
+                return say(language, outcome.data["phrase"], operation=operation)
             if outcome.reason:
-                return f"{outcome.operation} was not run: {outcome.reason}."
-            return f"{outcome.operation} was not run, because you rejected it."
+                return say(
+                    language, "rejected_because", operation=operation, reason=outcome.reason
+                )
+            return say(language, "rejected", operation=operation)
         case "invalid_plan":
             issues = "; ".join(outcome.data.get("issues") or [])
-            runbook_id = outcome.data.get("runbook_id", "the procedure")
-            return f"Nothing ran: the plan for {runbook_id} does not hold up. {issues}".strip()
+            runbook_id = (
+                outcome.data["runbook_id"]
+                if "runbook_id" in outcome.data
+                else say(language, "the_procedure")
+            )
+            return say(
+                language, "invalid_plan", runbook_id=runbook_id, issues=issues
+            ).strip()
         case "approval_pending":
-            return (
-                f"{outcome.operation} is waiting for your approval with "
-                f"{canonical_json(outcome.data.get('payload') or {})}."
+            return say(
+                language,
+                "approval_pending",
+                operation=operation,
+                payload=canonical_json(outcome.data.get("payload") or {}),
             )
         case "cancelled":
-            return outcome.reason or "The request under way was cancelled."
-    return f"{outcome.kind}."
+            if outcome.data.get("phrase"):
+                return say(language, outcome.data["phrase"])
+            return outcome.reason or say(language, "cancelled")
+    return say(language, "other_outcome", kind=outcome.kind)
 
 
-def _unavailable_line(outcome: Outcome) -> str:
+def _unavailable_line(outcome: Outcome, phrases: Phrases, language: str) -> str:
     """Neither done nor refused: not reachable, and when it may be tried again.
 
     A write says so in the same breath as its receipt, because the attempt is
     in the record and the reply names every receipt the session holds.
     """
-    reason = outcome.reason or "it did not answer"
+    say = phrases.say
+    reason = outcome.reason or say(language, "did_not_answer")
+    when = _retry(outcome, phrases, language)
     if outcome.data.get("state_unconfirmed"):
-        read = outcome.data.get("read_operation") or "the read before it"
-        return (
-            f"{outcome.operation} was not sent: the state it is judged on could not be "
-            f"confirmed, because {read} could not be read again: {reason}. Nothing was "
-            f"sent, so nothing was changed. It may be asked for again {_when(outcome)}."
+        read = outcome.data.get("read_operation") or say(language, "the_read_before_it")
+        return say(
+            language,
+            "state_unconfirmed",
+            operation=outcome.operation,
+            read=read,
+            reason=reason,
+            when=when,
         )
     if outcome.data.get("unknown"):
-        return (
-            f"{outcome.operation} may or may not have landed on {outcome.integration_id}: "
-            f"{reason}, and the read-back could not be reached either, so whether it "
-            "landed is unknown. The system of record would stop a second send of it, so it "
-            f"may be asked for again {_when(outcome)}. "
-            f"Receipt {outcome.receipt_id} records the attempt."
+        return say(
+            language,
+            "unavailable_unknown",
+            operation=outcome.operation,
+            integration=outcome.integration_id,
+            reason=reason,
+            when=when,
+            receipt_id=outcome.receipt_id,
         )
-    head = (
-        f"{outcome.operation} could not be reached on {outcome.integration_id}: {reason}. "
-        f"That capability is temporarily unavailable and may be tried again {_when(outcome)}."
+    head = say(
+        language,
+        "unavailable",
+        operation=outcome.operation,
+        integration=outcome.integration_id,
+        reason=reason,
+        when=when,
     )
     if outcome.data.get("write"):
-        return (
-            f"{head} Nothing was sent, so nothing was changed. "
-            f"Receipt {outcome.receipt_id} records the attempt."
-        )
-    return f"{head} Nothing was read and nothing was changed."
+        tail = say(language, "unavailable_write", receipt_id=outcome.receipt_id)
+    else:
+        tail = say(language, "unavailable_read")
+    return f"{head} {tail}"
 
 
 def _when(outcome: Outcome) -> str:
-    """How long until the capability may be tried again, in words."""
+    """How long until the capability may be tried again, in English words for a model."""
     seconds = outcome.data.get("retry_in_seconds")
     if not isinstance(seconds, int) or seconds <= 0:
         return "now"
     return f"in {seconds} second" if seconds == 1 else f"in {seconds} seconds"
 
 
-def _read_line(outcome: Outcome) -> str:
+def _retry(outcome: Outcome, phrases: Phrases, language: str) -> str:
+    """How long until the capability may be tried again, in the words of the conversation."""
+    seconds = outcome.data.get("retry_in_seconds")
+    if not isinstance(seconds, int) or seconds <= 0:
+        return phrases.say(language, "when_now")
+    if seconds == 1:
+        return phrases.say(language, "when_one_second")
+    return phrases.say(language, "when_seconds", seconds=seconds)
+
+
+def _read_line(outcome: Outcome, phrases: Phrases, language: str) -> str:
     if outcome.data.get("ok"):
-        return f"Read {outcome.operation}: {canonical_json(outcome.data.get('data') or {})}"
-    error = outcome.data.get("error") or "no reason given"
-    return f"{outcome.operation} could not be read: {error}."
+        return phrases.say(
+            language,
+            "read",
+            operation=outcome.operation,
+            data=canonical_json(outcome.data.get("data") or {}),
+        )
+    error = outcome.data.get("error") or phrases.say(language, "no_reason_given")
+    return phrases.say(language, "read_failed", operation=outcome.operation, error=error)
 
 
-def _receipt_line(outcome: Outcome) -> str:
+def _receipt_line(outcome: Outcome, phrases: Phrases, language: str) -> str:
+    say = phrases.say
     receipt_id = outcome.receipt_id
     operation = outcome.operation
     status = outcome.data.get("status")
     verification = outcome.data.get("verification")
     if outcome.data.get("unknown"):
-        return (
-            f"{operation} may or may not have landed: its answer was lost and the read-back "
-            "could not be reached either, so whether it landed is unknown. "
-            f"It is not sent again. Receipt {receipt_id} records the attempt; check the "
-            "system itself before doing it by hand."
-        )
+        return say(language, "receipt_unknown", operation=operation, receipt_id=receipt_id)
     if status == "error":
-        return (
-            f"{operation} failed: {outcome.reason or 'the call did not complete'}. "
-            f"Receipt {receipt_id} records the attempt."
+        reason = outcome.reason or say(language, "call_did_not_complete")
+        return say(
+            language, "receipt_failed", operation=operation, reason=reason, receipt_id=receipt_id
         )
     if verification == str(VerificationStatus.verified):
-        evidence = ", ".join(outcome.data.get("evidence") or []) or "the declared read-back"
-        return (
-            f"{operation} ran and the read-back confirmed {evidence}. "
-            f"Receipt {receipt_id} is verified."
+        evidence = ", ".join(outcome.data.get("evidence") or []) or say(
+            language, "declared_read_back"
+        )
+        return say(
+            language,
+            "receipt_verified",
+            operation=operation,
+            evidence=evidence,
+            receipt_id=receipt_id,
         )
     if verification == str(VerificationStatus.failed):
-        return (
-            f"{operation} ran, but the read-back contradicted it. "
-            f"Receipt {receipt_id} is not verified."
-        )
-    return (
-        f"{operation} ran, but nothing confirmed it. "
-        f"Receipt {receipt_id} is not verified."
-    )
+        return say(language, "receipt_contradicted", operation=operation, receipt_id=receipt_id)
+    return say(language, "receipt_unconfirmed", operation=operation, receipt_id=receipt_id)
 
 
 def _evidence_keys(receipt: WriteReceipt) -> list[str]:

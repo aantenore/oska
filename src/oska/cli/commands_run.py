@@ -37,10 +37,10 @@ from oska.config import ProviderName, Settings, load_model_config, load_settings
 from oska.contracts.common import Outcome, TurnResult
 from oska.contracts.receipt import WriteReceipt
 from oska.engine.engine import Engine
-from oska.planner.openai_compatible import OpenAICompatibleProvider
 from oska.planner.provider import ModelProvider, ModelProviderError
+from oska.planner.providers import build_provider
 from oska.planner.recording import RecordingProvider, ReplayProvider
-from oska.planner.scripted import ScriptedModelProvider
+from oska.planner.scripted import ScriptedModelProvider, ScriptMismatchError
 from oska.platform import Platform, PlatformError
 
 __all__ = ["receipts", "register", "run"]
@@ -55,6 +55,8 @@ class Provider(StrEnum):
     """Which cognition the run uses."""
 
     openai_compatible = "openai_compatible"
+    anthropic = "anthropic"
+    profiles = "profiles"
     scripted = "scripted"
     none = "none"
 
@@ -79,6 +81,16 @@ ReplayOption = Annotated[
     Path | None,
     typer.Option("--replay", help="Answer from this cassette instead of a provider."),
 ]
+VolatileOption = Annotated[
+    list[str] | None,
+    typer.Option(
+        "--volatile",
+        help=(
+            "Regex a recorded expectation is cut before the first match of; repeatable, "
+            "replaces the default uuid patterns. Used with --record or --replay."
+        ),
+    ),
+]
 
 
 def register(app: typer.Typer) -> None:
@@ -94,6 +106,7 @@ def run(
     script: ScriptOption = None,
     record: RecordOption = None,
     replay: ReplayOption = None,
+    volatile: VolatileOption = None,
     skills: SkillsOption = None,
     platform: PlatformOption = None,
     domain: DomainOption = None,
@@ -102,12 +115,12 @@ def run(
     """Run one turn, or read turns from standard input until it ends."""
     if platform is None:
         settings = settings_for(skills, domain=domain, tenant=tenant)
-        chosen = _provider(settings, provider, script, record, replay)
+        chosen = _provider(settings, provider, script, record, replay, volatile)
         turn: Turn = services_for(settings, provider=chosen).engine.turn
     else:
         if skills:
             fail("--platform names the catalog; drop --skills")
-        chosen = _provider(load_settings(), provider, script, record, replay)
+        chosen = _provider(load_settings(), provider, script, record, replay, volatile)
         turn = _platform_turn(platform, domain, tenant, chosen)
     if text is not None:
         _turn(turn, session, text)
@@ -174,13 +187,16 @@ def _provider(
     script: Path | None,
     record: Path | None = None,
     replay: Path | None = None,
+    volatile: list[str] | None = None,
 ) -> ModelProvider | None:
     """The provider the run uses: replayed, recorded around, or as configured."""
     if record is not None and replay is not None:
         fail("--record writes a cassette and --replay reads one; use one of them")
+    if volatile is not None and record is None and replay is None:
+        fail("--volatile only applies with --record or --replay")
     if replay is not None:
         try:
-            return ReplayProvider(replay)
+            return ReplayProvider(replay, volatile=volatile)
         except ModelProviderError as exc:
             fail(f"the cassette could not be read: {exc}")
     inner = _configured_provider(settings, chosen, script)
@@ -189,7 +205,7 @@ def _provider(
     if inner is None:
         fail("--record needs a provider to record; the provider in force is none")
     try:
-        return RecordingProvider(inner, record)
+        return RecordingProvider(inner, record, volatile=volatile)
     except (OSError, ModelProviderError) as exc:
         fail(f"the cassette could not be opened: {exc}")
 
@@ -209,8 +225,9 @@ def _configured_provider(
         except (OSError, ModelProviderError, json.JSONDecodeError) as exc:
             fail(f"the script could not be read: {exc}")
     try:
-        return OpenAICompatibleProvider.from_config(load_model_config(settings=settings))
-    except (OSError, ModelProviderError) as exc:
+        model_config = load_model_config(settings=settings)
+        return build_provider(model_config.model_copy(update={"provider": name}))
+    except (OSError, ValueError, ModelProviderError) as exc:
         fail(f"the model provider could not be built: {exc}")
 
 
@@ -234,6 +251,8 @@ def _turn(turn: Turn, session: str, text: str) -> None:
         result = turn(session, text)
     except ModelProviderError as exc:
         fail(f"the model provider failed: {exc}")
+    except ScriptMismatchError as exc:
+        fail(f"the recorded answers no longer match: {exc}")
     _print(result)
 
 

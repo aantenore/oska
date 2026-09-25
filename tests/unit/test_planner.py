@@ -15,7 +15,7 @@ from oska.contracts.plan import Plan
 from oska.planner.openai_compatible import OpenAICompatibleProvider
 from oska.planner.planner import InvalidPlanError, Planner, validate_plan
 from oska.planner.provider import ModelProviderError
-from oska.planner.scripted import ScriptedModelProvider
+from oska.planner.scripted import ScriptedModelProvider, ScriptMismatchError
 
 RUNBOOK = "runbook.service_restart"
 INTEGRATION = "integration.container_runtime"
@@ -260,9 +260,10 @@ def test_script_mismatch_names_the_expectation_and_the_message() -> None:
         [{"purpose": "plan", "expect_contains": "rollback", "response": {}}]
     )
 
-    with pytest.raises(ModelProviderError) as raised:
+    with pytest.raises(ScriptMismatchError) as raised:
         provider.complete_json("system", [Message(role="user", content="restart checkout")], {})
 
+    assert not isinstance(raised.value, ModelProviderError)
     message = str(raised.value)
     assert "rollback" in message
     assert "restart checkout" in message
@@ -356,9 +357,11 @@ def test_provider_falls_back_when_the_endpoint_rejects_response_format() -> None
     answer = provider.complete_json("system", CONVERSATION, {"type": "object"})
 
     assert answer == {"reply": "done"}
-    assert len(seen) == 2
-    assert "response_format" not in seen[1]
+    assert len(seen) == 3
+    assert seen[1]["response_format"] == {"type": "json_object"}
     assert "JSON schema" in seen[1]["messages"][0]["content"]
+    assert "response_format" not in seen[2]
+    assert "JSON schema" in seen[2]["messages"][0]["content"]
 
 
 def test_provider_reports_the_upstream_message() -> None:

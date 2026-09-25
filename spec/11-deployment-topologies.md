@@ -200,6 +200,11 @@ overstates a result. Each of those is caught by a layer below cognition, and
 each has a scenario in the conformance suite. The provider can waste a turn. It
 cannot cause an effect.
 
+A deployment that names several providers and falls back from one to the next
+trusts none of them more than one. Which of them answered changes nothing that
+is checked, and a fallback is taken only on a failure another provider might not
+have, so a request one provider refused is not sent on to the next.
+
 Connectors are trusted narrowly. They run declared operations against systems
 the organization chose, so they are inside the boundary in the sense that they
 are allowed to act. They are outside it in the sense that their report of

@@ -25,7 +25,8 @@
         "proposal",
         "guardrail",
         "trace",
-        "budget"
+        "budget",
+        "model_fallback"
       ],
       "description": "Which step of the turn this event records."
     },

@@ -23,6 +23,7 @@ from oska.engine import outcomes as build
 from oska.engine.engine import Engine
 from oska.engine.factory import build_engine
 from oska.engine.outcomes import outcome_summary
+from oska.engine.phrases import Phrases
 from oska.engine.session_store import SessionStore
 from oska.engine.state import SessionState
 from oska.governance.ledger import WriteLedger
@@ -31,6 +32,7 @@ from oska.planner.scripted import ScriptedModelProvider
 RESTART_REQUEST = "the search service in staging needs a restart, it is wedged again"
 TRIAGE_REQUEST = "run triage on incident inc-501 for the payments service"
 CONTAINER_RUNTIME = "integration.container_runtime"
+PHRASES = Phrases.load()
 
 
 def _settings(repo_root: Path, state_dir: Path) -> Settings:
@@ -406,7 +408,9 @@ def test_the_summary_never_calls_an_unconfirmed_write_verified() -> None:
             build.receipt_outcome(receipt),
             build.ledger_hit_outcome(receipt),
             build.invalid_plan_outcome("runbook.service_restart", ["no such operation"]),
-        ]
+        ],
+        PHRASES,
+        "en",
     )
 
     assert lines[0] == (
@@ -432,7 +436,7 @@ def test_a_confirmed_write_found_in_the_ledger_is_reported_as_done() -> None:
         verification=VerificationStatus.verified,
         created_at=datetime.now(UTC),
     )
-    lines = outcome_summary([build.ledger_hit_outcome(receipt)])
+    lines = outcome_summary([build.ledger_hit_outcome(receipt)], PHRASES, "en")
     assert lines == ["service.restart was already done in this session, receipt r-8."]
 
 

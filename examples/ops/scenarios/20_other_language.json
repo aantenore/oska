@@ -1,6 +1,6 @@
 {
   "name": "20_other_language",
-  "description": "A request written in Italian is routed and answered in Italian. The router reports the language once, the session keeps it, and the turn that approves the write is decided by the rules without a model call and is still answered in the language the session settled on.",
+  "description": "A request written in Italian is routed and answered in Italian. The router reports the language once, the session keeps it, and the turn that approves the write is decided by the rules without a model call and is still answered in the language the session settled on. What the runtime says in its own words is in that language too: the approval request, with the Italian word the rules accept for yes, and the receipt line appended after the written reply.",
   "level": 1,
   "provider_script": [
     {
@@ -56,8 +56,9 @@
       "expect": {
         "kind": "new_task",
         "contains": [
-          "service.restart",
-          "{\"service\":\"search\"}"
+          "serve prima la tua approvazione",
+          "service.restart su integration.container_runtime con {\"service\":\"search\"}",
+          "Rispondi sì per approvarla"
         ],
         "outcomes": [
           "read",
@@ -74,7 +75,9 @@
         "kind": "approve",
         "contains": [
           "riavviato",
-          "confermata"
+          "confermata",
+          "L'operazione service.restart è stata eseguita e la rilettura ha confermato",
+          "è verificata."
         ],
         "outcomes": [
           "receipt"

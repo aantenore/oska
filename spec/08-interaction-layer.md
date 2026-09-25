@@ -331,10 +331,11 @@ One user turn. Numbered steps, executed in order.
     information, the suggestions and the reply intent, in the session
     language. The reply writer is told, for each write of the turn, whether it
     landed. When any write of the turn is not executed and verified, the text
-    the reply writer returns is set aside and the deterministic form answers,
-    which costs something plain: that answer is in the language of the
-    deterministic templates, not the language of the conversation; only the
-    offered actions keep the labels the call returned. Emit a
+    the reply writer returns is set aside and the deterministic form answers.
+    The deterministic form is said in the session language from the phrase
+    catalog, falling back phrase by phrase to the default language where a
+    phrase has no translation; the offered actions keep the labels the call
+    returned. Emit a
     `reply` event carrying the directives and any record the
     turn took from the focus.
 13. **Save.** Append the reply to the history and save the session, whatever
@@ -437,6 +438,23 @@ One user turn. Numbered steps, executed in order.
 - **OSKA-IXN-27** — The reply writer MUST be told, for each write of the turn,
   whether it landed. When any write of the turn is not executed and verified, a
   model-written reply MUST NOT be used; the deterministic form MUST answer.
+- **OSKA-IXN-28** — Every sentence the runtime says in its own words MUST come
+  from a phrase catalog keyed by language, in which the default language is
+  complete. A phrase missing in the language of the session MUST fall back to
+  the default language for that phrase alone. Values (operation names,
+  integration identifiers, payloads, receipt identifiers, reasons) MUST be
+  inserted verbatim. A translation that names placeholders other than those of
+  its default-language phrase MUST be refused when the catalog is loaded. The
+  words an approval request tells a person to type MUST be accepted by the
+  approval rules in every language the deployment declares it answers in, or
+  the catalog MUST be refused when it is loaded. A reason the runtime gives in
+  its own words for dropping a request or holding a write back is such a
+  sentence; a reason written by a policy, a plan check or a connector is a
+  value.
+- **OSKA-IXN-29** — The conformance check for a reply that calls a write
+  verified when its receipt is not MUST read the words that make that claim, and
+  the words that negate it, from the same phrase catalog, in every language the
+  catalog holds.
 
 ## Rationale
 
@@ -488,6 +506,14 @@ whether it may run is current.
   filled from a verified receipt, one dropped when a binding cannot be
   answered, none when presentation is off, and no completion view past a
   write that did not land.
+- `src/oska/engine/phrases.py`, `configs/phrases.json` — the phrase catalog:
+  the phrases the code asks for, the layered load, the placeholder check and
+  the check of the approval words against the approval rules
+  (`OSKA-IXN-28`); `src/oska/conformance/runner.py` reads its claim words from
+  it (`OSKA-IXN-29`). `tests/unit/test_phrases.py` and
+  `examples/ops/scenarios/20_other_language.json` — the approval request and
+  the receipt line in Italian, and an Italian reply that overstates a write
+  caught by the conformance check.
 - `src/oska/services.py` — the one assembly both channels are built over:
   engine, catalog, proposal store, publication root.
 - `src/oska/cli/` (`main.py`, `commands_run.py`, `commands_serve.py`,

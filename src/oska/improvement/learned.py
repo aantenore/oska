@@ -44,7 +44,7 @@ from oska.index.base import (
     overlap_score,
     tokenize,
 )
-from oska.planner.provider import ModelProvider
+from oska.planner.provider import ModelProvider, provider_embeds
 
 __all__ = [
     "DEFAULT_REDACTIONS",
@@ -98,7 +98,7 @@ class Similarity:
 
     def prime(self, texts: Sequence[str]) -> None:
         """Embed these texts once, if there is a provider to embed them with."""
-        if self._provider is None:
+        if self._provider is None or not provider_embeds(self._provider):
             return
         wanted = [text for text in dict.fromkeys(texts) if text and text not in self._vectors]
         if not wanted:

@@ -12,6 +12,10 @@ level per domain, and fails when a domain falls short of the platform's target.
 `serve` warns on stderr when it binds an address other people can reach while
 the configuration does not require an identity: anyone who can reach the port
 can then hold a conversation, and nothing but the network stands in the way.
+
+`serve` reasons with the model provider `model.json` and `OSKA_PROVIDER`
+describe, in both modes; with `none` it serves without one. A provider that
+cannot be built stops the command with one line before anything listens.
 """
 
 from __future__ import annotations
@@ -35,8 +39,11 @@ from oska.cli.options import (
     platform_for,
     settings_for,
 )
-from oska.config import load_runtime_config, load_settings
+from oska.config import Settings, load_model_config, load_runtime_config, load_settings
 from oska.conformance import render_json, render_text, run_suite
+from oska.engine.phrases import PhraseCatalogError
+from oska.planner.provider import ModelProvider, ModelProviderError
+from oska.planner.providers import build_provider
 from oska.platform import PlatformError
 from oska.platform.conformance import (
     passed,
@@ -45,7 +52,14 @@ from oska.platform.conformance import (
     run_platform,
 )
 
-__all__ = ["conform", "is_loopback", "open_port_warning", "register", "serve"]
+__all__ = [
+    "conform",
+    "is_loopback",
+    "open_port_warning",
+    "register",
+    "serve",
+    "serving_provider",
+]
 
 HostOption = Annotated[
     str | None,
@@ -89,15 +103,28 @@ def serve(
     bound_port = port if port is not None else configured.port
     if not runtime.identity.required and not is_loopback(bound_host):
         typer.echo(open_port_warning(bound_host, bound_port), err=True)
+    provider = serving_provider(settings)
     try:
         application = create_app(
-            settings, platform=None if platform is None else platform_for(platform)
+            settings,
+            platform=None if platform is None else platform_for(platform, provider=provider),
+            provider=provider,
         )
     except CatalogError as exc:
         fail(f"the catalog does not hold up: {exc}")
     except PlatformError as exc:
         fail(f"the platform does not hold up: {exc}")
+    except PhraseCatalogError as exc:
+        fail(str(exc))
     uvicorn.run(application, host=bound_host, port=bound_port)
+
+
+def serving_provider(settings: Settings) -> ModelProvider | None:
+    """The model provider the configuration describes, or none; one that cannot be built stops."""
+    try:
+        return build_provider(load_model_config(settings=settings))
+    except (OSError, ValueError, ModelProviderError) as exc:
+        fail(f"the model provider could not be built: {exc}")
 
 
 def is_loopback(host: str) -> bool:

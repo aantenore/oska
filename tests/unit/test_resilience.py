@@ -50,6 +50,7 @@ from oska.engine.outcomes import (
     unavailable_instruction,
     unavailable_outcome,
 )
+from oska.engine.phrases import Phrases
 from oska.governance.capabilities import CapabilityRegistry
 from oska.governance.ledger import WriteLedger
 from oska.planner.scripted import ScriptedModelProvider
@@ -66,6 +67,7 @@ UNREACHABLE_AFTER_THE_POLICY_READ = {"fail_after": 1, **UNREACHABLE}
 RUNNING = "search"
 #: A service the fixture holds stopped, so a read-back of a restart contradicts it.
 STOPPED = "reporting"
+PHRASES = Phrases.load()
 
 
 class Clock:
@@ -610,7 +612,7 @@ def unavailable(write: bool = False, seconds: int | None = 30) -> object:
 
 
 def test_the_line_says_neither_refused_nor_done() -> None:
-    line = receipt_lines([unavailable(write=True)])[0]
+    line = receipt_lines([unavailable(write=True)], PHRASES, "en")[0]
 
     assert "temporarily unavailable" in line
     assert "may be tried again in 30 seconds" in line
@@ -622,13 +624,13 @@ def test_the_line_says_neither_refused_nor_done() -> None:
 def test_a_read_that_is_unavailable_names_no_receipt() -> None:
     outcome = unavailable()
 
-    assert receipt_lines([outcome]) == []
+    assert receipt_lines([outcome], PHRASES, "en") == []
     assert outcome.receipt_id is None
     assert outcome.data["breaker"] == "open"
 
 
 def test_a_capability_that_may_be_tried_now_says_so() -> None:
-    line = receipt_lines([unavailable(write=True, seconds=None)])[0]
+    line = receipt_lines([unavailable(write=True, seconds=None)], PHRASES, "en")[0]
 
     assert "may be tried again now" in line
 
@@ -950,7 +952,7 @@ def test_an_unknown_outcome_is_asked_again_only_where_the_system_would_stop_a_re
     assert held.verification is VerificationStatus.unverified
     assert [outcome.kind for outcome in dark.outcomes] == ["unavailable"]
     assert _settlement(dark) == {"found": "unknown", "key_closed": False}
-    line = receipt_lines(dark.outcomes)[0]
+    line = receipt_lines(dark.outcomes, PHRASES, "en")[0]
     assert "may or may not have landed" in line
     assert "Nothing was sent" not in line
     assert held.receipt_id in line
@@ -997,7 +999,7 @@ def test_a_write_nothing_is_known_about_is_never_sent_again(
     assert held[0].verification is VerificationStatus.unverified
     assert "is unknown" in (held[0].error or "")
     assert _settlement(unknown) == {"found": "unknown", "key_closed": True}
-    line = receipt_lines(unknown.outcomes)[0]
+    line = receipt_lines(unknown.outcomes, PHRASES, "en")[0]
     assert "is unknown" in line and "not sent again" in line
     assert "may or may not have landed" in line
     assert held[0].receipt_id in line
@@ -1041,7 +1043,7 @@ def test_a_write_the_system_refused_is_reported_as_failed(
     answered = engine.turn("no", "yes")
 
     held = engine.receipts("no")[0]
-    line = receipt_lines(answered.outcomes)[0]
+    line = receipt_lines(answered.outcomes, PHRASES, "en")[0]
     assert (held.status, held.classification) == ("error", "terminal")
     assert line.startswith("service.restart failed: the runtime refused the restart.")
     assert "may or may not" not in line

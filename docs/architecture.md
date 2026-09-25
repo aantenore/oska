@@ -228,9 +228,14 @@ runs for one that is not. A plan that still does
 not hold up raises `InvalidPlanError`, which the engine records as an outcome.
 `Planner.pick` resolves a discovery tie.
 `Planner.write_reply` phrases a reply from the outcomes of the turn.
-`provider.py` is the interface: `complete_json` and `embed`.
-`openai_compatible.py` speaks the chat-completions protocol; `scripted.py`
-replays recorded answers offline.
+`provider.py` is the interface: `complete_json` and `embed`, an optional
+`embeds` for a provider that cannot embed, and a failure that says whether it
+is `retryable`. `openai_compatible.py` speaks the chat-completions protocol and
+`anthropic.py` the messages protocol, both classifying failures through
+`http_errors.py`; `scripted.py` replays recorded answers offline. `chain.py`
+puts several profiles behind one provider and falls back between them on a
+retryable failure only, recording for the turn which profile answered.
+`providers.py` builds the provider `model.json` describes, for every channel.
 
 ### L6 Interaction
 
@@ -256,7 +261,11 @@ confirmed by its own read-back. `settlement.py` claims the ledger key, records
 the intent, sends the call, and settles a retryable, ambiguous or terminal
 result, including the lost-answer read-back for a write whose outcome was
 never confirmed and the rule for what an unknown outcome does to the ledger.
-`outcomes.py` renders an outcome list into the summary a reply is built from.
+`outcomes.py` renders an outcome list into the summary a reply is built from,
+in the language of the session; `phrases.py` loads the phrase catalog those
+lines and the rest of the deterministic reply are said from, and refuses one
+whose translations name other placeholders or whose approval words the
+approval rules do not accept.
 `budget.py` holds `ModelBudget` and `BudgetedProvider`, which count the
 completions one turn makes and refuse the one past `turn.max_model_calls`;
 embeddings are not counted, because they are how the index reads the catalog
@@ -426,7 +435,8 @@ which deployment it is talking to.
    the turn reached the calls it is allowed to make, and the turn still
    answers.
 4. **Reply.** Build the text, run the output guardrails over it, append it to
-   the history, emit `budget` if anything was refused, emit `reply`, return the
+   the history, emit `budget` if anything was refused, emit `model_fallback` if
+   a model call moved from one profile to the next, emit `reply`, return the
    reply, the outcomes, the pending item and the events of the turn.
 
 The guardrail boundaries are the two edges of the turn and nothing in between:
@@ -523,8 +533,8 @@ layer or the fast path answers, which is what makes a scripted scenario able to
 assert how many classifications actually happened. And the reply is written by a
 model only when its kind is `outcomes`; the scope sentence, the question for a
 missing input and the approval request with its exact payload are built from
-declarations and never pass through a model, because that text has to match the
-payload word for word. Embedding calls are separate: discovery and the fast path
+declarations and the phrase catalog, in the language of the session, and never
+pass through a model, because that text has to match the payload word for word. Embedding calls are separate: discovery and the fast path
 each build an index when the catalog fingerprint changes, and embed the query on
 every use, and they are outside the budget for the same reason.
 

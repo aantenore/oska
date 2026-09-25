@@ -11,7 +11,7 @@ import pytest
 from click.testing import Result
 from typer.testing import CliRunner
 
-from oska.cli.main import MASK, app
+from oska.cli.main import MASK, _masked, app
 
 runner = CliRunner()
 
@@ -270,6 +270,13 @@ def test_config_prints_the_settings_in_force(repo_root: Path, tmp_path: Path) ->
     assert "not-to-be-printed" not in result.stdout
     assert document["runtime"]["discovery"]["tie_margin"] == 0.05
     assert "yes" in document["runtime"]["router"]["rules"]["approve_tokens"]
+
+
+def test_config_prints_the_name_of_a_variable_but_never_a_secret() -> None:
+    """A field ending in `_env` names where a secret is read from, and is printed."""
+    masked = _masked({"api_key_env": "A_VARIABLE", "api_key": "a-secret", "token": "t"})
+
+    assert masked == {"api_key_env": "A_VARIABLE", "api_key": MASK, "token": MASK}
 
 
 def test_conform_reports_the_adaptive_level(cli_env: Path) -> None:

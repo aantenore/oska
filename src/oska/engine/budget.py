@@ -3,7 +3,9 @@
 The model budget bounds what one turn may spend: past it the model is not
 called again, the turn says so and answers from what it already has. That count
 belongs to the turn and not to the engine, because one engine serves
-overlapping turns.
+overlapping turns. The record of which model profile answered each call, and of
+every fallback from one profile to the next, is opened and closed with the same
+turn.
 """
 
 from __future__ import annotations
@@ -13,7 +15,8 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 
 from oska.contracts.common import Message
-from oska.planner.provider import ModelProvider, ModelProviderError
+from oska.planner.chain import profile_log, recording_profiles, start_profile_log
+from oska.planner.provider import ModelProvider, ModelProviderError, provider_embeds
 
 __all__ = ["BudgetExceeded", "BudgetedProvider", "ModelBudget"]
 
@@ -81,15 +84,28 @@ class ModelBudget:
     def start_turn(self) -> None:
         """Begin a turn with the whole budget, in this context and no other."""
         _SPEND.set(_Spend())
+        start_profile_log()
 
     @contextmanager
     def for_turn(self) -> Iterator[None]:
         """Count one turn's calls, and leave the context as the turn found it."""
         token = _SPEND.set(_Spend())
         try:
-            yield
+            with recording_profiles():
+                yield
         finally:
             _SPEND.reset(token)
+
+    def fallbacks(self) -> dict | None:
+        """What the audit records when a call of this turn moved to another profile.
+
+        The profiles that answered and every fallback with its reason; nothing
+        when no call of the turn fell back.
+        """
+        log = profile_log()
+        if log is None or not log.fallbacks:
+            return None
+        return log.as_event()
 
     def take(self) -> bool:
         """Book one call, or report that this turn has nothing left to spend."""
@@ -120,6 +136,7 @@ class BudgetedProvider:
         self._provider = provider
         self._budget = budget
         self.name = provider.name
+        self.embeds = provider_embeds(provider)
 
     def complete_json(
         self,

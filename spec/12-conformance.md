@@ -19,8 +19,8 @@ offline against a scripted provider. Scenario categories C1, C13 and C21 pass.
 
 Requires: Level 1, plus `OSKA-GOV-1` to `OSKA-GOV-24`, `OSKA-GOV-30` to
 `OSKA-GOV-34` and `OSKA-GOV-52`; `OSKA-IXN-1` to `OSKA-IXN-13` and
-`OSKA-IXN-21` to `OSKA-IXN-27`; `OSKA-COG-1` to `OSKA-COG-10` and `OSKA-COG-12` to
-`OSKA-COG-32`; `OSKA-XC-5` to `OSKA-XC-8`, `OSKA-XC-10` to `OSKA-XC-19`,
+`OSKA-IXN-21` to `OSKA-IXN-29`; `OSKA-COG-1` to `OSKA-COG-10` and `OSKA-COG-12` to
+`OSKA-COG-34`; `OSKA-XC-5` to `OSKA-XC-8`, `OSKA-XC-10` to `OSKA-XC-19`,
 `OSKA-XC-23` and `OSKA-XC-35`. Scenario categories C1 to C14, C17, C18, C20
 and C22 to C25 pass.
 
@@ -388,7 +388,7 @@ that ran them.
 | C18 | Illegal lifecycle move | The object is read in a state from which the planned write is not a declared move; the write is refused before the call, the reply names the state and nothing reaches the ledger | `17_illegal_move` | 2 |
 | C19 | Required next step, and a move that is never suggested | An object read in a state with a `required` move is told the step it still needs; an object whose only remaining move is `offered: false` is offered nothing | `examples/access/scenarios/07_required_next_step` | 2 |
 | C20 | Guardrail at the input boundary | A turn a guardrail declared at the `input` point refuses ends there, in the words of that guardrail, with no classification, no plan and no model call | `19_guardrail_block` | 2 |
-| C21 | A request in a second language | The router reports the language once, the session keeps it, and a later turn decided by the rules without a model call is still answered in it | `20_other_language` | 1 |
+| C21 | A request in a second language | The router reports the language once, the session keeps it, and a later turn decided by the rules without a model call is still answered in it; the approval request and the receipt line the runtime adds are said in that language too | `20_other_language` | 1 |
 | C22 | A human-only input is asked for | A field the procedure reserves to a person is not filled in by the model: the plan comes back with the field in `missing` and no operation, and the write carries the person's own words once they have answered | `21_human_input` | 2 |
 | C23 | The subject is taken from what was shown | A read shows one record, and a later request that only points at it ("restart it") joins the focus: the identifier comes from what was shown, nothing is asked, and the write stops for approval on the exact payload | `27_subject_from_what_was_shown` | 2 |
 | C24 | A directive from a verified write | A write is approved, runs and is read back, and the directive its procedure declares for a verified write is filled from the receipt alone, in the turn that verified it and no earlier | `28_directive_from_verified_write` | 2 |
@@ -761,6 +761,8 @@ accident.
 | OSKA-COG-30 | `src/oska/planner/planner.py`, `src/oska/planner/prompts.py` | `tests/unit/test_planner.py`, `tests/unit/test_live_cassette.py` |
 | OSKA-COG-31 | `src/oska/planner/planner.py` | `tests/unit/test_planner.py`, `tests/unit/test_live_cassette.py` |
 | OSKA-COG-32 | `src/oska/planner/prompts.py`, `src/oska/engine/collaborators.py` | `tests/unit/test_guardrails.py` |
+| OSKA-COG-33 | `src/oska/planner/chain.py`, `src/oska/engine/budget.py`, `src/oska/engine/engine.py` | `tests/unit/test_providers.py` |
+| OSKA-COG-34 | `src/oska/planner/scripted.py`, `src/oska/planner/recording.py` | `tests/unit/test_planner.py`, `tests/unit/test_recording.py`, `tests/unit/test_conformance.py`, `tests/unit/test_live_cassette.py` |
 
 ### Interaction (L6)
 
@@ -793,6 +795,8 @@ accident.
 | OSKA-IXN-25 | `src/oska/ontology/naming.py`, `src/oska/catalog/checks/presentation.py` | `tests/unit/test_presentation.py` |
 | OSKA-IXN-26 | `src/oska/engine/presentation.py` | `tests/unit/test_presentation.py` |
 | OSKA-IXN-27 | `src/oska/engine/reply.py`, `src/oska/engine/outcomes.py` | `tests/unit/test_engine.py` |
+| OSKA-IXN-28 | `src/oska/engine/phrases.py`, `src/oska/engine/reply.py`, `src/oska/engine/outcomes.py`, `src/oska/engine/factory.py`, `configs/phrases.json` | `tests/unit/test_phrases.py`, `examples/ops/scenarios/20_other_language.json` |
+| OSKA-IXN-29 | `src/oska/conformance/runner.py`, `src/oska/engine/phrases.py` | `tests/unit/test_phrases.py` |
 
 ### Evolution (L7)
 

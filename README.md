@@ -177,6 +177,12 @@ set -a; . ./.env; set +a
 oska run --session ops --text "how is the checkout service doing"
 ```
 
+`OSKA_PROVIDER` picks the provider: `openai_compatible` or `anthropic` for one
+endpoint, or `profiles` for several endpoints tried in order, which moves to the
+next only on a failure worth retrying and records every fallback in the audit
+trail. See [docs/configuration.md](docs/configuration.md#configs-modeljson).
+`oska serve` reasons with the same provider.
+
 `oska serve` serves the same runtime over HTTP: turns, receipts and drafting
 a proposal per session (`/sessions/{id}/turns`, `/sessions/{id}/receipts`,
 `/proposals/from-session/{id}`, each also reachable under
@@ -192,7 +198,7 @@ can reach that port can then hold a conversation and ask for writes. See
 ## Repository layout
 
 ```
-configs/          runtime.json, model.json, guardrails.json: thresholds, provider access, declared promises
+configs/          runtime.json, model.json, guardrails.json, phrases.json: thresholds, provider access, declared promises, the runtime's own sentences per language
 schemas/          JSON schemas for skills, policies and proposals
 ops/              slo.md and alerts.yml: the service-level targets and the alerting rules that match them
 src/oska/         the packages listed in the layer table, plus platform, storage, kit and observability
@@ -222,7 +228,7 @@ level they declare a scenario for; served together as `examples/platform.yaml`,
 each domain is checked and reported on its own. Three procedures of the
 operational pack and two of the access pack carry an evaluation set, both at
 precision 1.0 and recall 1.0, and the command names the ones that do not.
-1418 unit and scenario tests pass, offline; 26 are skipped — the PostgreSQL
+1516 unit and scenario tests pass, offline; 26 are skipped — the PostgreSQL
 storage contract and conformance isolation tests, which run only against a
 real server named by `OSKA_TEST_POSTGRES_URL`. The `postgres` job of CI runs
 them against a live PostgreSQL 16 service container on every change, together

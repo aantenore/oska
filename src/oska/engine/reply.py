@@ -1,7 +1,9 @@
 """The text a turn answers with.
 
 Every reply has a deterministic form built from the catalog and the outcomes of
-the turn. A model, when one is configured, only rephrases the outcome summary;
+the turn, said in the language of the conversation from the phrase catalog,
+phrase by phrase, and in the default language where a phrase has no
+translation. A model, when one is configured, only rephrases the outcome summary;
 what the runtime says about itself (the question it asks, the exact payload it
 is asking approval for) is never handed to a model, because that text has to
 match the declarations word for word.
@@ -76,6 +78,7 @@ from oska.engine.outcomes import (
     unavailable_instruction,
     writes_all_landed,
 )
+from oska.engine.phrases import Phrases
 from oska.engine.state import SessionState
 from oska.governance.guardrails import instruction_block
 from oska.governance.ledger import canonical_json
@@ -94,34 +97,25 @@ ReplyKind = Literal[
     "unavailable",
 ]
 
-_GREETING = "Hello."
-_OFF_SCOPE = "That is not something I can do here."
 _UNSUPPORTED_INTENT = (
     "The request is outside what this installation does. Say that it cannot be done here"
     " and state what can be done, from the facts and nothing else."
-)
-_NOTHING_TO_REPORT = "Nothing happened in this turn."
-_NO_PLANNER = (
-    "Planning a procedure needs a model provider, and none is configured. "
-    "I can still tell you what this installation can do."
 )
 # The only reply whose own text already lists every outcome of the turn, receipts
 # included, so it is the only one no receipt line is appended to.
 _STATES_ITS_OUTCOMES: tuple[str, ...] = ("outcomes",)
 
-_APPROVAL_HEAD = "This changes something, so it needs your approval first."
-_APPROVAL_TAIL = "Reply yes to approve it, or no to leave it alone."
 _HOST_NAME = "You answer as {name}."
 _HOST_VOICE = "Your voice is {voice}."
 _HOST_LANGUAGES = "You are declared to answer in: {languages}."
-_FIRST_OF_TWO = "Two approvals are required: this is approval 1 of 2."
-_SECOND_OF_TWO = (
-    "1 of 2 approvals recorded. A second approval is required before anything runs."
-)
 
 
 class ReplyBuilder:
-    """Builds the reply, with a model when one is available and a template otherwise."""
+    """Builds the reply, with a model when one is available and a template otherwise.
+
+    `phrases` is the phrase catalog the deterministic form is said from; without
+    one, the catalog shipped with the package is read.
+    """
 
     def __init__(
         self,
@@ -130,10 +124,13 @@ class ReplyBuilder:
         config: ReplyConfig,
         preferences_root: Path | None = None,
         host: HostIdentity | None = None,
+        *,
+        phrases: Phrases | None = None,
     ) -> None:
         self._planner = planner
         self._resolver = resolver
         self._config = config
+        self._phrases = phrases or Phrases.load(default_language=config.default_language)
         self._preferences_root = None if preferences_root is None else Path(preferences_root)
         self._host_facts = host_facts(host)
 
@@ -169,6 +166,8 @@ class ReplyBuilder:
     ) -> list[str]:
         """What the turn says about itself, before anything it offers."""
         trusted = writes_all_landed(outcomes)
+        spoken = self._language(state, language)
+        receipts = receipt_lines(outcomes, self._phrases, spoken)
         if kind == "off_scope" and self._planner is not None:
             written = self._write(
                 state,
@@ -180,7 +179,7 @@ class ReplyBuilder:
                 facts=[self._resolver.declared_scope()],
             )
             if written and trusted:
-                return [written, *receipt_lines(outcomes)]
+                return [written, *receipts]
         if kind == "outcomes" and self._planner is not None:
             written = self._write(
                 state,
@@ -192,31 +191,38 @@ class ReplyBuilder:
                 facts=landing_facts(outcomes),
             )
             if written and trusted:
-                return [written, *receipt_lines(outcomes)]
-        text = self.template(kind, outcomes, pending)
+                return [written, *receipts]
+        text = self.template(kind, outcomes, pending, spoken)
         if kind in _STATES_ITS_OUTCOMES:
             return [text]
-        return [text, *receipt_lines(outcomes)]
+        return [text, *receipts]
 
     def template(
         self,
         kind: ReplyKind,
         outcomes: list[Outcome],
         pending: PendingInfo | None = None,
+        language: str = "",
     ) -> str:
-        """The deterministic form of a reply, used whenever no model writes it."""
+        """The deterministic form of a reply, used whenever no model writes it.
+
+        It is said in `language`, or in the default language when none is given.
+        """
+        phrases = self._phrases
+        spoken = language or self._config.default_language
         match kind:
-            case "greeting":
-                return f"{_GREETING} {self._resolver.declared_scope()}"
-            case "off_scope":
-                return f"{_OFF_SCOPE} {self._resolver.declared_scope()}"
-            case "unavailable":
-                return f"{_NO_PLANNER} {self._resolver.declared_scope()}"
+            case "greeting" | "off_scope" | "unavailable":
+                key = "no_planner" if kind == "unavailable" else kind
+                return phrases.say(spoken, key, scope=self._resolver.declared_scope())
             case "input_question":
-                return _question(pending)
+                return _question(pending, phrases, spoken)
             case "approval_request":
-                return _approval_request(pending)
-        return _outcomes(outcomes)
+                return _approval_request(pending, phrases, spoken)
+        return _outcomes(outcomes, phrases, spoken)
+
+    def _language(self, state: SessionState, language: str) -> str:
+        """The language of the turn: as reported, as the session settled, or the default."""
+        return language or state.language or self._config.default_language
 
     def _write(
         self,
@@ -238,7 +244,7 @@ class ReplyBuilder:
                 outcomes,
                 reply_intent,
                 offered,
-                language or state.language or self._config.default_language,
+                self._language(state, language),
                 guided(state.history[-self._config.conversation_window :], instructions),
                 self.preferences(state.session_id),
                 [*(facts or ()), *self._host_facts],
@@ -294,26 +300,50 @@ def guided(conversation: list[Message], prose: list[str]) -> list[Message]:
     return [*conversation, Message(role="system", content=instruction_block(prose))]
 
 
-def _question(pending: PendingInfo | None) -> str:
+def _question(pending: PendingInfo | None, phrases: Phrases, language: str) -> str:
     if pending is None or not pending.question:
-        return "I need one more detail before I can run this."
+        return phrases.say(language, "question")
     return pending.question
 
 
-def _approval_request(pending: PendingInfo | None) -> str:
+def _approval_request(pending: PendingInfo | None, phrases: Phrases, language: str) -> str:
+    """The approval asked for, with the exact payload and the words that answer it.
+
+    The words it tells a person to type are the catalog's, and the catalog was
+    refused at load unless the approval rules accept them.
+    """
+    head = phrases.say(language, "approval_head")
     approval = pending.approval if pending is not None else None
     if approval is None:
-        return _APPROVAL_HEAD
+        return head
     lines = [
-        _APPROVAL_HEAD,
-        f"{approval.operation} on {approval.integration_id} "
-        f"with {canonical_json(approval.exact_payload)}",
+        head,
+        phrases.say(
+            language,
+            "approval_payload",
+            operation=approval.operation,
+            integration=approval.integration_id,
+            payload=canonical_json(approval.exact_payload),
+        ),
     ]
     if approval.approvals_required > 1:
-        lines.append(_SECOND_OF_TWO if approval.approvals_given >= 1 else _FIRST_OF_TWO)
-    lines.append(_APPROVAL_TAIL)
+        second = approval.approvals_given >= 1
+        lines.append(
+            phrases.say(language, "approval_second_of_two" if second else "approval_first_of_two")
+        )
+    lines.append(
+        phrases.say(
+            language,
+            "approval_tail",
+            approve=phrases.say(language, "approve_word"),
+            reject=phrases.say(language, "reject_word"),
+        )
+    )
     return "\n".join(lines)
 
 
-def _outcomes(outcomes: list[Outcome]) -> str:
-    return "\n".join(outcome_summary(outcomes) or [_NOTHING_TO_REPORT])
+def _outcomes(outcomes: list[Outcome], phrases: Phrases, language: str) -> str:
+    return "\n".join(
+        outcome_summary(outcomes, phrases, language)
+        or [phrases.say(language, "nothing_to_report")]
+    )

@@ -5,17 +5,18 @@ environment (prefix `OSKA_`), thresholds and copy come from `runtime.json`,
 provider access comes from `model.json`. Relative paths resolve against the
 current working directory.
 
-The runtime configuration, the model configuration, the guardrail catalog and
-the schema directory ship with the package, so an installation works in a
-directory that holds none of them. Each is resolved in this order:
+The runtime configuration, the model configuration, the guardrail catalog, the
+phrase catalog and the schema directory ship with the package, so an
+installation works in a directory that holds none of them. Each is resolved in
+this order:
 
 1. An explicit environment variable (`OSKA_RUNTIME_CONFIG`,
    `OSKA_MODEL_CONFIG`, `OSKA_GUARDRAILS_CATALOG`, `OSKA_SCHEMAS_DIR`), or a
    value given to `Settings` directly, wins and is used as given.
 2. Otherwise the configured path, when it exists relative to the working
    directory: `configs/runtime.json`, `configs/model.json`, `schemas/`, and
-   the catalog `runtime.json` names under `guardrails.catalog` (also looked
-   for beside the runtime configuration).
+   the catalogs `runtime.json` names under `guardrails.catalog` and
+   `reply.phrases` (each also looked for beside the runtime configuration).
 3. Otherwise the packaged default under `oska/defaults/`.
 
 `configuration_sources` names which of these is in force for each.
@@ -32,7 +33,8 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 ENV_PREFIX = "OSKA_"
-ProviderName = Literal["openai_compatible", "scripted", "none"]
+ProviderName = Literal["openai_compatible", "anthropic", "profiles", "scripted", "none"]
+AdapterName = Literal["openai_compatible", "anthropic"]
 
 _PATH_SEPARATORS = (os.pathsep, ",")
 
@@ -46,6 +48,7 @@ PACKAGED_SOURCE = "packaged default"
 RUNTIME_CONFIG_PATH = Path("configs/runtime.json")
 MODEL_CONFIG_PATH = Path("configs/model.json")
 GUARDRAILS_CATALOG_PATH = Path("configs/guardrails.json")
+PHRASES_PATH = Path("configs/phrases.json")
 SCHEMAS_PATH = Path("schemas")
 
 
@@ -172,10 +175,14 @@ class ReplyConfig(BaseModel):
     `conversation_window` is how many of the most recent messages are handed to
     the model that phrases a reply. It is at least one: the window is taken as
     the last N messages, and zero would read as no limit at all.
+
+    `phrases` names the phrase catalog: the sentences the runtime says in its
+    own words, keyed by language, laid over the catalog shipped with the package.
     """
 
     default_language: str = "en"
     conversation_window: int = Field(default=6, ge=1)
+    phrases: Path = PHRASES_PATH
 
 
 class ApiConfig(BaseModel):
@@ -451,8 +458,59 @@ class RuntimeConfig(BaseModel):
     platform: PlatformConfig = Field(default_factory=PlatformConfig)
 
 
+class ModelProfile(BaseModel):
+    """One model endpoint `model.json` names, and the protocol it speaks.
+
+    The key is never written here: `api_key_env` names the environment
+    variable that holds it, and a profile whose variable is unset or empty is
+    skipped when the provider is built. A profile that names no variable is
+    called without a key. `max_tokens` bounds an answer; the chat-completions
+    adapter sends it only when it is set, the messages adapter always sends
+    one and uses its own default when it is not. `headers` are sent as written
+    with every call of the profile.
+    """
+
+    model_config = ConfigDict(protected_namespaces=(), extra="forbid")
+
+    adapter: AdapterName
+    base_url: str = Field(min_length=1)
+    api_key_env: str = ""
+    chat_model: str = ""
+    embedding_model: str = ""
+    timeout_seconds: float = Field(default=30.0, gt=0)
+    max_tokens: int | None = Field(default=None, gt=0)
+    headers: dict[str, str] = Field(default_factory=dict)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _no_key_in_the_file(cls, data: object) -> object:
+        if isinstance(data, Mapping) and "api_key" in data:
+            raise ValueError(
+                "a profile takes its key from the environment variable api_key_env names, "
+                "never from the file"
+            )
+        return data
+
+
+class ModelRoles(BaseModel):
+    """Which profiles answer which kind of call, in the order they are tried."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    chat: list[str] = Field(default_factory=list)
+    embeddings: list[str] = Field(default_factory=list)
+
+
 class ModelConfig(BaseModel):
-    """Contents of `model.json`, after environment overrides."""
+    """Contents of `model.json`, after environment overrides.
+
+    The flat keys describe one endpoint, which `openai_compatible` or
+    `anthropic` calls. `provider: "profiles"` reads `profiles` and `roles`
+    instead: completions go to the chat profiles in order and move to the next
+    only on a failure another profile might not have, and embeddings go to the
+    embeddings profiles the same way. `api_key` in the file is kept for the
+    flat shape and is deprecated; `OSKA_MODEL_API_KEY` is where the key goes.
+    """
 
     model_config = ConfigDict(protected_namespaces=())
 
@@ -462,6 +520,30 @@ class ModelConfig(BaseModel):
     chat_model: str = ""
     embedding_model: str = ""
     timeout_seconds: float = 30.0
+    profiles: dict[str, ModelProfile] = Field(default_factory=dict)
+    roles: ModelRoles | None = None
+
+    @model_validator(mode="after")
+    def _roles_name_declared_profiles(self) -> ModelConfig:
+        if self.provider == "profiles" and (self.roles is None or not self.roles.chat):
+            raise ValueError("provider profiles needs roles.chat to name at least one profile")
+        if self.roles is None:
+            return self
+        for role, names in (("chat", self.roles.chat), ("embeddings", self.roles.embeddings)):
+            unknown = [name for name in names if name not in self.profiles]
+            if unknown:
+                raise ValueError(
+                    f"roles.{role} names profiles that are not declared: {', '.join(unknown)}"
+                )
+        for name in self.roles.chat:
+            if not self.profiles[name].chat_model:
+                raise ValueError(f"profile {name} is in roles.chat but declares no chat_model")
+        for name in self.roles.embeddings:
+            if not self.profiles[name].embedding_model:
+                raise ValueError(
+                    f"profile {name} is in roles.embeddings but declares no embedding_model"
+                )
+        return self
 
 
 def state_path(state_dir: Path, configured: Path) -> Path:
@@ -496,12 +578,33 @@ def guardrail_catalog_path(config: GuardrailsConfig, settings: Settings) -> Path
     return configured
 
 
+def phrases_path(config: ReplyConfig, settings: Settings) -> Path:
+    """Where the phrase catalog is read from.
+
+    A relative path is read from the working directory, and from the directory
+    of the runtime configuration when it is not there. When the runtime
+    configuration names the default catalog and neither holds it, the packaged
+    catalog is read. A catalog named anywhere else is used as named, present or
+    not. Whatever is read is laid over the packaged catalog, phrase by phrase.
+    """
+    configured = Path(config.phrases)
+    if configured.is_absolute() or configured.exists():
+        return configured
+    beside = Path(settings.runtime_config).parent / configured.name
+    if beside.exists():
+        return beside
+    if configured == PHRASES_PATH:
+        return PACKAGED_CONFIGS / PHRASES_PATH.name
+    return configured
+
+
 def configuration_sources(settings: Settings, runtime: RuntimeConfig) -> dict[str, str]:
     """Which file is in force for each shipped default: a path, or the packaged default."""
     return {
         "runtime_config": _source(settings.runtime_config),
         "model_config": _source(settings.model_config_path),
         "guardrails_catalog": _source(guardrail_catalog_path(runtime.guardrails, settings)),
+        "phrases": _source(phrases_path(runtime.reply, settings)),
         "schemas_dir": _source(settings.schemas_dir),
     }
 

@@ -56,7 +56,7 @@ from oska.index.embedding import EmbeddingIndex
 from oska.index.keyword import KeywordIndex
 from oska.learning.proposals import ProposalStore, draft_from_session
 from oska.ontology.graph import OntologyGraph
-from oska.planner.provider import ModelProvider
+from oska.planner.provider import ModelProvider, provider_embeds
 from oska.storage import open_ledger
 
 __all__ = ["PROPOSALS_DIRNAME", "run_job"]
@@ -142,8 +142,10 @@ def run_job(
 
 
 def _index(provider: ModelProvider | None) -> SkillIndex:
-    """The same choice the runtime makes: embeddings when there is a provider."""
-    return KeywordIndex() if provider is None else EmbeddingIndex(provider)
+    """The same choice the runtime makes: embeddings when there is a provider that embeds."""
+    if provider is None or not provider_embeds(provider):
+        return KeywordIndex()
+    return EmbeddingIndex(provider)
 
 
 def _tune(

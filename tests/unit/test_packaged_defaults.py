@@ -1,9 +1,10 @@
 """The defaults shipped with the package: how they are found, and that they stay one copy.
 
 An installation outside this repository has no `configs/` or `schemas/` of its
-own. The runtime configuration, the model configuration, the guardrail catalog
-and the schema directory are then read from the package, unless an
-environment variable names another file or the working directory holds one.
+own. The runtime configuration, the model configuration, the guardrail catalog,
+the phrase catalog and the schema directory are then read from the package,
+unless an environment variable names another file or the working directory
+holds one.
 """
 
 from __future__ import annotations
@@ -23,17 +24,19 @@ from oska.config import (
     PACKAGED_SCHEMAS,
     PACKAGED_SOURCE,
     GuardrailsConfig,
+    ReplyConfig,
     Settings,
     configuration_sources,
     guardrail_catalog_path,
     load_runtime_config,
+    phrases_path,
 )
 from oska.kit.check import check_pack
 from oska.kit.scaffold import new_pack, new_platform
 
 runner = CliRunner()
 
-SHIPPED = {"runtime_config", "model_config", "guardrails_catalog", "schemas_dir"}
+SHIPPED = {"runtime_config", "model_config", "guardrails_catalog", "phrases", "schemas_dir"}
 
 
 @pytest.fixture
@@ -98,6 +101,7 @@ def test_a_file_in_the_working_directory_wins_over_the_packaged_default(
     _copy_runtime(bare_directory / "configs" / "runtime.json")
     _write_json(bare_directory / "configs" / "model.json", {"provider": "none"})
     _write_json(bare_directory / "configs" / "guardrails.json", {"guardrails": {}})
+    _write_json(bare_directory / "configs" / "phrases.json", {"it": {}})
     (bare_directory / "schemas").mkdir()
 
     settings = Settings.from_env({})
@@ -106,6 +110,7 @@ def test_a_file_in_the_working_directory_wins_over_the_packaged_default(
         "runtime_config": str(Path("configs/runtime.json")),
         "model_config": str(Path("configs/model.json")),
         "guardrails_catalog": str(Path("configs/guardrails.json")),
+        "phrases": str(Path("configs/phrases.json")),
         "schemas_dir": "schemas",
     }
 
@@ -133,6 +138,7 @@ def test_an_environment_variable_wins_over_the_working_directory(
         "runtime_config": str(elsewhere / "runtime.json"),
         "model_config": str(elsewhere / "model.json"),
         "guardrails_catalog": str(elsewhere / "guardrails.json"),
+        "phrases": PACKAGED_SOURCE,
         "schemas_dir": str(elsewhere),
     }
 
@@ -164,6 +170,32 @@ def test_a_catalog_named_elsewhere_is_used_as_named_even_when_missing(
     assert guardrail_catalog_path(configured, settings) == Path("custom/catalog.json")
 
 
+def test_the_packaged_phrase_catalog_is_read_when_nothing_else_is_there(
+    bare_directory: Path,
+) -> None:
+    settings = Settings.from_env({})
+    runtime = load_runtime_config(settings=settings)
+    assert phrases_path(runtime.reply, settings) == PACKAGED_CONFIGS / "phrases.json"
+
+
+def test_a_phrase_catalog_beside_the_runtime_configuration_wins_over_the_packaged_one(
+    bare_directory: Path, tmp_path: Path
+) -> None:
+    runtime_path = _copy_runtime(tmp_path / "platform" / "runtime.json")
+    beside = _write_json(runtime_path.parent / "phrases.json", {"it": {}})
+    settings = Settings(runtime_config=runtime_path)
+    runtime = load_runtime_config(settings=settings)
+    assert phrases_path(runtime.reply, settings) == beside
+
+
+def test_a_phrase_catalog_named_elsewhere_is_used_as_named_even_when_missing(
+    bare_directory: Path,
+) -> None:
+    settings = Settings.from_env({})
+    configured = ReplyConfig(phrases=Path("custom/wording.json"))
+    assert phrases_path(configured, settings) == Path("custom/wording.json")
+
+
 def test_oska_config_names_the_packaged_default(bare_directory: Path) -> None:
     result = runner.invoke(main_app, ["config"])
     assert result.exit_code == 0, result.output
@@ -178,6 +210,7 @@ def test_oska_config_names_the_file_in_force(bare_directory: Path) -> None:
     assert sources["runtime_config"] == str(Path("configs/runtime.json"))
     assert sources["model_config"] == PACKAGED_SOURCE
     assert sources["guardrails_catalog"] == PACKAGED_SOURCE
+    assert sources["phrases"] == PACKAGED_SOURCE
     assert sources["schemas_dir"] == PACKAGED_SOURCE
 
 

@@ -30,13 +30,23 @@ OutOption = Annotated[
     Path | None,
     typer.Option("--out", help="Write the script here instead of standard output."),
 ]
+VolatileOption = Annotated[
+    list[str] | None,
+    typer.Option(
+        "--volatile",
+        help=(
+            "Regex a recorded expectation is cut before the first match of; repeatable, "
+            "replaces the default uuid patterns."
+        ),
+    ),
+]
 
 
 @cassette.command("to-script")
-def to_script(path: Path, out: OutOption = None) -> None:
+def to_script(path: Path, out: OutOption = None, volatile: VolatileOption = None) -> None:
     """Print the completions of a cassette as a scenario `provider_script`."""
     try:
-        script = cassette_to_script(path)
+        script = cassette_to_script(path, volatile=volatile)
     except ModelProviderError as exc:
         fail(str(exc))
     document = json.dumps(script, indent=2, ensure_ascii=False)

@@ -51,6 +51,7 @@ from oska.engine.budget import BudgetedProvider, BudgetExceeded, ModelBudget
 from oska.engine.collaborators import GuidedPlanner, TracedExecutor
 from oska.engine.execution import TurnContext
 from oska.engine.goals import Answer, GoalRunner
+from oska.engine.phrases import Phrases
 from oska.engine.presentation import Presenter, TurnNotes, reply_event_fields
 from oska.engine.reply import ReplyBuilder
 from oska.engine.session_store import SessionStore
@@ -103,6 +104,7 @@ class Engine:
         presentation: bool = False,
         synonyms: Mapping[str, str] | None = None,
         host: HostIdentity | None = None,
+        phrases: Phrases | None = None,
     ) -> None:
         self._registry = registry
         self._resolver = resolver
@@ -133,12 +135,16 @@ class Engine:
         self._goals = GoalRunner(registry, resolver, guided_planner, self._executor)
         self._approvals = ApprovalPath(approval, registry, self._executor, policy, self._goals)
         self._boundary = Boundary(self._chain, registry)
+        self._phrases = phrases or Phrases.load(
+            default_language=runtime_config.reply.default_language
+        )
         self._reply = ReplyBuilder(
             planner,
             resolver,
             runtime_config.reply,
             preferences_root=preferences_root,
             host=host,
+            phrases=self._phrases,
         )
         self._presenter = Presenter(registry, enabled=presentation)
         self._synonyms = dict(synonyms or {})
@@ -157,6 +163,11 @@ class Engine:
     def planner(self) -> Planner | None:
         """The model-backed planner, when a provider is configured."""
         return self._planner
+
+    @property
+    def phrases(self) -> Phrases:
+        """The phrase catalog the runtime says its own sentences from."""
+        return self._phrases
 
     @property
     def connectors(self) -> ConnectorRegistry:
@@ -255,6 +266,9 @@ class Engine:
         state.history.append(Message(role="assistant", content=reply))
         if self._budget.refused:
             ctx.emit("budget", self._budget.as_event())
+        fallbacks = self._budget.fallbacks()
+        if fallbacks is not None:
+            ctx.emit("model_fallback", fallbacks)
         pending_kind = answer.pending.kind if answer.pending else None
         ctx.emit(
             "reply",
@@ -271,7 +285,7 @@ class Engine:
     def _over_budget(self, ctx: TurnContext) -> Answer:
         """What a turn answers with once it may not call the model again."""
         ctx.state.pending_goal = None
-        ctx.record(build.cancelled_outcome(_OVER_BUDGET))
+        ctx.record(build.cancelled_outcome(_OVER_BUDGET, phrase="cancelled_over_budget"))
         return Answer("outcomes", reply_intent=_OVER_BUDGET)
 
     def _route(self, ctx: TurnContext, text: str) -> RouteDecision:
@@ -328,7 +342,7 @@ class Engine:
                 "approval_decided",
                 {"approval_id": pending.approval_id, "decision": "cancelled"},
             )
-        ctx.record(build.cancelled_outcome(_CANCELLED, pending))
+        ctx.record(build.cancelled_outcome(_CANCELLED, pending, phrase="cancelled_dropped"))
         state.pending_approval = None
         state.pending_goal = None
         return Answer("outcomes", reply_intent="the request was cancelled")
@@ -343,7 +357,11 @@ class Engine:
                 "approval_decided",
                 {"approval_id": pending.approval_id, "decision": "cancelled"},
             )
-            ctx.record(build.cancelled_outcome(_CANCELLED_BY_REQUEST, pending))
+            ctx.record(
+                build.cancelled_outcome(
+                    _CANCELLED_BY_REQUEST, pending, phrase="cancelled_by_request"
+                )
+            )
             state.pending_approval = None
         binding.adopt_newest(self._registry, ctx)
         runbook_id = decision.runbook_id or self._choose(ctx, text)

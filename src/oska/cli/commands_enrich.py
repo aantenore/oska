@@ -35,8 +35,8 @@ from oska.config import (
     load_model_config,
     load_runtime_config,
 )
-from oska.planner.openai_compatible import OpenAICompatibleProvider
 from oska.planner.provider import ModelProvider, ModelProviderError
+from oska.planner.providers import build_provider
 from oska.planner.scripted import ScriptedModelProvider
 
 __all__ = ["app", "run", "show"]
@@ -162,6 +162,10 @@ def _provider(settings: Settings, chosen: Provider | None, script: Path | None) 
         except (OSError, ModelProviderError, json.JSONDecodeError) as exc:
             fail(f"the script could not be read: {exc}")
     try:
-        return OpenAICompatibleProvider.from_config(load_model_config(settings=settings))
-    except (OSError, ModelProviderError) as exc:
+        model_config = load_model_config(settings=settings)
+        built = build_provider(model_config.model_copy(update={"provider": name}))
+    except (OSError, ValueError, ModelProviderError) as exc:
         fail(f"the model provider could not be built: {exc}")
+    if built is None:
+        fail("the model provider in force is none")
+    return built

@@ -355,8 +355,12 @@ Responsibility: make cognition replaceable.
 ```text
 ModelProvider:
   name: string
+  embeds: boolean            # optional; absent means true
   complete_json(system, messages, schema, temperature) -> object
   embed(texts) -> [[number]]
+
+ModelProviderError:
+  retryable: boolean         # another provider might answer the same call
 ```
 
 Two implementations are expected: one over a real service, and a **scripted**
@@ -364,6 +368,23 @@ one that returns pre-recorded responses in order, matching on a substring of
 the prompt it was given and failing loudly when the script runs out. The
 scripted provider is what makes the conformance suite deterministic and
 offline.
+
+A provider that cannot embed says so with `embeds` false, and discovery then
+ranks lexically, as it does with no provider at all. A failure says whether it
+is `retryable`: a failure of transport, a timeout, an upstream that is busy or
+down, or an answer that cannot be read is; a request the upstream refused as it
+was written is not, because any other provider would be handed the same
+request.
+
+A deployment may name several providers and put them behind one, in order: a
+completion goes to the first and moves to the next only on a retryable failure,
+and embeddings are served the same way by the providers named for them, if
+any. That composite is a provider like any other. It sits under the turn's
+model budget, so a call it answered on the second attempt is still one call,
+and it records for the turn which provider answered and why it moved, which
+the turn writes to the audit trail. Nothing downstream is told which provider
+answered: the plan, the route and the reply are validated the same way
+whichever it was.
 
 ## Invariants
 
@@ -503,6 +524,18 @@ offline.
 - **OSKA-COG-32** — The prose of the instruction guardrails that apply to a
   plan MUST reach the planner in its system prompt, and MUST NOT be added to
   the conversation as a message.
+- **OSKA-COG-33** — A fallback between providers MUST happen only on a
+  retryable failure, MUST count as the one call it replaces against the turn
+  budget, and MUST leave an audit record naming the providers involved and the
+  reason, and never the content of the call. A plan or reply answered by any
+  provider MUST be validated exactly as any other.
+- **OSKA-COG-34** — A mismatch between a scripted or replayed answer and the
+  prompt it was recorded for MUST be raised as an error distinct from a
+  provider failure, so neither the deterministic reply nor the plan repair can
+  absorb it; it MUST name the step, its purpose and an excerpt of the message
+  that reached it, and the conformance runner MUST report it as the failure of
+  that scenario. A recorded expectation MUST have every identifier the runtime
+  generates cut from it before it is stored or compared.
 
 ## Rationale
 
@@ -546,7 +579,15 @@ reply may call a write verified unless its receipt says so.
 - `src/oska/router/` — `base.py` (rules), `fast_path.py`,
   `model_router.py`.
 - `src/oska/planner/` — `provider.py` (the interface), `scripted.py`, the
-  service-backed provider implementation, `planner.py`, `prompts.py`.
+  service-backed provider implementations by protocol (`openai_compatible.py`,
+  `anthropic.py`) and the failures they share (`http_errors.py`), the
+  composite that falls back between profiles (`chain.py`), the one place a
+  provider is built from configuration (`providers.py`), `planner.py`,
+  `prompts.py`.
+- `tests/unit/test_providers.py` — profiles and roles, keys read only from the
+  environment, fallback on a retryable failure and never on a refusal, the
+  budget counting one call, the `model_fallback` audit event, and keyword
+  ranking for a provider that does not embed.
 - `src/oska/engine/reply.py` — the deterministic renderer used when no
   provider is configured, the lines that state what a turn leaves on offer, and
   the presentation preferences handed to the reply writer and to nothing else.

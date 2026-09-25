@@ -296,7 +296,9 @@ asserts something the others cannot:
 - **A reply in another language.** The router reports the language once, the
   session keeps it, and the turn that approves the write is decided by the rule
   layer without a model call and is still answered in the language the session
-  settled on.
+  settled on. What the runtime says in its own words is in that language too:
+  the approval request names the Italian word the rules accept, and the receipt
+  line appended after the written reply is the Italian one.
 - **A human input.** The text of an incident note is asked for, stored against
   the field, and written exactly as it was given; the same request again
   returns the receipt the ledger already holds.
@@ -471,14 +473,24 @@ that says what the reply is written from — `"kind": "receipt"`,
 choose asserts that the prompt has not changed; one you chose asserts what you
 meant.
 
-Cut every expectation before a value a run makes up for itself. A receipt
-identifier is new on every run, and the outcome brief of a reply names it
-within its first sixty characters; an expectation that keeps it holds only for
-the run that recorded it. A reply call that fails its expectation does not end
-the turn — the deterministic form answers instead — so the mismatch shows up
-one call later, as the next step being asked for the wrong request.
-`examples/ops/cassettes/restart-in-italian.json` is a recorded session cut
-this way, and `tests/unit/test_live_cassette.py` replays it.
+An expectation is cut automatically before any value a run makes up for itself.
+A receipt id, an approval id, a proposal id, a turn id — every one of them is a
+fresh `uuid.uuid4()`, and the outcome brief of a reply names one within its
+first sixty characters; an expectation that kept it would only ever hold for
+the run that recorded it. Recording finds the earliest match of the canonical
+uuid form (`xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`) or a bare 32-hex uuid in the
+*whole* last user message — not only its first sixty characters, so a uuid that
+starts inside that window cannot survive truncated and still unstable — and
+keeps only what comes before it. An expectation left with nothing stable after
+the cut is dropped; the step carries no `expect_contains` at all rather than an
+empty string. `examples/ops/cassettes/restart-in-italian.json` is a recorded
+session cut this way, and `tests/unit/test_live_cassette.py` replays it.
+
+The patterns are configurable: `oska run --record`/`--replay` and
+`oska cassette to-script` all take a repeatable `--volatile REGEX`, which
+*replaces* the default uuid patterns rather than adding to them — name your own
+when a deployment's own generated identifiers do not look like a uuid. An
+invalid regex is refused on the command line rather than reaching the cassette.
 
 ## Replaying
 
@@ -488,26 +500,44 @@ oska run --replay cassettes/restart.json --session restart --text "..."
 
 Replaying needs no endpoint and no key. Completions are spent in the recorded
 order and checked against `expect_contains` exactly as a scenario script is; a
-request the cassette did not hold, or one call too many, stops with a message
-naming the cassette. Embeddings are looked up by text, and a text the recording
-never saw falls back to the same deterministic hash bag the scripted provider
-uses, so a catalog that grew since the recording still ranks instead of failing.
-`--record` and `--replay` are not used together.
+request the cassette did not hold, or one call too many, stops the run rather
+than being answered around — see "Keeping the scripts honest" below. Embeddings
+are looked up by text, and a text the recording never saw falls back to the
+same deterministic hash bag the scripted provider uses, so a catalog that grew
+since the recording still ranks instead of failing. `--record` and `--replay`
+are not used together.
+
+The volatile cut is also applied when a cassette is *loaded*, using the request
+each step carries alongside its stored `expect_contains` — so a cassette
+recorded before this cut existed, whose stored expectation was truncated mid
+uuid, still replays; nothing needs to be re-recorded.
 
 ## Keeping the scripts honest
 
 A scripted provider is a recording, and a recording can drift out of step with
-the thing it records. Three mechanisms stop that.
+the thing it records. Four mechanisms stop that.
 
 **`expect_contains`.** Each script step may carry a substring the last user
-message must hold. Before the step's answer is returned, the provider checks it,
-and raises if it does not hold, naming the step, its purpose and an excerpt of
-the message that reached it. This turns a script from a queue of answers into an
-assertion about the prompts. Use it on every step: the request text for a
-classification, a distinctive phrase for a plan, and for a reply-writing step a
-fragment of the outcome brief, such as `"kind": "receipt"` or `"kind":
-"ledger_hit"` — which asserts that the reply is being written from the outcome
-you expect and not from some other one.
+message must hold. Before the step's answer is returned, the provider checks
+it, and raises `ScriptMismatchError` if it does not hold, naming the step, its
+purpose and an excerpt of the message that reached it. This turns a script from
+a queue of answers into an assertion about the prompts. Use it on every step:
+the request text for a classification, a distinctive phrase for a plan, and for
+a reply-writing step a fragment of the outcome brief, such as `"kind":
+"receipt"` or `"kind": "ledger_hit"` — which asserts that the reply is being
+written from the outcome you expect and not from some other one.
+
+A mismatch fails loudly. `ScriptMismatchError` is deliberately not a
+`ModelProviderError`: the reply builder falls back to the deterministic form
+when a model provider merely fails to answer, and the planner reports an
+`invalid_plan` outcome the same way, because either is an ordinary event to
+recover from. A script that no longer matches what the runtime sent it is not
+that — it means the script or the runtime has drifted — so it is never caught
+by either fallback and comes out of `Engine.turn` unchanged, ending the turn at
+the call that mismatched instead of showing up one call later as the next step
+being asked for the wrong request. `oska conform` reports it as that scenario
+failing, with the step, its purpose and the excerpt in the failure line, not as
+a crash of the run.
 
 **The script must be spent.** A scenario whose script has steps left over fails
 with `the script was not fully consumed`. A script that runs out fails at the

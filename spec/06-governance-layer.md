@@ -369,6 +369,7 @@ AuditEvent:
   kind: turn | route | discovery | hydrate | plan | policy
       | approval_requested | approval_decided | execute | verify
       | ledger_hit | reply | proposal | guardrail | trace | budget
+      | model_fallback
   session_id, turn_id, at, data
 ```
 

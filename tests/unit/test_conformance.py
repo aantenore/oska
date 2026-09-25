@@ -140,6 +140,27 @@ def test_a_wrong_expectation_fails_readably(
     assert "conformance level 0" in text
 
 
+def test_a_script_mismatch_fails_the_scenario_and_not_the_run(
+    scenarios: list[ScenarioFile], example_settings: Settings, tmp_path: Path
+) -> None:
+    """A script that no longer matches the run stops that scenario, not the whole suite."""
+    restart = next(scenario for scenario in scenarios if scenario.name == "02_restart_staging")
+    broken = restart.model_copy(deep=True)
+    broken.provider_script[0]["expect_contains"] = "a phrase this request will never hold"
+
+    result = run_scenario(broken, example_settings, state_dir=tmp_path / "broken")
+
+    assert result.passed is False
+    assert any(
+        failure.startswith("turn 1: the turn raised ScriptMismatchError:")
+        for failure in result.failures
+    ), result.failures
+    assert any(
+        "expected the last user message to contain" in failure for failure in result.failures
+    )
+    assert any("router classification" in failure for failure in result.failures)
+
+
 DIRECTIVE_SCENARIO = "28_directive_from_verified_write"
 
 

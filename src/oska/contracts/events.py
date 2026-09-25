@@ -24,6 +24,7 @@ EventKind = Literal[
     "guardrail",
     "trace",
     "budget",
+    "model_fallback",
     "revision",
     "unavailable",
     "retention",

@@ -135,9 +135,73 @@ fingerprint unchanged and would not by itself rebuild an index. The index folds
 in a fingerprint of the derived files as well, which is what makes a newly
 written file take effect without a restart.
 
+## What the runtime says in its own words
+
+Reaching the catalog is half of it. The other half is the answer. Most of a
+reply is somebody else's text: a model's rephrasing, the catalog's wording, a
+value a connector returned. The rest is the runtime speaking for itself: the
+approval it asks for, the line that names a receipt, the sentence that says a
+capability is down or that a write may or may not have landed. Those sentences
+come from a phrase catalog, keyed by language and then by phrase, and are said
+in the language the session settled on.
+
+```json
+{
+  "en": {"approval_tail": "Reply {approve} to approve it, or {reject} to leave it alone."},
+  "it": {"approval_tail": "Rispondi {approve} per approvarla, oppure {reject} per lasciare tutto com'è."}
+}
+```
+
+The package ships the catalog in English and Italian; `reply.phrases` names the
+file a deployment lays over it. The rules it is held to:
+
+- **English is complete.** The set of phrases is fixed by the code that asks
+  for them, and the packaged English holds every one. A configured file may
+  translate a single phrase and leave the rest alone.
+- **The fallback is per phrase.** A phrase missing in the language of the
+  session is said in `reply.default_language`, and then in English. A partial
+  translation is used for everything it covers.
+- **Values are inserted verbatim.** An operation name, an integration id, a
+  payload, a receipt id and a reason go into the sentence exactly as they are.
+  A reason written by what the runtime talked to or checked (a policy
+  explanation, the issues of a plan that did not hold up, a connector's error)
+  is one of those values, so it keeps the language it was written in. Why the
+  runtime itself dropped a request or held a write back is a phrase: the
+  outcome names the phrase, and its record keeps the English reason for the
+  audit trail.
+- **A translation names the same placeholders.** A phrase whose placeholders
+  differ from its English phrase is refused when the catalog is loaded, with
+  the language, the phrase and both sets named, not when a turn first needs it.
+- **The approval words are accepted words.** `approve_word` and `reject_word`
+  are what an approval request tells a person to type. Each must be one of
+  `router.rules.approve_tokens` or `router.rules.reject_tokens`, compared the
+  way the rule layer compares them, or the catalog is refused: a reply never
+  asks for an answer the router would not recognize. The check covers the
+  languages the deployment answers in, `reply.default_language` and
+  `discovery.languages`, not every language the catalog holds; a token list
+  left empty is not checked, because the model router then reads the answer.
+  The shipped Italian says `sì` and `no`.
+
+Two entries are lists rather than sentences. `claim_verified` holds the words
+that call a write verified and `negations` the phrases that say it is not. The
+conformance check for an overstated write reads both, in every language the
+catalog holds, so a reply in Italian is held to the same check as one in
+English. They are matched as case-insensitive substrings, so a stem such as
+`verificat` covers every ending.
+
+What is handed to a model stays in English and out of the catalog: the facts
+about whether a write landed, the instruction about a capability that is down,
+the brief for a request outside the catalog, and the host facts. A model reads
+them; a person does not.
+
+Possible next steps, not taken yet: letting a pack contribute its own layer of
+phrases, which the layered load already allows for, and translating the
+catalog into further languages.
+
 ## Configuration
 
-`enrichment` and `discovery.languages` in
+`reply.phrases` in [configuration.md](configuration.md#reply) names the phrase
+catalog. `enrichment` and `discovery.languages` in
 [configuration.md](configuration.md#enrichment). The short version:
 `discovery.languages` says which languages the catalog is expected to be
 reached in, `enrichment.enabled` says whether the runtime reads the derived

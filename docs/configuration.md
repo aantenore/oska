@@ -31,9 +31,9 @@ set -a; . ./.env; set +a
 | `OSKA_SCHEMAS_DIR` | `schemas`, else packaged | Where the JSON schemas live |
 | `OSKA_SCENARIOS_DIR` | `examples/ops/scenarios` | Default directory for `oska conform` |
 | `OSKA_STATE_DIR` | `state` | Where sessions, receipts, audit and proposals are kept |
-| `OSKA_PROVIDER` | unset | `openai_compatible`, `scripted` or `none`. Overrides `provider` in `model.json` |
+| `OSKA_PROVIDER` | unset | `openai_compatible`, `anthropic`, `profiles`, `scripted` or `none`. Overrides `provider` in `model.json` |
 | `OSKA_MODEL_BASE_URL` | unset | Overrides `base_url` |
-| `OSKA_MODEL_API_KEY` | unset | Overrides `api_key` |
+| `OSKA_MODEL_API_KEY` | unset | Overrides `api_key`. The key of the flat shape |
 | `OSKA_MODEL_CHAT` | unset | Overrides `chat_model` |
 | `OSKA_MODEL_EMBEDDING` | unset | Overrides `embedding_model` |
 | `OSKA_PLATFORM` | unset | A platform manifest serving several domains. Same as `--platform` |
@@ -44,27 +44,30 @@ set -a; . ./.env; set +a
 
 ### Packaged defaults
 
-The runtime configuration, the model configuration, the guardrail catalog and
-the JSON schemas ship inside the package, under `oska/defaults/`, so a command
+The runtime configuration, the model configuration, the guardrail catalog, the
+phrase catalog and the JSON schemas ship inside the package, under `oska/defaults/`, so a command
 works in a directory that holds none of them. Each is resolved in this order:
 
 1. The environment variable (`OSKA_RUNTIME_CONFIG`, `OSKA_MODEL_CONFIG`,
    `OSKA_GUARDRAILS_CATALOG`, `OSKA_SCHEMAS_DIR`), used as given.
 2. The default path when it exists relative to the working directory:
-   `configs/runtime.json`, `configs/model.json`, `schemas/`, and the catalog
-   `guardrails.catalog` names, looked for there and then beside the runtime
-   configuration.
+   `configs/runtime.json`, `configs/model.json`, `schemas/`, and the catalogs
+   `guardrails.catalog` and `reply.phrases` name, looked for there and then
+   beside the runtime configuration. The phrase catalog has no environment
+   variable.
 3. The packaged default.
 
 A guardrail catalog that `runtime.json` names at a path other than the default
 is used as named, and a missing one defines no guardrails. `oska config`
-prints, under `sources`, the file in force for each of the four, or
+prints, under `sources`, the file in force for each of the five, or
 `packaged default`. This repository's `configs/` and `schemas/` are
 byte-identical to the packaged copies, and a test keeps them so.
 
 An empty or whitespace-only value is treated as unset. The four model overrides
 apply on top of `model.json`, so credentials stay out of the repository while
-the model names can live in either.
+the model names can live in either. They apply to the flat shape only; each
+profile of the profiles shape names the variable its own key is read from, in
+`api_key_env`, and that variable has no `OSKA_` prefix unless you give it one.
 
 `--skills` on any command replaces the catalog roots for that run.
 `--platform`, `--domain` and `--tenant` replace it with a platform manifest and
@@ -111,7 +114,11 @@ the session is waiting for something.
 
 The shipped lists carry English and Italian. Add the languages your operators
 use; these are also shown to the model router in its prompt, so the two layers
-agree on what a yes looks like.
+agree on what a yes looks like. The words an approval request tells a person to
+type (`approve_word` and `reject_word` in the phrase catalog) must be among these
+lists in every language the deployment answers in (`reply.default_language` and
+`discovery.languages`), or the runtime refuses to start. An empty list is not
+checked.
 
 ### `router.fast_path`
 
@@ -156,6 +163,7 @@ person so a level 3 scenario can see the procedure it published.
 | --- | --- | --- |
 | `reply.default_language` | `"en"` | The language a session answers in until a turn settles one |
 | `reply.conversation_window` | `6` | How many recent messages the reply writer sees |
+| `reply.phrases` | `"configs/phrases.json"` | The phrase catalog laid over the packaged one: what the runtime says in its own words, per language. See [multilingual.md](multilingual.md#what-the-runtime-says-in-its-own-words) |
 
 The router reports the language of each message, and once a session has one it
 keeps it until another turn changes it.
@@ -549,14 +557,20 @@ reassembly, never any state. See
 
 ## `configs/model.json`
 
+The file describes the model provider in one of two shapes. The flat shape
+names one endpoint. The profiles shape names several, and says which of them
+answer completions and which answer embeddings, in the order they are tried.
+
 | Key | Default | Meaning |
 | --- | --- | --- |
-| `provider` | `"none"` | `openai_compatible`, `scripted` or `none` |
-| `base_url` | `null` | Endpoint root for the compatible provider |
-| `api_key` | `null` | Sent as a bearer token when set |
-| `chat_model` | `""` | Model name for completions |
-| `embedding_model` | `""` | Model name for embeddings |
-| `timeout_seconds` | `30.0` | HTTP timeout |
+| `provider` | `"none"` | `openai_compatible`, `anthropic`, `profiles`, `scripted` or `none` |
+| `base_url` | `null` | Flat shape: endpoint root |
+| `api_key` | `null` | Flat shape, deprecated: the key, sent with every call. Use `OSKA_MODEL_API_KEY` instead |
+| `chat_model` | `""` | Flat shape: model name for completions |
+| `embedding_model` | `""` | Flat shape: model name for embeddings |
+| `timeout_seconds` | `30.0` | Flat shape: HTTP timeout |
+| `profiles` | `{}` | Profiles shape: the endpoints, by name |
+| `roles` | unset | Profiles shape: `chat` and `embeddings`, each a list of profile names |
 
 The file in the repository names no endpoint and no model. It carries
 `chat-model-name` and `embedding-model-name`, and `.env.example` carries
@@ -569,16 +583,109 @@ catalog by keyword overlap, answers what it can do, and declines to plan. That
 is a working configuration: `validate`, `capabilities`, `ontology` and the
 greeting and off-scope paths all work without a provider.
 
-`openai_compatible` speaks the chat-completions protocol. It asks for a
-structured response; an endpoint that rejects that field with an HTTP 400 naming
-it is retried once with the schema written into the system message, and the
-first JSON object in the answer is taken.
+`openai_compatible` speaks the chat-completions protocol. It asks for the answer
+in three ways, each only when the one before it was refused with an HTTP 400 or
+422 whose body names the response format, the schema or structured output: a
+response constrained to the JSON schema, then a JSON object with the schema
+written into the system message, then no response format with the schema still
+in the system message. The first JSON object in the answer is taken. Any other
+refusal is reported as it is.
+
+`anthropic` speaks the messages protocol. It posts to `{base_url}/v1/messages`
+with the key in `x-api-key`, declares the schema as the input of one tool the
+model is required to call, and takes the input it is called with as the answer.
+System messages in the conversation are folded into the system prompt, and
+consecutive messages of one role are merged. The protocol serves no embeddings,
+so with this provider the catalog is ranked by keyword.
 
 `scripted` replays recorded answers. On the command line it needs `--script`
 pointing at a file: a JSON list of steps, or an object with a `provider_script`
 or `script` key — which is why a scenario file can be handed to it directly.
 
-Keep the key out of the file. `OSKA_MODEL_API_KEY` exists for that.
+Keep the key out of the file. `OSKA_MODEL_API_KEY` exists for that; the flat
+`api_key` key is still read, and is deprecated.
+
+`oska run`, `oska enrich` and `oska serve` build the provider the same way.
+`serve` reasons with it in both modes, over one catalog and over every domain
+of a platform. A provider that cannot be built stops the command with one line
+before anything runs or listens.
+
+### Profiles and roles
+
+`provider: "profiles"` reads `profiles` and `roles` and ignores the flat keys and
+the four `OSKA_MODEL_*` overrides. Each profile takes:
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `adapter` | required | `openai_compatible` or `anthropic`: the protocol the endpoint speaks |
+| `base_url` | required | Endpoint root |
+| `api_key_env` | `""` | The environment variable the key is read from. Empty: the endpoint is called without a key |
+| `chat_model` | `""` | Model name for completions. Required for a profile in `roles.chat` |
+| `embedding_model` | `""` | Model name for embeddings. Required for a profile in `roles.embeddings` |
+| `timeout_seconds` | `30.0` | HTTP timeout |
+| `max_tokens` | unset | The bound on an answer. `openai_compatible` sends it only when it is set; `anthropic` always sends one, `4096` when it is not set |
+| `headers` | `{}` | Headers sent as written with every call of the profile |
+
+```json
+{
+  "provider": "profiles",
+  "profiles": {
+    "primary": {
+      "adapter": "openai_compatible",
+      "base_url": "https://primary.example/v1",
+      "api_key_env": "PRIMARY_MODEL_KEY",
+      "chat_model": "chat-model-name",
+      "embedding_model": "embedding-model-name"
+    },
+    "secondary": {
+      "adapter": "anthropic",
+      "base_url": "https://secondary.example",
+      "api_key_env": "SECONDARY_MODEL_KEY",
+      "chat_model": "other-chat-model-name",
+      "max_tokens": 4096
+    }
+  },
+  "roles": {
+    "chat": ["primary", "secondary"],
+    "embeddings": ["primary"]
+  }
+}
+```
+
+A key is read only from the variable `api_key_env` names; a profile that holds
+an `api_key` of its own is refused when the file is read. A profile whose
+variable is unset or empty is skipped, with a warning on standard error that
+names the variable and never a value. When no chat profile is left, the
+provider is not built and the error names the variables that were missing.
+
+`roles` is checked when the file is read: a name that is not a declared profile
+is refused, and so is an empty `chat` role, a chat profile without a
+`chat_model` and an embeddings profile without an `embedding_model`.
+
+A completion goes to the first chat profile. It moves to the next only when the
+failure is retryable, and otherwise raises at once:
+
+| Retryable: tried on the next profile | Not retryable: raised |
+| --- | --- |
+| No connection, a timeout, any other transport failure | HTTP 400, 401, 403, 404, 422 |
+| HTTP 408, 429 and every 5xx | Any other status below 500 |
+| An answer that cannot be read: no JSON object, an empty message, no tool call | |
+
+A request an endpoint refused as it was written would be refused by the next
+one too; sending it on would only hide a misconfiguration and spend the time of
+every endpoint after it. When the last profile fails, its error is raised.
+
+Embeddings go to the `embeddings` profiles the same way. The role may be empty:
+the catalog is then ranked by keyword, exactly as with no provider, while the
+chat profiles still route, plan and phrase.
+
+A completion that took two profiles to answer is still one call against
+`turn.max_model_calls`. A turn in which any call moved from one profile to the
+next emits one `model_fallback` audit event: which profile answered each call,
+and each fallback with its role, the profile left, the profile tried next and
+the reason, an HTTP status or the class of the failure. It never carries what
+was asked or answered. Whichever profile answered, a plan or a reply is
+validated exactly as any other.
 
 ## Connectors
 

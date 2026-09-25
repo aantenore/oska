@@ -3,27 +3,37 @@
 from __future__ import annotations
 
 import json
+import re
+from collections.abc import Mapping
 from typing import Any
 
 import httpx
 
-from oska.config import ModelConfig
+from oska.config import ModelConfig, ModelProfile
 from oska.contracts.common import Message
+from oska.planner.http_errors import raise_for_status, send
 from oska.planner.provider import ModelProviderError
 
 _JSON_INSTRUCTION = (
     "Answer with a single JSON object and nothing else. No prose, no code fence. "
     "The object must satisfy this JSON schema:\n"
 )
+_REJECTED_FORMAT = re.compile(r"response_format|json_schema|schema|structured", re.IGNORECASE)
+_FORMAT_REFUSALS = frozenset({400, 422})
+_CHAT_PATH = "/chat/completions"
 
 
 class OpenAICompatibleProvider:
     """Chat completions and embeddings over HTTP.
 
-    `complete_json` asks for a structured response with `response_format`. An
-    endpoint that rejects that field (HTTP 400 naming it) is retried once with
-    the schema written into the system message, and the first JSON object in
-    the answer is taken.
+    `complete_json` asks for the answer in three ways, each only when the one
+    before it was refused as a request the endpoint cannot serve (HTTP 400 or
+    422 naming the response format, the schema or structured output): a
+    response constrained to the JSON schema, then a JSON object with the schema
+    written into the system message, then no response format at all with the
+    schema still in the system message. The first JSON object in the answer is
+    taken. `max_tokens` is sent only when it is given, and `headers` go with
+    every call.
     """
 
     name = "openai_compatible"
@@ -36,16 +46,20 @@ class OpenAICompatibleProvider:
         embedding_model: str = "",
         timeout: float = 30.0,
         *,
+        max_tokens: int | None = None,
+        headers: Mapping[str, str] | None = None,
         transport: httpx.BaseTransport | None = None,
     ) -> None:
         self._chat_model = chat_model
         self._embedding_model = embedding_model
-        headers = {"content-type": "application/json"}
+        self._max_tokens = max_tokens
+        sent = {"content-type": "application/json"}
         if api_key:
-            headers["authorization"] = f"Bearer {api_key}"
+            sent["authorization"] = f"Bearer {api_key}"
+        sent.update(headers or {})
         self._client = httpx.Client(
             base_url=base_url.rstrip("/"),
-            headers=headers,
+            headers=sent,
             timeout=timeout,
             transport=transport,
         )
@@ -69,6 +83,26 @@ class OpenAICompatibleProvider:
             transport=transport,
         )
 
+    @classmethod
+    def from_profile(
+        cls,
+        profile: ModelProfile,
+        api_key: str | None,
+        *,
+        transport: httpx.BaseTransport | None = None,
+    ) -> OpenAICompatibleProvider:
+        """Build a provider from one profile of the model configuration and its key."""
+        return cls(
+            base_url=profile.base_url,
+            api_key=api_key,
+            chat_model=profile.chat_model,
+            embedding_model=profile.embedding_model,
+            timeout=profile.timeout_seconds,
+            max_tokens=profile.max_tokens,
+            headers=profile.headers,
+            transport=transport,
+        )
+
     def close(self) -> None:
         """Release the underlying connection pool."""
         self._client.close()
@@ -82,24 +116,16 @@ class OpenAICompatibleProvider:
         temperature: float = 0.0,
     ) -> dict:
         """Return the JSON object the model produced for this exchange."""
-        body: dict[str, Any] = {
-            "model": self._chat_model,
-            "temperature": temperature,
-            "messages": _chat_messages(system, messages),
-            "response_format": {
-                "type": "json_schema",
-                "json_schema": {"name": "response", "schema": schema},
-            },
-        }
-        response = self._post("/chat/completions", body)
-        if _rejects_response_format(response):
-            fallback = dict(body)
-            fallback.pop("response_format")
-            fallback["messages"] = _chat_messages(
-                f"{system}\n\n{_JSON_INSTRUCTION}{json.dumps(schema)}", messages
+        instructed = f"{system}\n\n{_JSON_INSTRUCTION}{json.dumps(schema)}"
+        constrained = {"type": "json_schema", "json_schema": {"name": "response", "schema": schema}}
+        response = self._post(_CHAT_PATH, self._body(system, messages, temperature, constrained))
+        for prompt, response_format in ((instructed, {"type": "json_object"}), (instructed, None)):
+            if not _rejects_response_format(response):
+                break
+            response = self._post(
+                _CHAT_PATH, self._body(prompt, messages, temperature, response_format)
             )
-            response = self._post("/chat/completions", fallback)
-        self._raise_for_status(response)
+        raise_for_status(response)
         return _first_json_object(_content(response, self._client.base_url))
 
     def embed(self, texts: list[str]) -> list[list[float]]:
@@ -109,31 +135,44 @@ class OpenAICompatibleProvider:
         response = self._post(
             "/embeddings", {"model": self._embedding_model, "input": list(texts)}
         )
-        self._raise_for_status(response)
+        raise_for_status(response)
         payload = _json_body(response)
         rows = payload.get("data")
         if not isinstance(rows, list) or len(rows) != len(texts):
-            raise ModelProviderError("the embeddings endpoint returned an unexpected payload")
+            raise ModelProviderError(
+                "the embeddings endpoint returned an unexpected payload", retryable=True
+            )
         ordered = sorted(rows, key=lambda row: row.get("index", 0))
         vectors: list[list[float]] = []
         for row in ordered:
             vector = row.get("embedding")
             if not isinstance(vector, list):
-                raise ModelProviderError("the embeddings endpoint returned a row without a vector")
+                raise ModelProviderError(
+                    "the embeddings endpoint returned a row without a vector", retryable=True
+                )
             vectors.append([float(value) for value in vector])
         return vectors
 
-    def _post(self, path: str, body: dict) -> httpx.Response:
-        try:
-            return self._client.post(path, json=body)
-        except httpx.HTTPError as exc:
-            raise ModelProviderError(f"{path}: {exc}") from exc
+    def _body(
+        self,
+        system: str,
+        messages: list[Message],
+        temperature: float,
+        response_format: dict | None,
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {
+            "model": self._chat_model,
+            "temperature": temperature,
+            "messages": _chat_messages(system, messages),
+        }
+        if response_format is not None:
+            body["response_format"] = response_format
+        if self._max_tokens is not None:
+            body["max_tokens"] = self._max_tokens
+        return body
 
-    def _raise_for_status(self, response: httpx.Response) -> None:
-        if response.status_code >= 400:
-            raise ModelProviderError(
-                f"{response.request.url.path}: HTTP {response.status_code}: {_error_text(response)}"
-            )
+    def _post(self, path: str, body: dict) -> httpx.Response:
+        return send(self._client, path, body)
 
 
 def _chat_messages(system: str, messages: list[Message]) -> list[dict[str, str]]:
@@ -144,16 +183,23 @@ def _chat_messages(system: str, messages: list[Message]) -> list[dict[str, str]]
 
 
 def _rejects_response_format(response: httpx.Response) -> bool:
-    return response.status_code == 400 and "response_format" in response.text.lower()
+    """Whether the endpoint refused the way the answer was asked for, not the request."""
+    return response.status_code in _FORMAT_REFUSALS and bool(
+        _REJECTED_FORMAT.search(response.text)
+    )
 
 
 def _json_body(response: httpx.Response) -> dict:
     try:
         payload = response.json()
     except ValueError as exc:
-        raise ModelProviderError(f"the endpoint returned a body that is not JSON: {exc}") from exc
+        raise ModelProviderError(
+            f"the endpoint returned a body that is not JSON: {exc}", retryable=True
+        ) from exc
     if not isinstance(payload, dict):
-        raise ModelProviderError("the endpoint returned a body that is not a JSON object")
+        raise ModelProviderError(
+            "the endpoint returned a body that is not a JSON object", retryable=True
+        )
     return payload
 
 
@@ -161,26 +207,14 @@ def _content(response: httpx.Response, base_url: httpx.URL) -> str:
     payload = _json_body(response)
     choices = payload.get("choices")
     if not isinstance(choices, list) or not choices:
-        raise ModelProviderError(f"{base_url}: the model returned no choice")
+        raise ModelProviderError(f"{base_url}: the model returned no choice", retryable=True)
     message = choices[0].get("message") or {}
     content = message.get("content")
     if not isinstance(content, str) or not content.strip():
-        raise ModelProviderError(f"{base_url}: the model returned an empty message")
+        raise ModelProviderError(
+            f"{base_url}: the model returned an empty message", retryable=True
+        )
     return content
-
-
-def _error_text(response: httpx.Response) -> str:
-    """The shortest useful description of an upstream failure."""
-    try:
-        payload = response.json()
-    except ValueError:
-        return response.text.strip()[:400]
-    error = payload.get("error") if isinstance(payload, dict) else None
-    if isinstance(error, dict) and isinstance(error.get("message"), str):
-        return error["message"]
-    if isinstance(error, str):
-        return error
-    return json.dumps(payload)[:400]
 
 
 def _first_json_object(text: str) -> dict:
@@ -216,4 +250,6 @@ def _first_json_object(text: str) -> dict:
                         return parsed
                     break
         start = text.find("{", start + 1)
-    raise ModelProviderError(f"the model answer holds no JSON object: {text.strip()[:200]}")
+    raise ModelProviderError(
+        f"the model answer holds no JSON object: {text.strip()[:200]}", retryable=True
+    )

@@ -11,5 +11,6 @@ for in Italian, approved with "sì", then asked for again. It stops for approval
 with the exact payload, the approval sends one verified write, and the repeat is
 recognized from the ledger instead of being sent twice.
 `tests/unit/test_live_cassette.py` replays it offline. Its reply expectations
-end before the receipt identifier, which is new on every run; see "Recording a
-real session" in `docs/conformance.md`.
+end before the receipt identifier, which is new on every run — cut there
+automatically, not by hand; see "Recording a real session" in
+`docs/conformance.md`.

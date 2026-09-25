@@ -92,7 +92,9 @@ class ApprovalPath:
                     "reason": _PAYLOAD_MOVED,
                 },
             )
-            ctx.record(build.rejected_outcome(pending, _PAYLOAD_MOVED))
+            ctx.record(
+                build.rejected_outcome(pending, _PAYLOAD_MOVED, phrase="rejected_payload_moved")
+            )
             state.pending_approval = None
             state.pending_goal = None
             return Answer("outcomes", reply_intent="the approval no longer matches the request")

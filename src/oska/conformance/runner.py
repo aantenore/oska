@@ -59,6 +59,7 @@ from oska.contracts.proposal import ProposalState, SkillProposal
 from oska.contracts.receipt import WriteReceipt
 from oska.engine.engine import Engine
 from oska.engine.factory import build_engine
+from oska.engine.phrases import Phrases
 from oska.governance.identity import Principal
 from oska.learning import LifecycleError, draft_from_session, quality, transition
 from oska.learning.changes import ChangeRequestState, ChangeRequestStore
@@ -98,16 +99,6 @@ CONFORMANCE_NAMESPACE = "conformance"
 
 DEFAULT_LEVEL = 2
 VERIFIED = "verified"
-
-# Phrases that report a write as unconfirmed. They are removed before a reply is
-# checked for a success claim, so "not verified" is not read as "verified".
-NEGATIONS = (
-    "not verified",
-    "never verified",
-    "unverified",
-    "could not be verified",
-    "cannot be verified",
-)
 
 
 class Expect(BaseModel):
@@ -389,7 +380,9 @@ def _replay(
             _check_turn(position, turn.expect, result, engine.receipts(scenario.name))
         )
     failures.extend(_check_script(provider, scenario.provider_script, events))
-    failures.extend(_check_receipts_are_stated(engine.receipts(scenario.name), replies))
+    failures.extend(
+        _check_receipts_are_stated(engine.receipts(scenario.name), replies, engine.phrases)
+    )
     if scenario.learning is not None:
         failures.extend(
             _check_learning(
@@ -685,13 +678,24 @@ def _check_script(
     return failures
 
 
-def _check_receipts_are_stated(receipts: list[WriteReceipt], replies: list[str]) -> list[str]:
+def _check_receipts_are_stated(
+    receipts: list[WriteReceipt], replies: list[str], phrases: Phrases
+) -> list[str]:
     """Every write is named by a reply, and none is called verified unless it is.
 
     Both halves are checked on every scenario. A write the session performed
     and never mentioned is as much a failure as one it overstated: the reply is
     the only account the user gets, and the receipt is what it has to come from.
+
+    The words that call a write verified, and the phrases that say it is not,
+    come from the phrase catalog the engine speaks from, in every language it
+    holds, so a reply in any of them is held to the same check. The negations
+    are removed first, longest first, so "not verified" is not read as a claim.
     """
+    claims = [word.casefold() for word in phrases.words("claim_verified")]
+    negations = sorted(
+        (phrase.casefold() for phrase in phrases.words("negations")), key=len, reverse=True
+    )
     failures: list[str] = []
     for receipt in receipts:
         naming = [reply for reply in replies if receipt.receipt_id in reply]
@@ -701,15 +705,20 @@ def _check_receipts_are_stated(receipts: list[WriteReceipt], replies: list[str])
         if str(receipt.verification) == VERIFIED:
             continue
         for reply in naming:
-            claim = reply.lower()
-            for negation in NEGATIONS:
-                claim = claim.replace(negation, "")
-            if VERIFIED in claim:
+            if _claims_verified(reply, claims, negations):
                 failures.append(
                     f"receipt {receipt.receipt_id} is called verified while it is "
                     f"{receipt.verification}"
                 )
     return failures
+
+
+def _claims_verified(reply: str, claims: list[str], negations: list[str]) -> bool:
+    """Whether a reply calls something verified once every negation is taken out."""
+    text = reply.casefold()
+    for negation in negations:
+        text = text.replace(negation, "")
+    return any(claim in text for claim in claims)
 
 
 def _apply_behaviors(engine: Engine, behaviors: dict) -> None:

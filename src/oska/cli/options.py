@@ -26,6 +26,7 @@ from oska.catalog.registry import SkillRegistry
 from oska.catalog.resolver import CapabilityResolver
 from oska.catalog.validator import CatalogError
 from oska.config import Settings, load_settings
+from oska.engine.phrases import PhraseCatalogError
 from oska.governance.guardrails import GuardrailError
 from oska.planner.provider import ModelProvider
 from oska.platform import Platform, PlatformError
@@ -123,7 +124,7 @@ def platform_for(path: Path, *, provider: ModelProvider | None = None) -> Platfo
     """The platform a manifest declares; one that does not hold up stops here."""
     try:
         return build_platform(path, load_settings(), provider=provider)
-    except (PlatformError, GuardrailError, CatalogError) as exc:
+    except (PlatformError, GuardrailError, CatalogError, PhraseCatalogError) as exc:
         fail(f"the platform does not hold up: {exc}")
 
 
@@ -156,6 +157,8 @@ def services_for(settings: Settings, *, provider: ModelProvider | None = None) -
         return build_services(settings, provider=provider)
     except CatalogError as exc:
         fail(f"the catalog does not hold up: {exc}")
+    except PhraseCatalogError as exc:
+        fail(str(exc))
 
 
 def fail(message: str) -> NoReturn:

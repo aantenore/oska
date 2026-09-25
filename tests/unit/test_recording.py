@@ -12,14 +12,14 @@ from oska.cli.main import app
 from oska.config import Settings
 from oska.contracts.common import Message
 from oska.engine.factory import build_engine
-from oska.planner.provider import ModelProvider, ModelProviderError
+from oska.planner.provider import ModelProvider, ModelProviderError, provider_embeds
 from oska.planner.recording import (
     RecordingProvider,
     ReplayProvider,
     cassette_to_script,
     read_cassette,
 )
-from oska.planner.scripted import ScriptedModelProvider, hash_bag_vector
+from oska.planner.scripted import ScriptedModelProvider, ScriptMismatchError, hash_bag_vector
 
 runner = CliRunner()
 
@@ -129,13 +129,82 @@ def test_replay_refuses_a_request_the_recording_did_not_hold(tmp_path: Path) -> 
     _ask(RecordingProvider(ScriptedModelProvider(SCRIPT), path), RESTART)
     replay = ReplayProvider(path)
 
-    with pytest.raises(ModelProviderError) as raised:
+    with pytest.raises(ScriptMismatchError) as raised:
         _ask(replay, "a completely different request")
 
     message = str(raised.value)
     assert str(path) in message
     assert "expected the last user message to contain" in message
     assert "a completely different request" in message
+
+
+# Volatile identifiers: cut out of an expectation, not kept from matching only the run
+
+
+UUID = "11111111-2222-3333-4444-555555555555"
+
+
+def test_recording_cuts_a_uuid_out_of_the_expectation(tmp_path: Path) -> None:
+    path = tmp_path / "cassette.json"
+    provider = RecordingProvider(ScriptedModelProvider([{"response": {"reply": "ok"}}]), path)
+
+    _ask(provider, f"Write service.restart, receipt {UUID}: landed, confirmed.")
+
+    step = read_cassette(path)[0]
+    assert step["expect_contains"] == "Write service.restart, receipt "
+    assert UUID not in step["expect_contains"]
+
+
+def test_a_uuid_alone_leaves_a_step_with_no_expectation(tmp_path: Path) -> None:
+    path = tmp_path / "cassette.json"
+    provider = RecordingProvider(ScriptedModelProvider([{"response": {"reply": "ok"}}]), path)
+
+    _ask(provider, UUID)
+
+    assert "expect_contains" not in read_cassette(path)[0]
+
+
+def test_replay_cuts_a_stored_uuid_so_a_different_run_still_matches(tmp_path: Path) -> None:
+    """A cassette recorded before the automatic cut still replays: the cut is applied on load."""
+    other_run_uuid = "66666666-7777-8888-9999-000000000000"
+    path = tmp_path / "cassette.json"
+    path.write_text(
+        json.dumps(
+            [
+                {
+                    "purpose": "reply",
+                    "expect_contains": f"receipt {UUID}: landed",
+                    "response": {"reply": "ok"},
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    replay = ReplayProvider(path)
+
+    assert _ask(replay, f"receipt {other_run_uuid}: landed, confirmed") == {"reply": "ok"}
+
+
+def test_volatile_overrides_replace_the_default_patterns(tmp_path: Path) -> None:
+    path = tmp_path / "cassette.json"
+    provider = RecordingProvider(
+        ScriptedModelProvider([{"response": {"reply": "ok"}}]), path, volatile=[r"case-\d+"]
+    )
+
+    _ask(provider, f"receipt {UUID} case-987654 closed")
+
+    step = read_cassette(path)[0]
+    # The default uuid patterns are replaced, not added to, so the uuid survives the cut.
+    assert step["expect_contains"] == f"receipt {UUID} "
+    assert "case-987654" not in step["expect_contains"]
+
+
+def test_an_invalid_volatile_pattern_is_refused(tmp_path: Path) -> None:
+    path = tmp_path / "cassette.json"
+
+    with pytest.raises(ModelProviderError, match="not a valid regular expression"):
+        RecordingProvider(ScriptedModelProvider(SCRIPT), path, volatile=["("])
 
 
 def test_replay_says_when_the_cassette_runs_out(tmp_path: Path) -> None:
@@ -242,6 +311,26 @@ def test_the_script_of_a_cassette_drives_a_scenario_turn(
     assert result.pending.kind == "approval"
 
 
+def test_a_script_mismatch_reaches_the_caller_as_a_script_mismatch_error(
+    example_settings: Settings, scenario_dir: Path, tmp_path: Path
+) -> None:
+    """A mismatch is not a `ModelProviderError`, so nothing in the turn loop swallows it."""
+    steps = json.loads(
+        (scenario_dir / "02_restart_staging.json").read_text(encoding="utf-8")
+    )["provider_script"]
+    steps[0]["expect_contains"] = "a phrase this request will never hold"
+    engine = build_engine(
+        example_settings.model_copy(update={"state_dir": tmp_path / "state"}),
+        provider=ScriptedModelProvider(steps),
+    )
+
+    with pytest.raises(ScriptMismatchError) as raised:
+        engine.turn("mismatch", RESTART)
+
+    assert not isinstance(raised.value, ModelProviderError)
+    assert "expected the last user message to contain" in str(raised.value)
+
+
 def test_run_records_a_cassette_and_replays_it(
     cli_env: Path, scenario_dir: Path, tmp_path: Path
 ) -> None:
@@ -322,6 +411,25 @@ def test_replaying_a_cassette_that_is_not_there_leaves_one_line(
     assert "Traceback" not in result.stderr
 
 
+def test_run_refuses_an_invalid_volatile_pattern(tmp_path: Path) -> None:
+    result = runner.invoke(
+        app,
+        [
+            "run",
+            "--text",
+            RESTART,
+            "--replay",
+            str(tmp_path / "absent.json"),
+            "--volatile",
+            "(",
+        ],
+    )
+
+    assert result.exit_code == 1
+    assert "not a valid regular expression" in result.stderr
+    assert "Traceback" not in result.stderr
+
+
 def test_cassette_to_script_prints_the_scenario_script(tmp_path: Path) -> None:
     path = tmp_path / "cassette.json"
     recorder = RecordingProvider(ScriptedModelProvider(SCRIPT), path)
@@ -344,3 +452,50 @@ def test_cassette_to_script_writes_the_file_it_is_given(tmp_path: Path) -> None:
     assert result.exit_code == 0
     assert "1 step(s)" in result.stdout
     assert json.loads(out.read_text(encoding="utf-8")) == cassette_to_script(path)
+
+
+def test_cassette_to_script_volatile_replaces_the_defaults(tmp_path: Path) -> None:
+    path = tmp_path / "cassette.json"
+    path.write_text(
+        json.dumps(
+            [{"purpose": "reply", "expect_contains": "case-987654 closed", "response": {}}]
+        ),
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(
+        app, ["cassette", "to-script", str(path), "--volatile", r"case-\d+"]
+    )
+
+    assert result.exit_code == 0
+    assert json.loads(result.stdout) == [{"purpose": "reply", "response": {}}]
+
+
+def test_cassette_to_script_refuses_an_invalid_volatile_pattern(tmp_path: Path) -> None:
+    path = tmp_path / "cassette.json"
+    path.write_text(json.dumps([{"purpose": "reply", "response": {}}]), encoding="utf-8")
+
+    result = runner.invoke(app, ["cassette", "to-script", str(path), "--volatile", "("])
+
+    assert result.exit_code == 1
+    assert "not a valid regular expression" in result.stderr
+
+
+class _NoVectors(ScriptedModelProvider):
+    """A provider that answers and cannot embed."""
+
+    embeds = False
+
+
+def test_recording_and_replay_say_whether_the_session_embedded(tmp_path: Path) -> None:
+    """A session recorded around a provider that cannot embed replays without vectors."""
+    path = tmp_path / "cassette.json"
+    recorder = RecordingProvider(_NoVectors(SCRIPT), path)
+    recorder.complete_json("You answer.", [Message(role="user", content="restart it")], {})
+
+    assert provider_embeds(recorder) is False
+    assert provider_embeds(ReplayProvider(path)) is False
+
+    embedding = tmp_path / "embedding.json"
+    RecordingProvider(ScriptedModelProvider(SCRIPT), embedding).embed(["a text"])
+    assert provider_embeds(ReplayProvider(embedding)) is True

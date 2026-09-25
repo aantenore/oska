@@ -43,7 +43,8 @@ Given a platform, the application serves every domain it declares, each for its
 tenants: the platform hands out one service set per (tenant, domain) and the
 routes choose among them per request. The default domain is built at start, so
 a catalog that does not hold up stops the process before it listens. When the
-application shuts down it closes the platform, and every runtime it holds.
+application shuts down it closes the platform, and every runtime it holds, and
+then the model provider it was handed, which releases its connections.
 """
 
 from __future__ import annotations
@@ -61,6 +62,7 @@ from oska.api.routes import ApiError, router
 from oska.config import Settings, load_runtime_config
 from oska.engine.engine import Engine
 from oska.learning.proposals import ProposalStore
+from oska.planner.provider import ModelProvider
 from oska.platform import Platform
 from oska.services import PROPOSALS_DIRNAME, Services, build_services
 
@@ -75,18 +77,25 @@ def create_app(
     engine: Engine | None = None,
     proposal_store: ProposalStore | None = None,
     platform: Platform | None = None,
+    provider: ModelProvider | None = None,
 ) -> FastAPI:
     """Build the application. Anything not passed in is built from the settings.
 
     With a platform, the routes act on its domains and `engine` and
-    `proposal_store` are not used.
+    `proposal_store` are not used. `provider` is the model provider the runtime
+    reasons with; a platform was built with its own, and the one given here is
+    the one it was built with. Either way the application closes it when it
+    shuts down.
     """
     app = FastAPI(title=API_TITLE, lifespan=_lifespan)
     app.state.platform = platform
+    app.state.provider = provider
     app.state.services = (
         platform.services()
         if platform is not None
-        else build_services(settings, engine=engine, proposal_store=proposal_store)
+        else build_services(
+            settings, engine=engine, proposal_store=proposal_store, provider=provider
+        )
     )
     app.state.runtime = (
         platform.runtime
@@ -101,13 +110,18 @@ def create_app(
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """Serve until shutdown, then close the platform the application was given, if any."""
+    """Serve until shutdown, then close the platform and the provider it was given, if any."""
     try:
         yield
     finally:
         platform: Platform | None = getattr(app.state, "platform", None)
-        if platform is not None:
-            platform.close()
+        try:
+            if platform is not None:
+                platform.close()
+        finally:
+            close = getattr(getattr(app.state, "provider", None), "close", None)
+            if callable(close):
+                close()
 
 
 def _register_errors(app: FastAPI) -> None:

@@ -15,6 +15,18 @@ EMBEDDING_DIMENSIONS = 256
 _TOKEN_RE = re.compile(r"[a-z0-9]+")
 
 
+class ScriptMismatchError(Exception):
+    """A script step's `expect_contains` did not hold against the request.
+
+    Deliberately not a `ModelProviderError`. That class names a provider that
+    failed to answer, which the reply builder and the planner treat as an
+    ordinary event to fall back from — the deterministic reply, an
+    `invalid_plan` outcome. A script that no longer matches what the runtime
+    sent it is a different thing: the script or the runtime has drifted, and
+    that must stop the turn rather than be quietly answered around.
+    """
+
+
 class ScriptedModelProvider:
     """Answers taken in order from a script.
 
@@ -66,7 +78,7 @@ class ScriptedModelProvider:
         expected = step.get("expect_contains")
         purpose = str(step.get("purpose", "")) or f"step {self._index + 1}"
         if expected and expected not in last_user:
-            raise ModelProviderError(
+            raise ScriptMismatchError(
                 f"script step {self._index + 1} ({purpose}) expected the last user message to "
                 f"contain {expected!r}, but it was: {_excerpt(last_user)}"
             )

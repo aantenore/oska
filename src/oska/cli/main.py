@@ -43,7 +43,8 @@ from oska.ontology.queries import operations_on, related, vocabulary
 __all__ = ["MASK", "OntologyFormat", "app"]
 
 MASK = "***"
-SECRET_PARTS = ("key", "token", "secret", "password")
+SECRET_PARTS = ("key", "token", "secret", "password", "authorization", "cookie")
+VARIABLE_SUFFIX = "_env"
 
 app = typer.Typer(
     add_completion=False,
@@ -169,7 +170,10 @@ def _masked(value: object, name: str = "") -> object:
 
 
 def _is_secret(name: str) -> bool:
+    """Whether a name reads as a secret; one ending in `_env` names a variable, not its value."""
     lowered = name.lower()
+    if lowered.endswith(VARIABLE_SUFFIX):
+        return False
     return any(part in lowered for part in SECRET_PARTS)
 
 

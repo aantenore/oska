@@ -565,6 +565,7 @@ events, which is what the conformance runner inspects.
 | `reply` | The turn answered. The reply kind and what is pending |
 | `guardrail` | A guardrail acted. The point, the identifier, whether it blocked or redacted, and why |
 | `budget` | A turn asked for a model call past its budget. The limit, what was spent, how many were refused |
+| `model_fallback` | A model call of the turn moved from one profile to the next. Which profile answered each call, and each fallback with its role, the profile left, the one tried next and the reason: an HTTP status or the class of the failure, never the content |
 | `unavailable` | A call did not reach the system. Integration, operation, whether it was a write, the error, the breaker state and when a call may go out again |
 | `revision` | The session changed the catalog revision it reads through. Which revision it moved from, which to, and why |
 | `retention` | A session was removed from the record. The operation, and how many receipts, events and stored states went |
