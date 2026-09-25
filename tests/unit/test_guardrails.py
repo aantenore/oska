@@ -152,6 +152,7 @@ class _Recorder:
     def __init__(self, inner: ScriptedModelProvider) -> None:
         self._inner = inner
         self.conversations: list[list[Message]] = []
+        self.prompts: list[str] = []
 
     def complete_json(
         self,
@@ -162,18 +163,22 @@ class _Recorder:
         temperature: float = 0.0,
     ) -> dict:
         self.conversations.append(list(messages))
+        self.prompts.append(system)
         return self._inner.complete_json(system, messages, schema, temperature=temperature)
 
     def embed(self, texts: list[str]) -> list[list[float]]:
         return self._inner.embed(texts)
 
     def systems(self) -> list[str]:
-        """Every system message of every conversation recorded."""
+        """Every system prompt, and every system message of every conversation recorded."""
         return [
-            message.content
-            for conversation in self.conversations
-            for message in conversation
-            if message.role == "system"
+            *self.prompts,
+            *(
+                message.content
+                for conversation in self.conversations
+                for message in conversation
+                if message.role == "system"
+            ),
         ]
 
 
@@ -512,8 +517,12 @@ def test_the_declared_promises_reach_the_planner_prompt(
 
     engine.turn("promised", RESTART_REQUEST)
 
+    promise = catalog.require(IDENTIFIERS).description
     stated = [block for block in recorder.systems() if IDENTIFIERS not in block]
-    assert any(catalog.require(IDENTIFIERS).description in block for block in stated)
+    assert any(promise in block for block in stated)
+    planning = recorder.prompts[-1]
+    assert planning.index(promise) > planning.index("Rules")
+    assert not any(promise in message.content for message in recorder.conversations[-1])
 
 
 def test_the_reply_writer_is_handed_the_promises_of_the_turn(

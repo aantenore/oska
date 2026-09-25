@@ -471,6 +471,15 @@ that says what the reply is written from — `"kind": "receipt"`,
 choose asserts that the prompt has not changed; one you chose asserts what you
 meant.
 
+Cut every expectation before a value a run makes up for itself. A receipt
+identifier is new on every run, and the outcome brief of a reply names it
+within its first sixty characters; an expectation that keeps it holds only for
+the run that recorded it. A reply call that fails its expectation does not end
+the turn — the deterministic form answers instead — so the mismatch shows up
+one call later, as the next step being asked for the wrong request.
+`examples/ops/cassettes/restart-in-italian.json` is a recorded session cut
+this way, and `tests/unit/test_live_cassette.py` replays it.
+
 ## Replaying
 
 ```sh

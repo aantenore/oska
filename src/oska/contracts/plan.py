@@ -21,3 +21,4 @@ class Plan(BaseModel):
     operations: list[PlannedOperation] = Field(default_factory=list)
     missing: list[MissingInput] = Field(default_factory=list)
     reply_intent: str = ""
+    language: str | None = None

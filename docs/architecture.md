@@ -217,7 +217,14 @@ validates it against those declarations, and on failure asks once more with the
 issues appended. Among those declarations are the fields a procedure reserves
 to a person: a payload that carries a value for one of them which the person
 did not give is an issue, whatever else about the plan holds up, and the field
-belongs in `missing` with the question to ask instead. A plan that still does
+belongs in `missing` with the question to ask instead. `missing` may name only
+an input a declared operation takes or one reserved to a person: the names of
+the procedure, its integrations and its operations are in the prompt to be
+copied, and a plan that asks for one is an issue. The schema sent with the
+request is narrowed by `plan_schema` to the same closure — the identifiers and
+operation names as enumerations, the payload with the declared input fields —
+so a model held to a schema cannot name anything else; the validation still
+runs for one that is not. A plan that still does
 not hold up raises `InvalidPlanError`, which the engine records as an outcome.
 `Planner.pick` resolves a discovery tie.
 `Planner.write_reply` phrases a reply from the outcomes of the turn.
@@ -409,6 +416,9 @@ which deployment it is talking to.
    touched, because nothing was decided.
 2. **Route.** Ask the router with a context that says whether a goal is under
    way and whether a write is waiting. Adopt the language the decision reports.
+   A turn routed by the rules or the fast path makes no routing call; the plan
+   then reports the language the person wrote in, and a two-letter code it
+   reports is adopted the same way.
    Emit `route` with the kind, the procedure named, the confidence and which
    layer answered.
 3. **Dispatch** on the kind. A call the budget refuses raises out of the
@@ -424,7 +434,9 @@ what arrives before anything is decided, and what leaves before anyone reads
 it. A promise kept by a check is never also put in a prompt, because handing
 the model a rule the code already enforces invites it to argue with the code;
 the instruction guardrails a hydrated procedure declares are what reaches the
-planning and reply prompts instead.
+planning and reply prompts instead. They go in the system prompt, after the
+planner's own rules, never as a message appended to the conversation, where
+they would read as the last thing said and outweigh the person.
 
 Spans nest inside the `turn` span: `route`, `plan` once per procedure planned,
 `execute` once per stretch of a plan and once per approved write, and `reply`.

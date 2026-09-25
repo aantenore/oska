@@ -192,7 +192,30 @@ that is still invalid is an outcome — `invalid_plan` — not an exception, and
 the user is told the request could not be carried out, not shown a stack trace.
 
 Inputs the plan cannot fill are returned as `missing`, each with the question to
-ask. Asking is a first-class result, not a failure.
+ask. Asking is a first-class result, not a failure. What may be asked for is
+bounded: an input one of the declared operations takes, or an input the
+procedure declares a person supplies. The names of the procedure, its
+integrations and its operations are handed to the planner; they are copied,
+never asked for, and a plan that asks for one is invalid.
+
+The answer is constrained where the provider supports it. The plan schema sent
+with the request is narrowed to the hydrated closure: the procedure identifier,
+the integration identifiers, the operation names and the fields `missing` may
+name are enumerations of what the closure declares, and a payload carries the
+input fields of the declared operations. A model held to a schema writes only
+what the schema admits; a payload declared as an object with no properties can
+only be written empty, so the fields are named. The validation above still
+runs: a provider that ignores the schema is caught there.
+
+Instruction guardrails are part of the planner's system prompt, after its
+rules, as promises the installation holds the planner to. They are not
+appended to the conversation, where they would read as the last thing said and
+outweigh what the person said.
+
+A plan MAY report the language the person wrote in, as an ISO 639-1 code. A
+turn routed by the rules or by the fast path makes no routing call, so the plan
+is the only call that sees the words; a reported code settles the session
+language as a routing decision does, and anything else leaves it as it stands.
 
 #### What the conversation is about
 
@@ -417,9 +440,9 @@ offline.
 - **OSKA-COG-18** — A failure to derive routing examples MUST NOT fail the
   publication that occasioned it, and MUST be reported.
 - **OSKA-COG-19** — The language of a reply MUST be a fact of the session,
-  settled by a routing decision that reports one and kept until another decision
-  reports a different one. A turn decided by the rules or by the fast path MUST
-  NOT detect it again.
+  settled by a routing decision or a plan that reports one and kept until
+  another reports a different one. A turn decided by the rules or by the fast
+  path MUST NOT add a call to detect it.
 - **OSKA-COG-20** — The actions a turn leaves on offer MUST reach the reply
   writer as a key and the label its author declared, and the reply writer MUST
   be able to return a label for each key in the language of the reply. The
@@ -468,6 +491,18 @@ offline.
   returns no text. It MUST NOT add a call beyond that one reply call; a
   conformant system MUST be able to show this by counting the completions of
   such a turn.
+- **OSKA-COG-30** — A plan's `missing` entries MUST name only an input a
+  declared operation of the hydrated closure takes or an input the procedure
+  declares a person supplies. A plan that asks for the identifier of a
+  procedure, an integration or an operation MUST be rejected as invalid.
+- **OSKA-COG-31** — When the provider accepts a schema for its answer, the plan
+  schema sent MUST enumerate the procedure identifier, the integration
+  identifiers, the operation names and the fields `missing` may name from the
+  hydrated closure, and MUST name the input fields a payload may carry. It MUST
+  NOT replace the validation of `OSKA-COG-7`.
+- **OSKA-COG-32** — The prose of the instruction guardrails that apply to a
+  plan MUST reach the planner in its system prompt, and MUST NOT be added to
+  the conversation as a message.
 
 ## Rationale
 

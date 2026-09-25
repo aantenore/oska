@@ -20,7 +20,7 @@ offline against a scripted provider. Scenario categories C1, C13 and C21 pass.
 Requires: Level 1, plus `OSKA-GOV-1` to `OSKA-GOV-24`, `OSKA-GOV-30` to
 `OSKA-GOV-34` and `OSKA-GOV-52`; `OSKA-IXN-1` to `OSKA-IXN-13` and
 `OSKA-IXN-21` to `OSKA-IXN-27`; `OSKA-COG-1` to `OSKA-COG-10` and `OSKA-COG-12` to
-`OSKA-COG-29`; `OSKA-XC-5` to `OSKA-XC-8`, `OSKA-XC-10` to `OSKA-XC-19`,
+`OSKA-COG-32`; `OSKA-XC-5` to `OSKA-XC-8`, `OSKA-XC-10` to `OSKA-XC-19`,
 `OSKA-XC-23` and `OSKA-XC-35`. Scenario categories C1 to C14, C17, C18, C20
 and C22 to C25 pass.
 
@@ -747,7 +747,7 @@ accident.
 | OSKA-COG-17 | `src/oska/index/base.py`, `src/oska/contracts/common.py` | `tests/unit/test_index.py` |
 | OSKA-COG-17a | `src/oska/index/base.py`, `src/oska/index/discovery.py` | `tests/unit/test_index.py` |
 | OSKA-COG-18 | `src/oska/learning/lifecycle.py` | `tests/unit/test_enrichment.py` |
-| OSKA-COG-19 | `src/oska/engine/engine.py`, `src/oska/engine/state.py`, `src/oska/router/base.py` | `tests/unit/test_router.py`, `examples/ops/scenarios/20_other_language.json` |
+| OSKA-COG-19 | `src/oska/engine/engine.py`, `src/oska/engine/goals.py`, `src/oska/engine/state.py`, `src/oska/router/base.py` | `tests/unit/test_router.py`, `tests/unit/test_engine.py`, `examples/ops/scenarios/20_other_language.json` |
 | OSKA-COG-20 | `src/oska/catalog/resolver.py`, `src/oska/engine/reply.py`, `src/oska/planner/planner.py` | `tests/unit/test_labels.py` |
 | OSKA-COG-21 | `src/oska/planner/planner.py`, `src/oska/engine/reply.py` | `tests/unit/test_labels.py` |
 | OSKA-COG-22 | `src/oska/planner/prompts.py`, `src/oska/router/model_router.py` | `tests/unit/test_labels.py` |
@@ -758,6 +758,9 @@ accident.
 | OSKA-COG-27 | `src/oska/engine/subject.py`, `src/oska/planner/prompts.py` | `tests/unit/test_subject.py`, `examples/ops/scenarios/27_subject_from_what_was_shown.json` |
 | OSKA-COG-28 | `src/oska/engine/subject.py`, `src/oska/planner/planner.py` | `tests/unit/test_subject.py`, `examples/ops/scenarios/29_comparative_on_shown_rows.json` |
 | OSKA-COG-29 | `src/oska/engine/engine.py`, `src/oska/engine/reply.py` | `tests/unit/test_presentation.py`, `examples/ops/scenarios/08_off_scope.json` |
+| OSKA-COG-30 | `src/oska/planner/planner.py`, `src/oska/planner/prompts.py` | `tests/unit/test_planner.py`, `tests/unit/test_live_cassette.py` |
+| OSKA-COG-31 | `src/oska/planner/planner.py` | `tests/unit/test_planner.py`, `tests/unit/test_live_cassette.py` |
+| OSKA-COG-32 | `src/oska/planner/prompts.py`, `src/oska/engine/collaborators.py` | `tests/unit/test_guardrails.py` |
 
 ### Interaction (L6)
 

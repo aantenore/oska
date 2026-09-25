@@ -21,6 +21,7 @@ the language of the conversation by the same one call that writes any reply.
 
 from __future__ import annotations
 
+import copy
 import json
 from collections.abc import Sequence
 
@@ -71,8 +72,83 @@ PLAN_SCHEMA: dict = {
             },
         },
         "reply_intent": {"type": "string"},
+        "language": {
+            "type": "string",
+            "description": "ISO 639-1 code of the language the person wrote in",
+        },
     },
 }
+
+def plan_schema(hydrated: Hydrated) -> dict:
+    """The plan schema narrowed to what this procedure declares.
+
+    The general schema accepts any string where a procedure, an integration, an
+    operation or a missing input is named. Handed to a provider that constrains
+    its output to the schema, the narrowed copy leaves the model no way to name
+    something the catalog does not declare: the procedure is fixed, and each
+    step and each question can only name what the closure holds. The plan is
+    still validated afterwards; this makes a valid plan the only one a model
+    can write, whatever its size.
+    """
+    schema = copy.deepcopy(PLAN_SCHEMA)
+    properties = schema["properties"]
+    properties["runbook_id"] = {"type": "string", "enum": [hydrated.runbook.id]}
+    integrations = [skill.id for skill in hydrated.integrations]
+    operations = sorted(
+        {spec.name for skill in hydrated.integrations for spec in skill.frontmatter.operations}
+    )
+    step = properties["operations"]["items"]["properties"]
+    if integrations:
+        step["integration_id"] = {"type": "string", "enum": integrations}
+    if operations:
+        step["operation"] = {"type": "string", "enum": operations}
+    fields = _payload_fields(hydrated)
+    if fields:
+        # An object with no properties can only be written empty by a provider
+        # that holds the output to the schema, and a model that cannot put a value
+        # in the payload asks for it instead. Every field a declared operation
+        # accepts is offered here; each operation's own schema is checked after.
+        step["payload"] = {"type": "object", "additionalProperties": False, "properties": fields}
+    accepted = set(human_inputs(hydrated))
+    for skill in hydrated.integrations:
+        for spec in skill.frontmatter.operations:
+            accepted.update((spec.input_schema or {}).get("properties", {}))
+    if accepted:
+        properties["missing"]["items"]["properties"]["field"] = {
+            "type": "string",
+            "enum": sorted(accepted),
+        }
+    return schema
+
+
+_PORTABLE_KEYWORDS = ("type", "description", "enum", "items", "format")
+
+
+def _payload_fields(hydrated: Hydrated) -> dict:
+    """Every input field the declared operations accept, in a form providers can hold to.
+
+    Only the keywords structured output is broadly held to are kept. A field two
+    operations declare differently keeps only its description, and the
+    operation's own schema decides afterwards.
+    """
+    fields: dict[str, dict] = {}
+    for skill in hydrated.integrations:
+        for spec in skill.frontmatter.operations:
+            for name, declared in (spec.input_schema or {}).get("properties", {}).items():
+                portable = _portable(declared)
+                if name not in fields:
+                    fields[name] = portable
+                elif fields[name] != portable:
+                    fields[name] = {"description": portable.get("description", name)}
+    return fields
+
+
+def _portable(declared: dict) -> dict:
+    kept = {key: value for key, value in declared.items() if key in _PORTABLE_KEYWORDS}
+    if isinstance(kept.get("items"), dict):
+        kept["items"] = _portable(kept["items"])
+    return kept
+
 
 PICK_SCHEMA: dict = {
     "type": "object",
@@ -139,6 +215,7 @@ class Planner:
         *,
         refinements: Sequence[dict] | None = None,
         from_focus: dict | None = None,
+        guidance: Sequence[str] = (),
     ) -> Plan:
         """Ask for the operations of one procedure, and repair once if they do not hold up.
 
@@ -153,6 +230,7 @@ class Planner:
             hydrated,
             self._resolver.declared_scope(),
             ontology=self._vocabulary(),
+            guidance=guidance,
         )
         messages = list(conversation)
         focused = dict(from_focus or {})
@@ -256,7 +334,7 @@ class Planner:
         hydrated: Hydrated,
         collected_inputs: dict | None = None,
     ) -> tuple[Plan | None, list[str]]:
-        answer = self._provider.complete_json(system, messages, PLAN_SCHEMA)
+        answer = self._provider.complete_json(system, messages, plan_schema(hydrated))
         try:
             plan = Plan.model_validate({**answer, "runbook_id": hydrated.runbook.id})
         except ValidationError as exc:
@@ -303,7 +381,27 @@ def validate_plan(
             )
         issues.extend(_payload_issues(where, operation.payload, spec, asked))
         issues.extend(_human_input_issues(where, operation.payload, human, collected))
+    issues.extend(_missing_issues(plan, declared, human))
     return issues
+
+
+def _missing_issues(plan: Plan, declared: dict[str, Skill], human: set[str]) -> list[str]:
+    """A question is only worth asking about an input some declared operation takes.
+
+    A model left to itself asks for whatever looks unknown to it, including the
+    runtime's own identifiers. What a person is asked must be a field one of the
+    declared operations accepts, or one the procedure reserves to a person.
+    """
+    accepted = set(human)
+    for integration in declared.values():
+        for spec in integration.frontmatter.operations:
+            accepted.update((spec.input_schema or {}).get("properties", {}))
+    return [
+        f"`missing` asks for {item.field!r}, which no declared operation takes; ask only for "
+        f"inputs the declared operations accept: {', '.join(sorted(accepted)) or 'none'}"
+        for item in plan.missing
+        if item.field not in accepted
+    ]
 
 
 def human_inputs(hydrated: Hydrated) -> set[str]:

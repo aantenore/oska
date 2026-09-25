@@ -16,7 +16,6 @@ from oska.contracts.common import Hydrated, Message, Outcome, PendingApproval
 from oska.contracts.plan import Plan
 from oska.contracts.skill import Skill
 from oska.engine.execution import PlanExecutor, StopReason, TurnContext
-from oska.engine.reply import guided
 from oska.governance.approval import ApprovalGate
 from oska.governance.capabilities import CapabilityRegistry
 from oska.governance.guardrails import GuardrailChain
@@ -119,10 +118,11 @@ class GuidedPlanner(Planner):
             span.set(guardrails=len(prose))
             return super().plan(
                 _without_identity_fields(hydrated),
-                guided(conversation, prose),
+                list(conversation),
                 collected_inputs,
                 refinements=refinements,
                 from_focus=from_focus,
+                guidance=prose,
             )
 
 

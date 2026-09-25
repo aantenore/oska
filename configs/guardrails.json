@@ -58,7 +58,7 @@
     },
     "guardrail.identifiers_are_never_invented": {
       "title": "Identifiers are never invented",
-      "description": "Never invent an identifier, a name or a value. Take each one from the conversation or from a declared record, and when one is unknown ask for it instead of supplying it.",
+      "description": "Never invent the value of a record's field, such as a name, an object's identifier or a quantity. Take it from the conversation or from a record the runtime read, and ask for it when it is unknown. The names of declared procedures, integrations and operations are given to you; they are copied, never asked for.",
       "enforcement": {
         "point": "planning",
         "mechanism": "instruction",

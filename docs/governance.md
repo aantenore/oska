@@ -313,7 +313,9 @@ an error.
 
 A guardrail kept by a check is never also put in a prompt. The model is given
 the instruction guardrails and only those, because handing it a rule the code
-already enforces invites it to argue with the code.
+already enforces invites it to argue with the code. The planner reads them in
+its system prompt, after its own rules; they are not appended to the
+conversation.
 
 The chain the engine runs covers the two points that are about the text of a
 turn: the input checks run over what arrived before anything is decided, and

@@ -287,7 +287,7 @@ def test_the_routing_prompts_keep_the_wording_the_catalog_declares(
     The same request is answered twice, once as a turn in Italian and once as a
     turn in English. The prompt the router reads and the prompt the planner
     reads are the same text both times, and both hold the wording the catalog
-    declares; only the prompt that writes the reply names a language at all.
+    declares; only the prompt that writes the reply is told a language to write in.
     """
     in_italian = Counter(_health_script({"reply": "Il servizio e in esecuzione."}))
     in_english = Counter(_health_script({"reply": "Search is running."}, language="en"))
@@ -307,7 +307,9 @@ def test_the_routing_prompts_keep_the_wording_the_catalog_declares(
     assert routing == other_routing
     assert planning == other_planning
     assert "language" not in routing.lower()
-    assert "language" not in planning.lower()
+    # The planner is asked to report the person's language, never told one: the
+    # prompt is the same for both turns and names no language to write in.
+    assert "in this language" not in planning
     assert "in this language: it" in reply
     assert "in this language: en" in other_reply
 

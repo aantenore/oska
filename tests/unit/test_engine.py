@@ -554,3 +554,39 @@ def test_an_approval_whose_state_cannot_be_read_again_sends_nothing(
         if event.kind == "execute" and event.data.get("operation") == "service.restart"
     ]
     assert engine.state("prod").pending_approval is None
+
+
+def test_a_turn_routed_without_the_model_learns_the_language_from_the_plan(
+    example_settings,  # type: ignore[no-untyped-def]
+) -> None:
+    """The planner already runs; the language it reports is kept, at no extra call."""
+    from oska.audit.sink import MemorySink
+    from oska.engine.factory import build_engine
+    from oska.planner.scripted import ScriptedModelProvider
+
+    script = [
+        {
+            "purpose": "plan",
+            "response": {
+                "runbook_id": "runbook.service_health",
+                "operations": [
+                    {
+                        "integration_id": "integration.container_runtime",
+                        "operation": "service.status",
+                        "payload": {"service": "search"},
+                        "write": False,
+                        "purpose": "read the service",
+                    }
+                ],
+                "missing": [],
+                "reply_intent": "report the state",
+                "language": "it",
+            },
+        },
+        {"purpose": "reply", "response": {"reply": "Il servizio search funziona."}},
+    ]
+    engine = build_engine(
+        example_settings, provider=ScriptedModelProvider(script), audit_sink=MemorySink()
+    )
+    engine.turn("lang", "come sta il servizio search?")
+    assert engine.state("lang").language == "it"

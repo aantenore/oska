@@ -18,6 +18,7 @@ operation after it runs and no later write asks for an approval.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 
 from oska.catalog.registry import SkillRegistry
@@ -52,6 +53,9 @@ def unlanded(outcomes: list[Outcome]) -> bool:
         or (outcome.kind == "unavailable" and outcome.data.get("write"))
         for outcome in outcomes
     )
+
+
+_LANGUAGE = re.compile(r"[a-z]{2}")
 
 
 @dataclass
@@ -209,6 +213,11 @@ class GoalRunner:
             )
             ctx.record(build.invalid_plan_outcome(hydrated.runbook.id, error.issues))
             return None
+        spoken = (plan.language or "").strip().lower()
+        if _LANGUAGE.fullmatch(spoken):
+            # A turn routed without the model still learns the person's language
+            # from the plan the model already wrote, at no extra call.
+            ctx.state.language = spoken
         ctx.emit(
             "plan",
             {

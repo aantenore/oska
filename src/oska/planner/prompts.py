@@ -18,8 +18,16 @@ PLANNER_RULES = (
     "Every payload must satisfy the input schema shown with its operation.",
     "When a required input is unknown, leave that operation out and list the input"
     " in `missing` with the question to ask.",
-    "Never invent an identifier, a name or a value; take them from the conversation"
-    " or ask for them.",
+    "Never invent the value of a record's field, such as a name, an object's identifier"
+    " or a quantity: take it from the conversation or from a record the runtime read,"
+    " and ask for it when it is unknown. The names of the procedure, the integrations"
+    " and the operations are given above: copy them, never ask for them.",
+    "`missing` names only an input of a declared operation, a key under `properties` of"
+    " its input schema; it never names `runbook_id`, `integration_id` or `operation`.",
+    "A value the person has stated, even in passing, is taken as they said it; do not ask"
+    " them to confirm it. When it could be wrong, plan a read that checks it first: reads"
+    " are always allowed, and every write is shown to the person with its exact payload"
+    " and approved before it runs.",
     "Order reads before writes.",
     "A field listed as a human input is never filled in from your own judgment:"
     " leave it out of the payload and list it in `missing` with the question to ask,"
@@ -31,6 +39,8 @@ PLANNER_RULES = (
     " `Refinements the shown records allow`, with a value listed there; it never refines"
     " on another field or invents a value.",
     "`reply_intent` is one short line telling the reply writer what this turn is about.",
+    "`language` is the ISO 639-1 code of the language the person wrote in, such as `it` or"
+    " `en`, so the answer comes back in it.",
 )
 
 REFINEMENTS_HEADING = "Refinements the shown records allow"
@@ -54,6 +64,7 @@ def planner_system(
     scope: str,
     *,
     ontology: dict | None = None,
+    guidance: Sequence[str] = (),
 ) -> str:
     """The prompt that turns one procedure into operations.
 
@@ -67,6 +78,7 @@ def planner_system(
         f"Scope of this installation: {scope}",
         f"Procedure {runbook.id}: {runbook.frontmatter.description}",
         _runbook_sections(runbook),
+        _filling(runbook.id),
     ]
     for member in hydrated.runbooks:
         parts.append(f"Step procedure {member.id}: {member.frontmatter.description}")
@@ -87,7 +99,25 @@ def planner_system(
         )
     parts.append(f"Declared operations:\n{_operations(hydrated.integrations)}")
     parts.append(_rules("Rules:", PLANNER_RULES))
+    if guidance:
+        # Declared promises belong with the other rules, before the conversation: a
+        # model reads the last message as the latest instruction, and a promise
+        # placed after the person's words outweighs what they asked for.
+        parts.append(_rules("Promises this installation has declared, and holds you to:", guidance))
     return "\n\n".join(part for part in parts if part)
+
+
+def _filling(runbook_id: str) -> str:
+    """How the plan's own fields are filled: from this prompt, never from the person."""
+    return (
+        "How to fill the plan:\n"
+        f"- `runbook_id` is `{runbook_id}`.\n"
+        "- Each step's `integration_id` and `operation` are copied from the declared"
+        " operations below, and `write` matches what is declared there.\n"
+        "- `payload` holds only inputs of that operation's input schema, with values taken"
+        " from the conversation or from records the runtime read.\n"
+        "- `missing` lists an input only when its value cannot be found that way."
+    )
 
 
 def pick_system(candidates: Sequence[str]) -> str:

@@ -410,3 +410,55 @@ def _plan_from(response: dict) -> Plan:
 
 def _cosine(left: list[float], right: list[float]) -> float:
     return sum(a * b for a, b in zip(left, right, strict=True))
+
+
+def test_a_question_about_an_input_no_operation_takes_is_refused(registry) -> None:  # type: ignore[no-untyped-def]
+    """A live model asked for the runtime's own integration identifier; that is never a question."""
+    from oska.contracts.plan import MissingInput, Plan
+    from oska.planner.planner import validate_plan
+
+    hydrated = registry.closure("runbook.service_restart")
+    invented = Plan(
+        runbook_id="runbook.service_restart",
+        operations=[],
+        missing=[MissingInput(field="integration_id", question="Which integration id?")],
+        reply_intent="ask",
+    )
+    honest = invented.model_copy(
+        update={"missing": [MissingInput(field="service", question="Which service?")]}
+    )
+
+    refused = validate_plan(invented, hydrated)
+    assert len(refused) == 1 and "'integration_id'" in refused[0] and "service" in refused[0]
+    assert validate_plan(honest, hydrated) == []
+
+
+def test_the_plan_schema_names_only_what_the_procedure_declares(registry) -> None:  # type: ignore[no-untyped-def]
+    """A provider that constrains its output to the schema cannot name anything undeclared."""
+    from oska.planner.planner import PLAN_SCHEMA, plan_schema
+
+    hydrated = registry.closure("runbook.service_restart")
+    schema = plan_schema(hydrated)
+    step = schema["properties"]["operations"]["items"]["properties"]
+
+    assert schema["properties"]["runbook_id"]["enum"] == ["runbook.service_restart"]
+    assert step["integration_id"]["enum"] == [skill.id for skill in hydrated.integrations]
+    assert "service.restart" in step["operation"]["enum"]
+    assert "restart_deployment" not in step["operation"]["enum"]
+    asked = schema["properties"]["missing"]["items"]["properties"]["field"]["enum"]
+    assert "service" in asked
+    assert not {"runbook_id", "integration_id", "operation"} & set(asked)
+    assert "enum" not in PLAN_SCHEMA["properties"]["runbook_id"], "the shared schema is untouched"
+
+
+def test_the_plan_schema_lets_a_payload_carry_the_declared_inputs(registry) -> None:  # type: ignore[no-untyped-def]
+    """A payload with no properties could only be written empty under structured output."""
+    from oska.planner.planner import plan_schema
+
+    schema = plan_schema(registry.closure("runbook.service_restart"))
+    payload = schema["properties"]["operations"]["items"]["properties"]["payload"]
+
+    assert payload["additionalProperties"] is False
+    assert payload["properties"]["service"]["type"] == "string"
+    assert all(set(field) <= {"type", "description", "enum", "items", "format"}
+               for field in payload["properties"].values())

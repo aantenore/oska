@@ -41,7 +41,6 @@ from oska.engine.presentation import (
     turn_moment,
 )
 from oska.engine.subject import Referent, Shown
-from oska.planner.planner import PLAN_SCHEMA
 from oska.planner.provider import ModelProviderError
 from oska.planner.scripted import ScriptedModelProvider
 from oska.router.model_router import ROUTE_SCHEMA
@@ -461,7 +460,7 @@ class Dispatching:
                 "confidence": 0.9,
                 "language": "en",
             }
-        if schema is PLAN_SCHEMA and self._plans:
+        if "operations" in schema.get("properties", {}) and self._plans:
             self.planned += 1
             return self._plans.pop(0)
         raise ModelProviderError("nothing scripted for this call")
