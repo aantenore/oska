@@ -41,3 +41,98 @@ jobs:
           --skills examples/access/skills
           --scenarios examples/access/scenarios
           --connectors examples/access/configs/connectors.json
+
+  postgres:
+    # The relational backend against a live PostgreSQL 16, started as a service
+    # container. Every suite runs twice in a row over the same database, so a
+    # run that left anything behind would fail the second one.
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: oska
+          POSTGRES_PASSWORD: oska-ci
+          POSTGRES_DB: oska
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U oska -d oska"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      OSKA_TEST_POSTGRES_URL: postgresql://oska:oska-ci@127.0.0.1:5432/oska
+      OSKA_DATABASE_URL: postgresql://oska:oska-ci@127.0.0.1:5432/oska
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install
+        run: pip install -e '.[dev,postgres]'
+
+      - name: Storage contract and conformance isolation (first run)
+        run: pytest -q tests/unit/test_storage_contract.py tests/unit/test_conformance_postgres.py
+
+      - name: Storage contract and conformance isolation (second run)
+        run: pytest -q tests/unit/test_storage_contract.py tests/unit/test_conformance_postgres.py
+
+      - name: Select the relational backend
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          document = json.loads(Path("configs/runtime.json").read_text(encoding="utf-8"))
+          document["storage"].update(backend="postgres", url_env="OSKA_DATABASE_URL")
+          target = Path(os.environ["RUNNER_TEMP"]) / "runtime.postgres.json"
+          target.write_text(json.dumps(document, indent=2), encoding="utf-8")
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as env:
+              env.write(f"OSKA_RUNTIME_CONFIG={target}\n")
+          PY
+
+      - name: Conform the operational catalog (first run)
+        run: oska conform
+
+      - name: Conform the operational catalog (second run)
+        run: oska conform
+
+      - name: Conform the access catalog (first run)
+        run: >-
+          oska conform
+          --skills examples/access/skills
+          --scenarios examples/access/scenarios
+          --connectors examples/access/configs/connectors.json
+
+      - name: Conform the access catalog (second run)
+        run: >-
+          oska conform
+          --skills examples/access/skills
+          --scenarios examples/access/scenarios
+          --connectors examples/access/configs/connectors.json
+
+      - name: Conform the platform (first run)
+        run: oska conform --platform examples/platform.yaml
+
+      - name: Conform the platform (second run)
+        run: oska conform --platform examples/platform.yaml
+
+      - name: No conformance namespace is left behind
+        run: |
+          python - <<'PY'
+          import os
+
+          import psycopg
+
+          with psycopg.connect(os.environ["OSKA_DATABASE_URL"]) as connection:
+              for table in ("oska_sessions", "oska_receipts", "oska_write_claims"):
+                  left = connection.execute(
+                      f"SELECT COUNT(*) FROM {table} WHERE namespace LIKE 'conformance/%'"
+                  ).fetchone()[0]
+                  print(f"{table}: {left} row(s) in conformance namespaces")
+                  assert left == 0, f"{table} still holds {left} conformance row(s)"
+          PY

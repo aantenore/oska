@@ -380,14 +380,15 @@ bounded by `storage.busy_timeout_seconds`; PostgreSQL claims a row with
 only the row in question and scales across replicas instead of serializing
 every write behind one file. Both satisfy the same contract
 (`tests/unit/test_storage_contract.py`), run against SQLite always and against
-PostgreSQL only when `OSKA_TEST_POSTGRES_URL` names a real server. Say this
-plainly: nothing in this repository's own CI or test history runs that
-contract suite against a live PostgreSQL server — `.github/workflows/ci.yml`
-installs `.[dev,api]`, never the `postgres` extra, and sets no database URL.
-The backend is implemented and unit-tested against the same protocol SQLite
-satisfies; treat a first deployment against your own PostgreSQL server as the
-first real exercise of that path, and run the contract suite against it
-yourself before trusting it under load:
+PostgreSQL when `OSKA_TEST_POSTGRES_URL` names a real server. The `postgres`
+job of `.github/workflows/ci.yml` does that on every change: it starts the
+official `postgres:16` image as a service container, installs the `postgres`
+extra, and runs the contract suite (a claim raced by threads and by separate
+processes included) and the conformance suites of both reference catalogs and
+of `examples/platform.yaml` on the relational backend, each twice in a row
+over the same database, then checks that no conformance namespace is left.
+Run the contract suite against your own server too before trusting it under
+load, since your version, configuration and load are not the CI's:
 
 ```sh
 export OSKA_TEST_POSTGRES_URL="postgresql://user:password@host:5432/oska_test"

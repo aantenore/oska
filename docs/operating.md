@@ -220,6 +220,14 @@ window is an operator's job on an operator's schedule.
 
 Both are destructive and neither is reversible.
 
+A conformance run leaves nothing here to forget. `oska conform`, with or
+without `--platform`, keeps every scenario under a namespace of its own under
+`conformance/` and purges it when the scenario ends, so it is safe to run
+against the PostgreSQL database a deployment serves from: it never touches the
+`default` namespace or any (tenant, domain), and a count of rows per namespace
+afterwards shows no `conformance/` namespace at all. See
+[docs/conformance.md](conformance.md#running-it).
+
 ## When a connector is down
 
 A connector classifies its own failures, and the difference matters more than

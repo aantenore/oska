@@ -433,8 +433,9 @@ setting to run with. With `postgres`, both stores go through `psycopg`
 first time a process opens the database. The two backends satisfy the same
 `LedgerStore` and `SessionStateStore` protocols in `oska.storage`, run through
 one contract test suite (`tests/unit/test_storage_contract.py`) — always
-against SQLite, and against PostgreSQL only when `OSKA_TEST_POSTGRES_URL`
-names a real server, which nothing in this repository's own CI does today.
+against SQLite, and against PostgreSQL when `OSKA_TEST_POSTGRES_URL`
+names a real server, which the `postgres` job of this repository's CI does
+against a PostgreSQL 16 service container.
 Choosing `postgres` is for more than one process sharing one ledger and one
 set of sessions, where SQLite's single-file lock would serialize every write
 across every replica instead of only the ones that collide.

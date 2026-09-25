@@ -279,3 +279,30 @@ def test_a_publication_that_never_reaches_the_catalog_fails(
     assert result.passed is False
     assert any("the scenario expects 'published'" in failure for failure in result.failures)
     assert any("nothing was picked up from the publication root" in f for f in result.failures)
+
+
+def test_a_scenario_never_writes_to_an_absolute_state_path(
+    example_settings: Settings, repo_root: Path, tmp_path: Path
+) -> None:
+    """A deployment's absolute ledger, session and audit paths are left untouched by a run."""
+    from oska.conformance.runner import load_scenarios, run_scenario
+
+    real = tmp_path / "deployment"
+    real.mkdir()
+    runtime = json.loads((repo_root / "configs" / "runtime.json").read_text(encoding="utf-8"))
+    runtime["ledger"] = {"path": str(real / "ledger.sqlite")}
+    runtime["sessions"] = {"path": str(real / "sessions.sqlite")}
+    runtime["audit"] = {"path": str(real / "audit.jsonl")}
+    configured = tmp_path / "runtime.json"
+    configured.write_text(json.dumps(runtime), encoding="utf-8")
+    settings = example_settings.model_copy(update={"runtime_config": configured})
+
+    scenario = next(
+        s
+        for s in load_scenarios(repo_root / "examples" / "ops" / "scenarios")
+        if s.name.startswith("02_")
+    )
+    result = run_scenario(scenario, settings, state_dir=tmp_path / "scenario")
+
+    assert result.passed, result.failures
+    assert list(real.iterdir()) == [], "a conformance run wrote into the deployment's files"

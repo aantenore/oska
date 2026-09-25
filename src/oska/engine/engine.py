@@ -173,6 +173,11 @@ class Engine:
         """What the turn under way may still spend on model calls."""
         return self._budget
 
+    @property
+    def stores(self) -> tuple[WriteLedger, SessionStore]:
+        """The write ledger and the session store this engine keeps its record in."""
+        return self._ledger, self._sessions
+
     def state(self, session_id: str) -> SessionState:
         """The stored state of a session."""
         return self._sessions.load(session_id)

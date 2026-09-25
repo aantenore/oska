@@ -116,6 +116,14 @@ class SessionStore:
             )
             return int(cursor.rowcount)
 
+    def purge(self) -> int:
+        """Remove nothing: the namespace of a file store is its file, which is not its to remove.
+
+        Whoever created the file removes it with its directory, as the
+        conformance runner removes the state directory of every scenario.
+        """
+        return 0
+
     @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:
         with self._opening:

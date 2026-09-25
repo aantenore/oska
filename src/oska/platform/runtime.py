@@ -312,6 +312,8 @@ class Platform:
         The conformance runner uses it to build a fresh engine per scenario
         with the scenario's own state directory and the domain's declarations.
         A caller may ask for presentation explicitly; otherwise the domain decides.
+        A `namespace` it is given is a scope, and the pair's own namespace is
+        kept inside it, so pairs built under one scope still never share a record.
         """
         spec = self.domain(domain)
         chosen = self.tenant(spec.name, tenant)
@@ -319,6 +321,8 @@ class Platform:
         def build(settings: Settings, **kwargs: object) -> Engine:
             runtime = self.runtime_for(chosen)
             kwargs.setdefault("presentation", spec.presentation)
+            pair = storage_namespace(chosen, spec.name)
+            scope = kwargs.pop("namespace", None)
             return build_engine(
                 settings,
                 runtime=runtime,
@@ -333,7 +337,7 @@ class Platform:
                 resolver=hosted(spec.host),
                 synonyms=self._synonyms[spec.name],
                 host=spec.host,
-                namespace=storage_namespace(chosen, spec.name),
+                namespace=pair if scope is None else f"{scope}/{pair}",
                 **kwargs,  # type: ignore[arg-type]
             )
 

@@ -312,6 +312,14 @@ class WriteLedger:
         )
         return [row["session_id"] for row in rows]
 
+    def purge(self) -> int:
+        """Remove nothing: the namespace of a file ledger is its file, which is not its to remove.
+
+        Whoever created the file removes it with its directory, as the
+        conformance runner removes the state directory of every scenario.
+        """
+        return 0
+
     def _query(self, statement: str, parameters: tuple) -> list[sqlite3.Row]:
         with self._connect() as connection:
             return connection.execute(statement, parameters).fetchall()

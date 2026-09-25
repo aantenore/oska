@@ -4,6 +4,10 @@ Every scenario of every pack a domain serves runs against a fresh engine built
 the way that domain builds its own: the domain's catalog, bindings, guardrails
 and host, the tenant's runtime fragment, and a state directory of its own. The
 level is reported per domain, because a domain is what a person talks to.
+
+Each scenario keeps its record under a namespace the run creates, with the
+(tenant, domain) nested inside it, so pairs stay apart as they do when served,
+and the run purges it when the scenario ends; see `oska.conformance.runner`.
 """
 
 from __future__ import annotations

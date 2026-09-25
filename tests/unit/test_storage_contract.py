@@ -8,11 +8,17 @@ session identifiers of its own and asserts only about them.
 Two stores under different namespaces must never see each other's sessions or
 receipts. On SQLite a namespace is a directory of its own; on PostgreSQL it is
 the namespace the store is opened under, over the same database.
+
+The claim is raced twice: by threads, each with a store of its own, and by
+separate processes started with the spawn method, which share nothing but the
+record itself.
 """
 
 from __future__ import annotations
 
+import multiprocessing
 import os
+import queue
 import threading
 import uuid
 from collections.abc import Callable, Iterator
@@ -77,7 +83,16 @@ def stores(request: pytest.FixtureRequest, tmp_path: Path) -> Iterator[Stores]:
     from oska.storage.postgres_ledger import PostgresLedger
     from oska.storage.postgres_sessions import PostgresSessionStore
 
-    yield (lambda: PostgresLedger(url), lambda: PostgresSessionStore(url))
+    # Every test gets a namespace of its own and removes it afterwards, so the
+    # suite never reads or deletes anything a real deployment keeps in
+    # `default`, whatever database the test address points at.
+    namespace = f"contract/{uuid.uuid4().hex}"
+    yield (
+        lambda: PostgresLedger(url, namespace=namespace),
+        lambda: PostgresSessionStore(url, namespace=namespace),
+    )
+    PostgresLedger(url, namespace=namespace).purge()
+    PostgresSessionStore(url, namespace=namespace).purge()
 
 
 @pytest.fixture(params=["sqlite", "postgres"])
@@ -278,6 +293,79 @@ def test_a_claim_under_concurrent_writers_is_won_once(
     assert [r.receipt_id for r in writers[0].for_session(session)] == won
 
 
+def _claim_in_a_process(
+    backend: str,
+    address: str,
+    namespace: str,
+    session: str,
+    start: Any,
+    results: Any,
+) -> None:
+    """One writer in a process of its own: take the intent, report whose receipt holds it."""
+    if backend == "postgres":
+        from oska.storage.postgres_ledger import PostgresLedger
+
+        store: LedgerStore = PostgresLedger(address, namespace=namespace)
+    else:
+        store = WriteLedger(Path(address))
+    mine = intent(store, session)
+    try:
+        start.wait(timeout=60)
+        holder = store.claim(mine)
+    except BaseException as error:  # reported to the parent, not swallowed
+        results.put(("error", f"{type(error).__name__}: {error}"))
+        return
+    results.put((mine.receipt_id, holder.receipt_id))
+
+
+@pytest.mark.parametrize("backend", ["sqlite", "postgres"])
+def test_a_claim_raced_by_separate_processes_is_won_once(
+    backend: str, session: str, tmp_path: Path
+) -> None:
+    """Two processes claim one write key of one namespace; one wins, the other sees its receipt."""
+    if backend == "postgres":
+        from oska.storage.postgres_ledger import PostgresLedger
+
+        address = _postgres_url()
+        namespace = f"contract/{uuid.uuid4().hex}"
+        reader: LedgerStore = PostgresLedger(address, namespace=namespace)
+    else:
+        address = str(tmp_path / "ledger.sqlite")
+        namespace = DEFAULT_NAMESPACE
+        reader = WriteLedger(Path(address))
+    context = multiprocessing.get_context("spawn")
+    start = context.Barrier(2)
+    results = context.Queue()
+    workers = [
+        context.Process(
+            target=_claim_in_a_process,
+            args=(backend, address, namespace, session, start, results),
+        )
+        for _ in range(2)
+    ]
+    try:
+        for worker in workers:
+            worker.start()
+        try:
+            outcomes = [results.get(timeout=120) for _ in workers]
+        except queue.Empty:
+            pytest.fail("a claiming process never reported")
+        for worker in workers:
+            worker.join(timeout=30)
+
+        assert all(tag != "error" for tag, _ in outcomes), outcomes
+        won = [mine for mine, holder in outcomes if mine == holder]
+        assert len(won) == 1
+        assert [holder for _, holder in outcomes] == [won[0], won[0]]
+        assert [r.receipt_id for r in reader.for_session(session)] == won
+    finally:
+        for worker in workers:
+            if worker.is_alive():
+                worker.terminate()
+        if backend == "postgres":
+            reader.purge()
+
+
 # Counting, listing and removal.
 
 
@@ -382,6 +470,53 @@ def test_two_namespaces_never_see_each_others_receipts(spaces: Spaces, session: 
     assert [r.receipt_id for r in theirs.for_session(session)] == [own.receipt_id]
     read = mine.get(held.receipt_id)
     assert read is not None and read.status == "pending"
+
+
+# Purging a namespace.
+
+
+def test_a_purge_removes_its_own_namespace_and_nothing_else(spaces: Spaces, session: str) -> None:
+    run = uuid.uuid4().hex[:8]
+    finished = f"contract/{run}/finished"
+    ledger, sessions = spaces[0](finished), spaces[1](finished)
+    kept_ledger, kept_sessions = spaces[0](f"{finished}-kept"), spaces[1](f"{finished}-kept")
+    for store in (ledger, kept_ledger):
+        store.claim(intent(store, session))
+    for store in (sessions, kept_sessions):
+        store.save(SessionState(session_id=session))
+
+    removed = (ledger.purge(), sessions.purge())
+
+    assert len(kept_ledger.for_session(session)) == 1
+    assert kept_sessions.exists(session)
+    if isinstance(ledger, WriteLedger):
+        # A file store's namespace is its file, removed by whoever made it.
+        assert removed == (0, 0)
+        assert len(ledger.for_session(session)) == 1
+        return
+    assert removed == (1, 1)
+    assert ledger.for_session(session) == []
+    assert session not in ledger.sessions()
+    assert not sessions.exists(session)
+    fresh = intent(ledger, session)
+    assert ledger.claim(fresh).receipt_id == fresh.receipt_id, "the claim went with the purge"
+    assert (ledger.purge(), kept_ledger.purge(), kept_sessions.purge()) == (1, 1, 1)
+
+
+def test_the_default_namespace_is_never_purged() -> None:
+    import oska.storage.postgres_ledger as postgres_ledger
+    import oska.storage.postgres_sessions as postgres_sessions
+
+    database = _Recorder()
+    for store in (
+        postgres_ledger.PostgresLedger("unused", database=database),  # type: ignore[arg-type]
+        postgres_sessions.PostgresSessionStore(
+            "unused", database=database  # type: ignore[arg-type]
+        ),
+    ):
+        with pytest.raises(StorageError, match="never purged"):
+            store.purge()
+    assert database.statements == []
 
 
 # Retention, through the interfaces.
@@ -530,8 +665,10 @@ def test_every_postgres_statement_is_scoped_to_the_namespace(
     sessions.exists("s")
     sessions.expired(datetime.now(UTC))
     sessions.delete("s")
+    ledger.purge()
+    sessions.purge()
 
-    assert len(database.statements) >= 19
+    assert len(database.statements) >= 22
     for statement, parameters in database.statements:
         assert "namespace" in statement, statement
         assert namespace in parameters, statement

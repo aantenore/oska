@@ -75,6 +75,17 @@ root and thrown away afterwards. Nothing a scenario writes touches
 memory. The provider is always the scripted one, so the suite runs offline and
 gives the same answer every time.
 
+The same holds for a database. With `storage.backend` set to `postgres`, every
+scenario keeps its sessions, receipts and write claims under a namespace the
+run creates for it, `conformance/<run id>/<position>/<scenario>` (on a
+platform, with the `<tenant>/<domain>` of the pair nested inside it), and that
+namespace is purged when the scenario ends, whether it passed or failed. A run
+never reads, writes or removes a namespace it did not create, the `default`
+namespace and every (tenant, domain) of a deployment included. Running
+`oska conform` against a database a deployment shares is therefore safe: its
+record is left as it was, and nothing of the run is left behind, so the same
+suite passes however many times it runs over one database (`OSKA-XC-36`).
+
 The same scenarios run under `pytest` through
 `tests/scenarios/test_scenarios.py`, parametrized over the directory.
 

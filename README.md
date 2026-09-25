@@ -94,7 +94,8 @@ one. `oska.platform` assembles a process from several packs into domains and
 tenants, one runtime per (tenant, domain), and behaves as a no-op when nothing
 names a manifest. `oska.storage` is the persistence protocol the session store
 and the write ledger are written against — SQLite by default, PostgreSQL
-behind the `postgres` extra, both satisfying one contract suite.
+behind the `postgres` extra, both satisfying one contract suite, which CI
+also runs against a live PostgreSQL server.
 `oska.observability` reads the audit trail and the traces back and computes
 the service-level numbers, exposed as text or as `GET /metrics`. `oska.kit`
 is build-time only: it generates a pack or a platform from the templates
@@ -221,9 +222,13 @@ level they declare a scenario for; served together as `examples/platform.yaml`,
 each domain is checked and reported on its own. Three procedures of the
 operational pack and two of the access pack carry an evaluation set, both at
 precision 1.0 and recall 1.0, and the command names the ones that do not.
-1392 unit and scenario tests pass, offline; 21 are skipped — the PostgreSQL
-storage contract suite, which runs only against a real server named by
-`OSKA_TEST_POSTGRES_URL`, not exercised in this repository's own history.
+1418 unit and scenario tests pass, offline; 26 are skipped — the PostgreSQL
+storage contract and conformance isolation tests, which run only against a
+real server named by `OSKA_TEST_POSTGRES_URL`. The `postgres` job of CI runs
+them against a live PostgreSQL 16 service container on every change, together
+with both reference conformance suites and the platform on the relational
+backend, each twice in a row over one database; a conformance run keeps to
+namespaces it creates and leaves nothing behind.
 
 ## License
 

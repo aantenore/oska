@@ -28,12 +28,24 @@ must produce none; no list means directives are not checked.
 
 `build` lets a caller assemble the engine a scenario runs against, which is how
 a platform runs each domain's scenarios with that domain's engine.
+
+A conformance run never touches a namespace it did not create. Every scenario
+runs under a storage namespace of its own, made from a fresh run identifier
+and the scenario (`conformance/<run id>/<position of its directory>/<name>` in
+a suite), so it never meets what an earlier run, or a deployment sharing the
+database, keeps; a platform builder keeps the (tenant, domain) part inside
+it. When the scenario ends, passed or failed, everything
+its engine wrote under that namespace (sessions, receipts, write claims) is
+purged. A store that reports a namespace outside the one the run created is
+left alone, and the scenario fails for it. Files go with the scenario's state
+directory, which is temporary too.
 """
 
 from __future__ import annotations
 
 import json
 import tempfile
+import uuid
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -41,7 +53,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from oska.audit.sink import MemorySink
-from oska.config import Settings, load_runtime_config, state_path
+from oska.config import RuntimeConfig, Settings, load_runtime_config, state_path
 from oska.contracts.common import TurnResult
 from oska.contracts.proposal import ProposalState, SkillProposal
 from oska.contracts.receipt import WriteReceipt
@@ -55,6 +67,7 @@ from oska.planner.scripted import ScriptedModelProvider
 from oska.services import PROPOSALS_DIRNAME
 
 __all__ = [
+    "CONFORMANCE_NAMESPACE",
     "DEFAULT_LEVEL",
     "Expect",
     "LearningExpect",
@@ -66,6 +79,7 @@ __all__ = [
     "SuiteReport",
     "TransitionSpec",
     "TurnSpec",
+    "conformance_namespace",
     "load_scenarios",
     "run_directories",
     "run_scenario",
@@ -73,7 +87,14 @@ __all__ = [
 ]
 
 EngineBuilder = Callable[..., Engine]
-"""Builds a scenario's engine from settings, taking `build_engine`'s keyword arguments."""
+"""Builds a scenario's engine from settings, taking `build_engine`'s keyword arguments.
+
+Among them is `namespace`, the storage namespace the scenario runs under: the
+engine keeps its record there, or in a namespace nested inside it.
+"""
+
+CONFORMANCE_NAMESPACE = "conformance"
+"""The first part of every namespace a conformance run creates."""
 
 DEFAULT_LEVEL = 2
 VERIFIED = "verified"
@@ -213,16 +234,112 @@ def load_scenarios(directory: Path) -> list[ScenarioFile]:
     return scenarios
 
 
+def conformance_namespace(run_id: str, scenario: str) -> str:
+    """The storage namespace one scenario of one conformance run is kept under.
+
+    It holds at least two slashes, so it can equal neither the default
+    namespace, which has none, nor the namespace of a (tenant, domain), which
+    has one.
+    """
+    return f"{CONFORMANCE_NAMESPACE}/{run_id}/{scenario}"
+
+
+def new_run_id() -> str:
+    """A run identifier no other run has used."""
+    return uuid.uuid4().hex
+
+
 def run_scenario(
     scenario: ScenarioFile,
     settings: Settings,
     *,
     state_dir: Path,
     build: EngineBuilder | None = None,
+    namespace: str | None = None,
 ) -> ScenarioResult:
     """Replay one scenario against a fresh runtime and report what did not hold.
 
     `build` assembles the engine; without it the settings name everything.
+    `namespace` must be one this run created under `conformance/`; without it
+    a fresh one is made. Whatever the engine wrote there is purged at the end,
+    whether the scenario passed or failed.
+    """
+    namespace = namespace or conformance_namespace(new_run_id(), scenario.name)
+    if not namespace.startswith(f"{CONFORMANCE_NAMESPACE}/"):
+        raise ValueError(
+            f"a conformance run writes only under {CONFORMANCE_NAMESPACE}/, not {namespace!r}"
+        )
+    engines: list[Engine] = []
+    try:
+        result = _replay(scenario, settings, Path(state_dir), build, namespace, engines)
+    finally:
+        cleanup = [problem for engine in engines for problem in _purge(engine, namespace)]
+    if cleanup:
+        result = result.model_copy(
+            update={"passed": False, "failures": [*result.failures, *cleanup]}
+        )
+    return result
+
+
+def _purge(engine: Engine, namespace: str) -> list[str]:
+    """Remove what the engine's stores hold, when they are kept under this run's namespace.
+
+    A store that names another namespace is not purged, and saying so fails the
+    scenario, because the run was meant to write nowhere else. A file-backed
+    store names none and removes nothing; its file goes with the state directory.
+    """
+    problems: list[str] = []
+    for store in engine.stores:
+        held = getattr(store, "namespace", None)
+        if held is not None and held != namespace and not held.startswith(f"{namespace}/"):
+            problems.append(
+                f"cleanup: the engine keeps its record under {held!r}, outside the "
+                f"namespace this run created ({namespace!r}); nothing there was removed"
+            )
+            continue
+        try:
+            store.purge()
+        except Exception as exc:  # a failed cleanup is reported, never hidden
+            problems.append(
+                f"cleanup: {namespace!r} could not be purged: {type(exc).__name__}: {exc}"
+            )
+    return problems
+
+
+def _confined(runtime: RuntimeConfig) -> RuntimeConfig:
+    """The runtime configuration with every state path reduced to its file name.
+
+    A deployment may keep its ledger or its sessions at an absolute path. A
+    scenario must never write there: reduced to a name, each path lands in the
+    scenario's own state directory, which is removed after the run.
+    """
+    sections: dict[str, Any] = {}
+    for name in type(runtime).model_fields:
+        section = getattr(runtime, name)
+        if not isinstance(section, BaseModel):
+            continue
+        paths = {
+            field: Path(value.name)
+            for field in type(section).model_fields
+            if isinstance(value := getattr(section, field), Path) and value.is_absolute()
+        }
+        if paths:
+            sections[name] = section.model_copy(update=paths)
+    return runtime.model_copy(update=sections) if sections else runtime
+
+
+def _replay(
+    scenario: ScenarioFile,
+    settings: Settings,
+    state_dir: Path,
+    build: EngineBuilder | None,
+    namespace: str,
+    engines: list[Engine],
+) -> ScenarioResult:
+    """Build the engine, run the turns and the learning block, and collect the failures.
+
+    The engine is appended to `engines` as soon as it exists, so the caller can
+    purge what it wrote even when a later step raises.
     """
     provider = ScriptedModelProvider(scenario.provider_script)
     runtime = load_runtime_config(settings=settings)
@@ -235,12 +352,16 @@ def run_scenario(
             update={"skills_roots": [*scenario_settings.skills_roots, publish_root]}
         )
     options: dict[str, Any] = {"presentation": True} if scenario.presentation else {}
+    if build is None:
+        options["runtime"] = _confined(runtime)
     engine = (build or build_engine)(
         scenario_settings,
         provider=provider,
         audit_sink=MemorySink(),
+        namespace=namespace,
         **options,
     )
+    engines.append(engine)
     principal = (
         None
         if scenario.principal is None
@@ -299,14 +420,25 @@ def run_suite(
 def run_directories(
     directories: list[Path], settings: Settings, build: EngineBuilder | None = None
 ) -> list[ScenarioResult]:
-    """Run every scenario of several directories, each against its own state."""
+    """Run every scenario of several directories, each against its own state.
+
+    One run identifier is drawn for the whole run, and each scenario is kept
+    under `conformance/<run id>/<position>/<scenario>`, which the scenario
+    purges when it ends.
+    """
     results: list[ScenarioResult] = []
+    run_id = new_run_id()
     with tempfile.TemporaryDirectory(prefix="oska-conformance-") as workspace:
         root = Path(workspace)
         for position, directory in enumerate(directories):
             for scenario in load_scenarios(directory):
                 state_dir = root / str(position) / scenario.name
-                results.append(run_scenario(scenario, settings, state_dir=state_dir, build=build))
+                namespace = conformance_namespace(run_id, f"{position}/{scenario.name}")
+                results.append(
+                    run_scenario(
+                        scenario, settings, state_dir=state_dir, build=build, namespace=namespace
+                    )
+                )
     return results
 
 

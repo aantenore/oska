@@ -7,7 +7,8 @@ retention window means the same thing whichever backend holds the record.
 
 A store reads and writes under one namespace, which is part of the key of every
 row and of every query, so two stores under different namespaces over one
-database never see each other's sessions.
+database never see each other's sessions. `purge` removes the whole of that
+namespace, and refuses the default one.
 """
 
 from __future__ import annotations
@@ -16,7 +17,7 @@ from datetime import UTC, datetime
 
 from oska.contracts.session import SessionState
 from oska.storage.postgres import Database, jsonb
-from oska.storage.protocols import DEFAULT_NAMESPACE
+from oska.storage.protocols import DEFAULT_NAMESPACE, refuse_default_purge
 
 __all__ = ["PostgresSessionStore"]
 
@@ -111,5 +112,18 @@ class PostgresSessionStore:
             cursor = connection.execute(
                 "DELETE FROM oska_sessions WHERE namespace = %s AND session_id = %s",
                 (self._namespace, session_id),
+            )
+            return int(cursor.rowcount)
+
+    def purge(self) -> int:
+        """Remove every session of this namespace and report how many went.
+
+        Only this store's own namespace is reached, and the default namespace
+        is refused: a purge is for a namespace its caller created and is done with.
+        """
+        refuse_default_purge(self._namespace)
+        with self._database.connect() as connection:
+            cursor = connection.execute(
+                "DELETE FROM oska_sessions WHERE namespace = %s", (self._namespace,)
             )
             return int(cursor.rowcount)

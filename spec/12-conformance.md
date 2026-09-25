@@ -76,9 +76,10 @@ can be made to do.
   call that carries none as its single user only where it declares itself
   single-user.
 - **Storage.** The stores behind declared interfaces, the atomic claim, removal
-  through the interfaces, and the namespace of a shared database
-  (`OSKA-GOV-35` to `OSKA-GOV-37`, `OSKA-GOV-45`), are statements about the
-  backend a deployment chooses.
+  through the interfaces, the namespace of a shared database, and a conformance
+  run that keeps to namespaces of its own (`OSKA-GOV-35` to `OSKA-GOV-37`,
+  `OSKA-GOV-45`, `OSKA-XC-36`), are statements about the backend a deployment
+  chooses.
 - **Publication.** Handing a change request to a publisher, a branch or a pull
   request, and the actor a commit may be authored as (`OSKA-EVO-36` to
   `OSKA-EVO-40`, `OSKA-GOV-49`), is how a deployment chooses to review what its
@@ -119,7 +120,8 @@ requirements. All of them are checked by the unit suite rather than by a
 scenario — `tests/unit/test_revision.py`, `tests/unit/test_pinning.py` and
 `tests/unit/test_signing.py`; `tests/unit/test_identity.py`,
 `tests/unit/test_token.py` and `tests/unit/test_channel_identity.py`;
-`tests/unit/test_storage_contract.py`; `tests/unit/test_publishers.py`, with
+`tests/unit/test_storage_contract.py` and `tests/unit/test_conformance_postgres.py`;
+`tests/unit/test_publishers.py`, with
 the publisher tests of `tests/unit/test_channel_identity.py`;
 `tests/unit/test_metrics.py`; `tests/unit/test_platform.py`,
 `tests/unit/test_overlays.py` and `tests/unit/test_kit.py`, with the platform
@@ -328,6 +330,15 @@ is a failure of the scenario, not of the run.
 A runner MUST also check, across the whole session and on every scenario, that
 every receipt the session produced is named by at least one reply, and that no
 reply calls a write verified while the receipt it names says otherwise.
+
+A runner MUST write only into storage namespaces it creates for the run, one
+per scenario, and MUST remove them when each scenario ends, passed or failed
+(`OSKA-XC-36`). It never touches a namespace it did not create, the default
+one included, so a suite run twice over one database passes twice, and a
+suite run against a database a deployment shares leaves nothing behind. The
+reference runner keeps each scenario under
+`conformance/<run id>/<position of its directory>/<scenario>`, nests the
+(tenant, domain) of a platform inside it, and purges it through the stores.
 
 ### Three ways to run a suite
 
@@ -865,6 +876,7 @@ accident.
 | OSKA-XC-33 | `src/oska/observability/exposition.py`, `src/oska/observability/metrics.py` | `tests/unit/test_metrics.py` |
 | OSKA-XC-34 | `src/oska/api/metrics.py`, `src/oska/observability/metrics.py`, `src/oska/config.py` | `tests/unit/test_metrics.py` |
 | OSKA-XC-35 | `src/oska/config.py`, `src/oska/platform/tenants.py` | `tests/unit/test_config.py` |
+| OSKA-XC-36 | `src/oska/conformance/runner.py`, `src/oska/platform/conformance.py`, `src/oska/platform/runtime.py`, `src/oska/storage/protocols.py` | `tests/unit/test_conformance_postgres.py`, `tests/unit/test_storage_contract.py`, `tests/unit/test_ci_workflow.py` |
 
 ### Platform
 

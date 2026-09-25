@@ -17,6 +17,13 @@ A store is opened under a namespace, and nothing it reads or writes reaches
 past it: two tenants, or two domains of one platform, pointed at one database
 never see each other's sessions or receipts. A file-backed store is its own
 namespace, because a platform gives each (tenant, domain) files of its own.
+
+`purge` is the one operation that removes a namespace outright, and it is
+narrow on purpose: a store removes only the rows of the namespace it was opened
+under, never the default namespace, and a file-backed store removes nothing,
+because its namespace is its file and the file belongs to whoever made it. It
+exists for a caller that created a namespace for a while, such as a
+conformance run, and is finished with it.
 """
 
 from __future__ import annotations
@@ -39,6 +46,7 @@ __all__ = [
     "LedgerStore",
     "SessionStateStore",
     "StorageError",
+    "refuse_default_purge",
     "storage_namespace",
 ]
 
@@ -57,7 +65,16 @@ def storage_namespace(tenant: str, domain: str) -> str:
 
 
 class StorageError(RuntimeError):
-    """A store cannot be opened as configured."""
+    """A store cannot be opened as configured, or was asked for what it never does."""
+
+
+def refuse_default_purge(namespace: str) -> None:
+    """Raise unless `namespace` is one a store may purge: never the default one."""
+    if namespace == DEFAULT_NAMESPACE:
+        raise StorageError(
+            f"the {DEFAULT_NAMESPACE!r} namespace holds the record of a deployment "
+            "and is never purged"
+        )
 
 
 @runtime_checkable
@@ -135,6 +152,10 @@ class LedgerStore(Protocol):
         """Every session holding a receipt, oldest receipt first."""
         ...
 
+    def purge(self) -> int:
+        """Remove every receipt and claim of this ledger's namespace; report the receipts."""
+        ...
+
 
 @runtime_checkable
 class SessionStateStore(Protocol):
@@ -166,4 +187,8 @@ class SessionStateStore(Protocol):
 
     def delete(self, session_id: str) -> int:
         """Remove the stored state of one session and report whether there was any."""
+        ...
+
+    def purge(self) -> int:
+        """Remove every session of this store's namespace and report how many went."""
         ...

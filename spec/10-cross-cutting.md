@@ -458,6 +458,13 @@ signals alone and writing only into that pair's state.
   recompute on every scrape.
 - **OSKA-XC-35** — Every cost bound MUST have a floor enforced where
   configuration is read, tenant fragments included.
+- **OSKA-XC-36** — A conformance run MUST write only into storage namespaces
+  it creates for that run, one per scenario, and MUST remove everything it
+  wrote there (sessions, receipts and write claims) when each scenario ends,
+  whether it passed or failed. It MUST NOT touch a namespace it did not create,
+  the default namespace and every (tenant, domain) namespace included, so a
+  suite run against a database a deployment shares leaves that deployment's
+  record as it found it and leaves nothing of its own behind.
 
 ## Rationale
 

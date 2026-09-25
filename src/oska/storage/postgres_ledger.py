@@ -15,6 +15,7 @@ themselves are the record, and `settled` reads them the way SQLite does.
 A ledger reads and writes under one namespace, which is part of the key of
 every receipt and every claim and of every query, so two ledgers under
 different namespaces over one database never see each other's receipts.
+`purge` removes the whole of that namespace, and refuses the default one.
 """
 
 from __future__ import annotations
@@ -29,7 +30,7 @@ from oska.contracts.receipt import (
 )
 from oska.governance.ledger import ledger_key, pending_receipt
 from oska.storage.postgres import Database, jsonb
-from oska.storage.protocols import DEFAULT_NAMESPACE
+from oska.storage.protocols import DEFAULT_NAMESPACE, refuse_default_purge
 
 __all__ = ["PostgresLedger"]
 
@@ -230,6 +231,22 @@ class PostgresLedger:
             (self._namespace,),
         )
         return [row["session_id"] for row in rows]
+
+    def purge(self) -> int:
+        """Remove every receipt and claim of this namespace; report how many receipts went.
+
+        Only this ledger's own namespace is reached, and the default namespace
+        is refused: a purge is for a namespace its caller created and is done with.
+        """
+        refuse_default_purge(self._namespace)
+        with self._database.connect() as connection:
+            connection.execute(
+                "DELETE FROM oska_write_claims WHERE namespace = %s", (self._namespace,)
+            )
+            cursor = connection.execute(
+                "DELETE FROM oska_receipts WHERE namespace = %s", (self._namespace,)
+            )
+            return int(cursor.rowcount)
 
     def _query(self, statement: str, parameters: tuple) -> list[dict]:
         with self._database.connect() as connection:
