@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Callable
 from pathlib import Path
 
@@ -300,8 +301,11 @@ def test_serve_declares_its_host_and_port(cli_env: Path) -> None:
     result = runner.invoke(app, ["serve", "--help"])
 
     assert result.exit_code == 0
-    assert "--host" in result.stdout
-    assert "--port" in result.stdout
+    # Help is rendered with terminal styles where a CI runner forces them; the
+    # escape codes split an option name, so read the text without them.
+    text = re.sub(r"\x1b\[[0-9;]*m", "", result.stdout)
+    assert "--host" in text
+    assert "--port" in text
 
 
 def test_serve_listens_where_the_configuration_says(
