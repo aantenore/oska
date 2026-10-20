@@ -22,7 +22,7 @@ oska new pack widgets --entity widget --system inventory --host "Widget Desk"
 ```
 
 ```
-wrote widgets
+wrote /path/to/widgets
 ```
 
 `--entity` names the record the pack is about (singular; the plural and the
@@ -138,7 +138,8 @@ oska new platform storefront --pack widgets --pack accounts
 ```
 
 ```
-wrote storefront
+wrote /path/to/accounts
+wrote /path/to/storefront
 ```
 
 ```
