@@ -551,3 +551,28 @@ def test_every_shared_store_statement_is_scoped_to_the_namespace(
     for statement, parameters in database.statements:
         assert "namespace" in statement, statement
         assert namespace in parameters, statement
+
+
+@pytest.mark.parametrize(
+    ("url", "kept"),
+    [
+        (
+            "postgresql://u:s3cret@db:5432/x?sslmode=require&password=s3cret",
+            "postgresql://u@db:5432/x?sslmode=require",
+        ),
+        ("host=db user=u password=s3cret dbname=x", "host=db user=u dbname=x"),
+        ("host=db password='s3 cret' dbname=x", "host=db dbname=x"),
+    ],
+)
+def test_a_database_name_carries_no_password(url: str, kept: str) -> None:
+    """The name a store reports is derived from the address with its password removed."""
+    from types import SimpleNamespace
+
+    from oska.storage.postgres import Database, without_password
+
+    def named(address: str) -> str:
+        # The name needs no driver, so no database is opened to compute it.
+        return Database.identity.fget(SimpleNamespace(_url=address))  # type: ignore[attr-defined]
+
+    assert without_password(url) == kept
+    assert named(url) == named(kept)

@@ -28,11 +28,13 @@ from __future__ import annotations
 
 import hashlib
 import math
+import re
 import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Any
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from oska.config import DEFAULT_BUSY_TIMEOUT_SECONDS
 from oska.storage.protocols import StorageError
@@ -45,6 +47,23 @@ MIGRATION_LOCK = int.from_bytes(
 )
 """The advisory lock the migrations are applied under, the same in every process."""
 
+
+
+_KEYWORD_PASSWORD = re.compile(r"""(?:^|\s)password\s*=\s*(?:'(?:[^'\\]|\\.)*'|\S+)""")
+
+
+def without_password(url: str) -> str:
+    """The connection address with any password removed, in URL or keyword form."""
+    if "://" not in url:
+        return _KEYWORD_PASSWORD.sub("", url).strip()
+    parts = urlsplit(url)
+    netloc = parts.netloc
+    if "@" in netloc:
+        credentials, _, host = netloc.rpartition("@")
+        user = credentials.split(":", 1)[0]
+        netloc = f"{user}@{host}" if user else host
+    query = urlencode([(k, v) for k, v in parse_qsl(parts.query) if k.lower() != "password"])
+    return urlunsplit((parts.scheme, netloc, parts.path, query, parts.fragment))
 
 @dataclass(frozen=True)
 class Migration:
@@ -241,8 +260,12 @@ class Database:
 
     @property
     def identity(self) -> str:
-        """A name for this database that tells two addresses apart and carries no credential."""
-        return hashlib.sha256(self._url.encode("utf-8")).hexdigest()[:12]
+        """A name for this database that tells two addresses apart and carries no credential.
+
+        The password is taken out before hashing, so the name cannot be used to
+        test guesses of it.
+        """
+        return hashlib.sha256(without_password(self._url).encode("utf-8")).hexdigest()[:12]
 
     @contextmanager
     def connect(self) -> Iterator[Any]:
