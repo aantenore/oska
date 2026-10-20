@@ -24,6 +24,7 @@ whose own identifiers do not look like a uuid names its own instead.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from collections.abc import Sequence
@@ -40,15 +41,21 @@ from oska.planner.scripted import (
 
 __all__ = [
     "DEFAULT_VOLATILE",
+    "EXHAUSTED_HINT",
     "EXPECT_LENGTH",
     "PURPOSE_WORDS",
     "RecordingProvider",
     "ReplayProvider",
+    "cassette_digest",
     "cassette_to_script",
     "read_cassette",
 ]
 
 EXPECT_LENGTH = 60
+EXHAUSTED_HINT = (
+    "the session may have been replayed already; --replay-from-start, "
+    "or a new state directory, starts over"
+)
 PURPOSE_WORDS = 8
 
 DEFAULT_VOLATILE: tuple[str, ...] = (
@@ -131,15 +138,25 @@ class ReplayProvider:
     exactly as a scenario script is. Embeddings are looked up by text; a text the
     cassette never saw falls back to the deterministic hash bag, so a catalog
     that grew since the recording still ranks instead of failing.
+
+    `start` is how many recorded completions are already spent, so a session
+    replayed one turn per process can pick up where the last process stopped.
+    `position` is where this provider stands in the cassette; the caller keeps it
+    between processes, the provider reads nothing but the cassette.
     """
 
     name = "replay"
 
-    def __init__(self, path: Path, *, volatile: Sequence[str] | None = None) -> None:
+    def __init__(
+        self, path: Path, *, volatile: Sequence[str] | None = None, start: int = 0
+    ) -> None:
+        if start < 0:
+            raise ValueError("start is a count of completions and cannot be negative")
         self._path = Path(path)
+        self._start = start
         patterns = _compile_volatile(volatile)
         steps = _cut_stored_expectations(read_cassette(self._path), patterns)
-        self._completions = ScriptedModelProvider(_completion_steps(steps))
+        self._completions = ScriptedModelProvider(_completion_steps(steps)[start:])
         self._vectors = _recorded_vectors(steps)
         self._dimensions = _dimensions(self._vectors)
         self.embeds = any("embed" in step for step in steps)
@@ -153,6 +170,11 @@ class ReplayProvider:
         """How many recorded completions have not been spent."""
         return self._completions.remaining()
 
+    @property
+    def position(self) -> int:
+        """How many recorded completions have been spent, counting those skipped by `start`."""
+        return self._start + self._completions.consumed()
+
     def complete_json(
         self,
         system: str,
@@ -162,18 +184,28 @@ class ReplayProvider:
         temperature: float = 0.0,
     ) -> dict:
         """Return the next recorded answer."""
+        exhausted = self.remaining() == 0
         try:
             return self._completions.complete_json(system, messages, schema)
         except ScriptMismatchError as exc:
             raise ScriptMismatchError(f"cassette {self._path}: {exc}") from exc
         except ModelProviderError as exc:
-            raise ModelProviderError(f"cassette {self._path}: {exc}") from exc
+            hint = f" ({EXHAUSTED_HINT})" if exhausted else ""
+            raise ModelProviderError(f"cassette {self._path}: {exc}{hint}") from exc
 
     def embed(self, texts: list[str]) -> list[list[float]]:
         """Return the recorded vector of each text, or a deterministic one."""
         return [
             self._vectors.get(text) or hash_bag_vector(text, self._dimensions) for text in texts
         ]
+
+
+def cassette_digest(path: Path) -> str:
+    """The SHA-256 of the cassette's bytes, which says whether its content changed."""
+    try:
+        return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+    except OSError as exc:
+        raise ModelProviderError(f"the cassette could not be read: {exc}") from exc
 
 
 def read_cassette(path: Path) -> list[dict]:

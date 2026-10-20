@@ -8,8 +8,9 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
+from oska.cli.commands_run import ReplayProgress
 from oska.cli.main import app
-from oska.config import Settings
+from oska.config import Settings, load_settings
 from oska.contracts.common import Message
 from oska.engine.factory import build_engine
 from oska.planner.provider import ModelProvider, ModelProviderError, provider_embeds
@@ -499,3 +500,113 @@ def test_recording_and_replay_say_whether_the_session_embedded(tmp_path: Path) -
     embedding = tmp_path / "embedding.json"
     RecordingProvider(ScriptedModelProvider(SCRIPT), embedding).embed(["a text"])
     assert provider_embeds(ReplayProvider(embedding)) is True
+
+
+ITALIAN_REQUEST = "Il servizio search in staging è bloccato, riavvialo per favore"
+
+
+def _replay_turn(cassette: Path, text: str, *flags: str, session: str | None = "live") -> str:
+    """One `oska run --replay` process: one turn, and the output it printed."""
+    arguments = ["run", "--replay", str(cassette), "--text", text, *flags]
+    if session is not None:
+        arguments += ["--session", session]
+    result = runner.invoke(app, arguments)
+    assert result.exit_code == 0, result.stderr
+    return result.stdout
+
+
+def _replay_files(state: Path) -> list[Path]:
+    return sorted((state / "replay").rglob("*.json")) if (state / "replay").exists() else []
+
+
+@pytest.fixture
+def italian_cassette(repo_root: Path) -> Path:
+    return repo_root / "examples" / "ops" / "cassettes" / "restart-in-italian.json"
+
+
+def test_a_replayed_session_goes_on_across_commands(
+    cli_env: Path, italian_cassette: Path
+) -> None:
+    asked = _replay_turn(italian_cassette, ITALIAN_REQUEST)
+    approved = _replay_turn(italian_cassette, "sì")
+    again = _replay_turn(italian_cassette, ITALIAN_REQUEST)
+
+    assert "approval_pending" in asked
+    assert "receipt  integration.container_runtime service.restart" in approved
+    assert "ledger_hit" in again
+    (stored,) = _replay_files(cli_env)
+    assert json.loads(stored.read_text(encoding="utf-8")) == {"position": 4}
+
+
+def test_replay_from_start_ignores_the_stored_position(
+    cli_env: Path, italian_cassette: Path
+) -> None:
+    progress = ReplayProgress.open(load_settings(), italian_cassette, "live", False)
+    assert progress is not None
+    progress.save(2)
+    arguments = ["run", "--replay", str(italian_cassette), "--text", ITALIAN_REQUEST]
+
+    resumed = runner.invoke(app, [*arguments, "--session", "live"])
+    restarted = runner.invoke(app, [*arguments, "--session", "live", "--replay-from-start"])
+
+    assert resumed.exit_code == 1
+    assert "no longer match" in resumed.stderr
+    assert restarted.exit_code == 0, restarted.stderr
+    assert "approval_pending" in restarted.stdout
+    assert json.loads(progress.path.read_text(encoding="utf-8")) == {"position": 1}
+
+
+def test_a_changed_cassette_does_not_reuse_stored_progress(
+    cli_env: Path, italian_cassette: Path, tmp_path: Path
+) -> None:
+    _replay_turn(italian_cassette, ITALIAN_REQUEST)
+    changed = tmp_path / "changed.json"
+    steps = json.loads(italian_cassette.read_text(encoding="utf-8"))
+    changed.write_text(json.dumps(steps, indent=4), encoding="utf-8")
+    settings = load_settings()
+
+    unchanged = ReplayProgress.open(settings, italian_cassette, "live", False)
+    rewritten = ReplayProgress.open(settings, changed, "live", False)
+
+    assert unchanged is not None and unchanged.start == 1
+    assert rewritten is not None and rewritten.start == 0
+    assert unchanged.path.parent != rewritten.path.parent
+
+
+def test_replay_without_a_session_stores_nothing(cli_env: Path, italian_cassette: Path) -> None:
+    _replay_turn(italian_cassette, ITALIAN_REQUEST, session=None)
+
+    assert _replay_files(cli_env) == []
+
+
+def test_replay_that_runs_out_says_how_to_start_over(
+    cli_env: Path, italian_cassette: Path
+) -> None:
+    _replay_turn(italian_cassette, ITALIAN_REQUEST)
+    _replay_turn(italian_cassette, "sì")
+    _replay_turn(italian_cassette, ITALIAN_REQUEST)
+
+    result = runner.invoke(
+        app, ["run", "--replay", str(italian_cassette), "--text", "ancora", "--session", "live"]
+    )
+
+    assert result.exit_code == 1
+    assert "--replay-from-start" in result.stderr
+    assert str(italian_cassette) in result.stderr
+
+
+def test_replay_provider_resumes_from_a_start_and_reports_its_position(tmp_path: Path) -> None:
+    path = tmp_path / "cassette.json"
+    recorder = RecordingProvider(ScriptedModelProvider(SCRIPT), path)
+    _ask(recorder, RESTART)
+    _ask(recorder, "second question")
+
+    replay = ReplayProvider(path, start=1)
+
+    assert replay.position == 1
+    assert _ask(replay, "second question") == _ask(
+        ReplayProvider(path, start=1), "second question"
+    )
+    assert replay.position == 2
+    with pytest.raises(ValueError, match="negative"):
+        ReplayProvider(path, start=-1)

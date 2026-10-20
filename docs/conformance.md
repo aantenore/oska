@@ -507,6 +507,24 @@ same deterministic hash bag the scripted provider uses, so a catalog that grew
 since the recording still ranks instead of failing. `--record` and `--replay`
 are not used together.
 
+A session recorded one command per turn replays the same way. With `--session`,
+each `oska run --replay` stores how many recorded completions it spent, under
+`<state dir>/replay/<cassette hash>/<session>.json`, and the next run with the
+same cassette and session resumes there:
+
+```sh
+oska run --replay cassettes/restart.json --session restart --text "..."
+oska run --replay cassettes/restart.json --session restart --text "yes"
+oska run --replay cassettes/restart.json --session restart --text "..."
+```
+
+Without `--session`, or in a fresh state directory, a run starts at the first
+completion and stores nothing. `--replay-from-start` ignores what was stored and
+starts over. The key holds a hash of the cassette's content, so a cassette that
+changed never inherits the progress made against the old one. When the replay
+runs out, the error names the cassette and says that the session may have been
+replayed already; `--replay-from-start`, or a new state directory, starts over.
+
 The volatile cut is also applied when a cassette is *loaded*, using the request
 each step carries alongside its stored `expect_contains` — so a cassette
 recorded before this cut existed, whose stored expectation was truncated mid

@@ -18,6 +18,9 @@ All notable changes to this project are recorded here. The format follows
 
 ### Added
 
+- `oska run --replay` with `--session` resumes where the last replay of that
+  cassette and session stopped, so a session recorded one command per turn
+  replays one command per turn; `--replay-from-start` starts over.
 - CI runs on Python 3.11, 3.12 and 3.13, and a package job installs the wheel
   outside the checkout and walks the newcomer path end to end.
 - `SECURITY.md`, `CONTRIBUTING.md`, issue and pull request templates.

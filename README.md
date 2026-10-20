@@ -158,7 +158,9 @@ endpoint, or `profiles` for several endpoints tried in order, which moves to
 the next only on a failure worth retrying and records every fallback in the
 audit trail. See [docs/configuration.md](docs/configuration.md#configsmodeljson).
 `--record` writes a session to a cassette and `--replay` plays it back
-offline; see [docs/conformance.md](docs/conformance.md#recording-a-real-session).
+offline, one command per turn when `--session` is given, the way it was
+recorded (`--replay-from-start` starts over); see
+[docs/conformance.md](docs/conformance.md#recording-a-real-session).
 
 ### Serve it over HTTP
 

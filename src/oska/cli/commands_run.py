@@ -17,6 +17,7 @@ from collections.abc import Callable
 from enum import StrEnum
 from pathlib import Path
 from typing import Annotated
+from urllib.parse import quote
 
 import typer
 
@@ -33,19 +34,27 @@ from oska.cli.options import (
     services_for,
     settings_for,
 )
-from oska.config import ProviderName, Settings, load_model_config, load_settings
+from oska.config import (
+    ProviderName,
+    Settings,
+    load_model_config,
+    load_settings,
+    state_path,
+)
 from oska.contracts.common import Outcome, TurnResult
 from oska.contracts.receipt import WriteReceipt
 from oska.engine.engine import Engine
 from oska.planner.provider import ModelProvider, ModelProviderError
 from oska.planner.providers import build_provider
-from oska.planner.recording import RecordingProvider, ReplayProvider
+from oska.planner.recording import RecordingProvider, ReplayProvider, cassette_digest
 from oska.planner.scripted import ScriptedModelProvider, ScriptMismatchError
 from oska.platform import Platform, PlatformError
 
-__all__ = ["receipts", "register", "run"]
+__all__ = ["ReplayProgress", "receipts", "register", "run"]
 
 DEFAULT_SESSION = "cli"
+REPLAY_ROOT = Path("replay")
+DIGEST_LENGTH = 16
 QUIT = "/quit"
 PROMPT = "> "
 _COMPACT = (",", ":")
@@ -81,6 +90,16 @@ ReplayOption = Annotated[
     Path | None,
     typer.Option("--replay", help="Answer from this cassette instead of a provider."),
 ]
+ReplayFromStartOption = Annotated[
+    bool,
+    typer.Option(
+        "--replay-from-start",
+        help=(
+            "With --replay and --session, ignore the position stored by earlier runs "
+            "and start at the first recorded completion."
+        ),
+    ),
+]
 VolatileOption = Annotated[
     list[str] | None,
     typer.Option(
@@ -100,12 +119,14 @@ def register(app: typer.Typer) -> None:
 
 
 def run(
+    ctx: typer.Context,
     session: SessionOption = DEFAULT_SESSION,
     text: TextOption = None,
     provider: ProviderOption = None,
     script: ScriptOption = None,
     record: RecordOption = None,
     replay: ReplayOption = None,
+    replay_from_start: ReplayFromStartOption = False,
     volatile: VolatileOption = None,
     skills: SkillsOption = None,
     platform: PlatformOption = None,
@@ -113,19 +134,32 @@ def run(
     tenant: TenantOption = None,
 ) -> None:
     """Run one turn, or read turns from standard input until it ends."""
+    source = ctx.get_parameter_source("session")
+    named = source is not None and source.name != "DEFAULT"
+    keep = named and replay is not None and record is None
+    progress: ReplayProgress | None = None
     if platform is None:
         settings = settings_for(skills, domain=domain, tenant=tenant)
-        chosen = _provider(settings, provider, script, record, replay, volatile)
+        if keep and replay is not None:
+            progress = ReplayProgress.open(settings, replay, session, replay_from_start)
+        chosen = _provider(settings, provider, script, record, replay, volatile, progress)
         turn: Turn = services_for(settings, provider=chosen).engine.turn
     else:
         if skills:
             fail("--platform names the catalog; drop --skills")
-        chosen = _provider(load_settings(), provider, script, record, replay, volatile)
+        if keep and replay is not None:
+            held = settings_for(platform=platform, domain=domain, tenant=tenant)
+            progress = ReplayProgress.open(held, replay, session, replay_from_start)
+        chosen = _provider(load_settings(), provider, script, record, replay, volatile, progress)
         turn = _platform_turn(platform, domain, tenant, chosen)
-    if text is not None:
-        _turn(turn, session, text)
-        return
-    _repl(turn, session)
+    try:
+        if text is not None:
+            _turn(turn, session, text)
+            return
+        _repl(turn, session)
+    finally:
+        if progress is not None and isinstance(chosen, ReplayProvider):
+            progress.save(chosen.position)
 
 
 def receipts(
@@ -181,6 +215,58 @@ def _platform_engine(
         fail(f"the catalog does not hold up: {exc}")
 
 
+class ReplayProgress:
+    """Where a replayed session stands in its cassette, kept between processes.
+
+    The position is a count of spent completions, stored under the state
+    directory, in a file named by the session and by the hash of the cassette's
+    content. A cassette that changed has another hash, so progress made against
+    the old content is never applied to the new.
+    """
+
+    def __init__(self, path: Path, start: int) -> None:
+        self.path = path
+        self.start = start
+
+    @classmethod
+    def open(
+        cls, settings: Settings, cassette: Path, session: str, from_start: bool
+    ) -> ReplayProgress | None:
+        """The progress of one session in one cassette; none if the cassette cannot be read.
+
+        An unreadable cassette is left to the replay provider to report, so the
+        message is the same with and without a stored position.
+        """
+        try:
+            digest = cassette_digest(cassette)
+        except ModelProviderError:
+            return None
+        root = state_path(settings.state_dir, REPLAY_ROOT) / digest[:DIGEST_LENGTH]
+        path = root / f"{quote(session, safe='')}.json"
+        return cls(path, 0 if from_start else _stored_position(path))
+
+    def save(self, position: int) -> None:
+        """Write the position reached."""
+        try:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            self.path.write_text(json.dumps({"position": position}) + "\n", encoding="utf-8")
+        except OSError as exc:
+            fail(f"the replay position could not be stored: {exc}")
+
+
+def _stored_position(path: Path) -> int:
+    """The position stored in `path`, or 0 when nothing was stored yet."""
+    if not path.is_file():
+        return 0
+    try:
+        position = json.loads(path.read_text(encoding="utf-8"))["position"]
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        fail(f"the replay position in {path} is unreadable ({exc}); use --replay-from-start")
+    if not isinstance(position, int) or isinstance(position, bool) or position < 0:
+        fail(f"the replay position in {path} is not a count; use --replay-from-start")
+    return position
+
+
 def _provider(
     settings: Settings,
     chosen: Provider | None,
@@ -188,6 +274,7 @@ def _provider(
     record: Path | None = None,
     replay: Path | None = None,
     volatile: list[str] | None = None,
+    progress: ReplayProgress | None = None,
 ) -> ModelProvider | None:
     """The provider the run uses: replayed, recorded around, or as configured."""
     if record is not None and replay is not None:
@@ -196,7 +283,9 @@ def _provider(
         fail("--volatile only applies with --record or --replay")
     if replay is not None:
         try:
-            return ReplayProvider(replay, volatile=volatile)
+            return ReplayProvider(
+                replay, volatile=volatile, start=progress.start if progress else 0
+            )
         except ModelProviderError as exc:
             fail(f"the cassette could not be read: {exc}")
     inner = _configured_provider(settings, chosen, script)
