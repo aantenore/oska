@@ -219,7 +219,9 @@ def revision_ledger(
         receipt.revision = active_revision(catalog) or None
         return receipt
 
-    ledger.new_receipt = new_receipt
+    # The receipt factory is replaced on this one instance on purpose: a method of a
+    # store the caller may have supplied, so no subclass is made to carry the revision.
+    ledger.new_receipt = new_receipt  # type: ignore[method-assign]
     return ledger
 
 

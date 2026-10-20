@@ -338,6 +338,8 @@ class Platform:
                 synonyms=self._synonyms[spec.name],
                 host=spec.host,
                 namespace=pair if scope is None else f"{scope}/{pair}",
+                # The builder's keywords are checked where they are declared; mypy cannot
+                # match an open mapping against build_engine's fixed signature.
                 **kwargs,  # type: ignore[arg-type]
             )
 

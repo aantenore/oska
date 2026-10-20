@@ -47,7 +47,7 @@ from pathlib import Path
 
 from oska.catalog.enrichment import PhraseProvider, enrich, write_examples
 from oska.catalog.loader import parse_skill_text
-from oska.catalog.registry import SkillRegistry
+from oska.catalog.registry import Catalog
 from oska.config import EnrichmentConfig
 from oska.contracts.proposal import (
     VERIFIED_SOURCES,
@@ -87,7 +87,7 @@ def transition(
     by: str,
     note: str = "",
     *,
-    registry: SkillRegistry,
+    registry: Catalog,
     changes: ChangeRequestStore,
     schema_dir: Path | None = None,
     provider: PhraseProvider | None = None,
@@ -147,7 +147,7 @@ def transition(
     return proposal
 
 
-def next_version(registry: SkillRegistry, skill_id: str) -> int:
+def next_version(registry: Catalog, skill_id: str) -> int:
     """The version a new copy of this skill takes: one past the highest on disk."""
     versions = [skill.version for skill in registry.skills() if skill.id == skill_id]
     return max(versions) + 1 if versions else 1
@@ -200,7 +200,7 @@ def _and(note: str, addition: str) -> str:
 
 def _compose(
     proposal: SkillProposal,
-    registry: SkillRegistry,
+    registry: Catalog,
     changes: ChangeRequestStore,
     actor: str,
     source: ActorSource,

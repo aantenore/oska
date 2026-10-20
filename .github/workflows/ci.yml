@@ -26,6 +26,10 @@ jobs:
       - name: Lint
         run: ruff check src tests
 
+      - name: Type check
+        if: matrix.python-version == '3.12'
+        run: mypy
+
       - name: Test
         run: pytest -q
 

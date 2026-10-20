@@ -47,11 +47,12 @@ from pydantic import BaseModel, Field
 
 from oska.audit.events import new_event
 from oska.audit.sink import JsonlSink, rewrite_jsonl
+from oska.contracts.events import EventKind
 from oska.storage.protocols import LedgerStore
 
 __all__ = ["RetentionReport", "SessionFiles", "SessionRecords", "expire", "forget"]
 
-RETENTION_KIND = "retention"
+RETENTION_KIND: EventKind = "retention"
 
 
 @runtime_checkable

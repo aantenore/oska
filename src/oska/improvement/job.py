@@ -28,7 +28,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from oska.catalog.registry import SkillRegistry
+from oska.catalog.registry import Catalog, SkillRegistry
 from oska.config import (
     RuntimeConfig,
     Settings,
@@ -169,7 +169,7 @@ def _tune(
 
 def _draft(
     gap: Gap,
-    registry: SkillRegistry,
+    registry: Catalog,
     store: ProposalStore,
     settings: Settings,
     provider: ModelProvider | None,

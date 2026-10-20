@@ -17,7 +17,7 @@ only past a write that was performed and confirmed by its read-back.
 
 from __future__ import annotations
 
-from oska.catalog.registry import SkillRegistry
+from oska.catalog.registry import Catalog
 from oska.contracts.common import PendingApproval, PendingInfo, PolicyDecision
 from oska.engine import outcomes as build
 from oska.engine.execution import PlanExecutor, TurnContext, approvals_required
@@ -46,7 +46,7 @@ class ApprovalPath:
     def __init__(
         self,
         approval: ApprovalGate,
-        registry: SkillRegistry,
+        registry: Catalog,
         executor: PlanExecutor,
         policy: PolicyEngine,
         goals: GoalRunner,

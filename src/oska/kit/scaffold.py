@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import re
 import shutil
+from collections.abc import Sequence
 from importlib import resources
 from importlib.resources.abc import Traversable
 from pathlib import Path
@@ -154,7 +155,7 @@ def enclosing_platform(into: Path | str | None, *, cwd: Path | str | None = None
 def new_platform(
     name: str,
     *,
-    packs: Path | str | list[Path | str] = (),
+    packs: Path | str | Sequence[Path | str] = (),
     into: Path | str | None = None,
 ) -> Path:
     """Write a platform repository around one or more existing packs.

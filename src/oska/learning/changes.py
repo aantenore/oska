@@ -28,6 +28,7 @@ commit on the request; the request stays open until a person decides on it.
 
 from __future__ import annotations
 
+import builtins
 import json
 import shutil
 import uuid
@@ -218,7 +219,7 @@ class ChangeRequestStore:
         held.sort(key=lambda request: (request.created_at, request.request_id))
         return held
 
-    def apply(self, request_id: str, catalog_root: Path, *, by: str) -> list[Path]:
+    def apply(self, request_id: str, catalog_root: Path, *, by: str) -> builtins.list[Path]:
         """Copy the package of one open request into a catalog root a person names.
 
         This is the only thing in the evolution layer that writes into a

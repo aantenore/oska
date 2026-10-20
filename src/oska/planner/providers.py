@@ -31,7 +31,7 @@ __all__ = ["build_provider"]
 
 Warn = Callable[[str], None]
 
-_ADAPTERS = {
+_ADAPTERS: dict[str, type[OpenAICompatibleProvider] | type[AnthropicProvider]] = {
     "openai_compatible": OpenAICompatibleProvider,
     "anthropic": AnthropicProvider,
 }

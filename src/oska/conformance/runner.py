@@ -48,12 +48,13 @@ import tempfile
 import uuid
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from pydantic import BaseModel, Field
 
 from oska.audit.sink import MemorySink
 from oska.config import RuntimeConfig, Settings, load_runtime_config, state_path
+from oska.connectors.mock import MockConnector
 from oska.contracts.common import TurnResult
 from oska.contracts.proposal import ProposalState, SkillProposal
 from oska.contracts.receipt import WriteReceipt
@@ -723,7 +724,8 @@ def _claims_verified(reply: str, claims: list[str], negations: list[str]) -> boo
 
 def _apply_behaviors(engine: Engine, behaviors: dict) -> None:
     for integration_id, operations in behaviors.items():
-        connector = engine.connectors.get(integration_id)
+        # Behaviors are only ever declared for the mock bindings the harness builds.
+        connector = cast(MockConnector, engine.connectors.get(integration_id))
         for operation, behavior in operations.items():
             connector.set_behavior(operation, behavior)
 

@@ -8,8 +8,10 @@ and is not asked to fill a field the runtime fills from the identity.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 from oska.audit.trace import TraceSink
-from oska.catalog.registry import SkillRegistry
+from oska.catalog.registry import Catalog
 from oska.catalog.resolver import CapabilityResolver
 from oska.connectors.registry import ConnectorRegistry
 from oska.contracts.common import Hydrated, Message, Outcome, PendingApproval
@@ -20,10 +22,10 @@ from oska.governance.approval import ApprovalGate
 from oska.governance.capabilities import CapabilityRegistry
 from oska.governance.guardrails import GuardrailChain
 from oska.governance.identity import declared_inputs
-from oska.governance.ledger import WriteLedger
 from oska.governance.policy_engine import PolicyEngine
 from oska.governance.verification import Verifier
 from oska.planner.planner import Planner
+from oska.storage.protocols import LedgerStore
 
 __all__ = ["GuidedPlanner", "TracedExecutor"]
 
@@ -37,7 +39,7 @@ class TracedExecutor(PlanExecutor):
         capabilities: CapabilityRegistry,
         policy: PolicyEngine,
         approval: ApprovalGate,
-        ledger: WriteLedger,
+        ledger: LedgerStore,
         verifier: Verifier,
         connectors: ConnectorRegistry,
     ) -> None:
@@ -95,7 +97,7 @@ class GuidedPlanner(Planner):
         self,
         planner: Planner,
         chain: GuardrailChain,
-        registry: SkillRegistry,
+        registry: Catalog,
         resolver: CapabilityResolver,
         trace: TraceSink,
     ) -> None:
@@ -109,10 +111,14 @@ class GuidedPlanner(Planner):
         conversation: list[Message],
         collected_inputs: dict | None = None,
         *,
-        refinements: list[dict] | None = None,
+        refinements: Sequence[dict] | None = None,
         from_focus: dict | None = None,
+        guidance: Sequence[str] = (),
     ) -> Plan:
-        """Plan the procedure, with what it promises stated in the prompt."""
+        """Plan the procedure, with what it promises stated in the prompt.
+
+        Guidance a caller passes comes first, ahead of what the procedure promises.
+        """
         prose = self._chain.instructions(_declaring(hydrated), "planning")
         with self._trace.span("plan", runbook=hydrated.runbook.id) as span:
             span.set(guardrails=len(prose))
@@ -122,7 +128,7 @@ class GuidedPlanner(Planner):
                 collected_inputs,
                 refinements=refinements,
                 from_focus=from_focus,
-                guidance=prose,
+                guidance=[*guidance, *prose],
             )
 
 

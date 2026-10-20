@@ -23,7 +23,7 @@ turn for the same reason the model budget does.
 
 from __future__ import annotations
 
-from oska.catalog.registry import SkillRegistry
+from oska.catalog.registry import Catalog
 from oska.contracts.skill import Skill
 from oska.engine.context import TurnContext
 from oska.engine.state import SessionState
@@ -75,7 +75,7 @@ def bind(state: SessionState, principal: Principal | None) -> None:
 
 
 def unsigned(
-    registry: SkillRegistry, state: SessionState, skill: Skill, member_ids: list[str]
+    registry: Catalog, state: SessionState, skill: Skill, member_ids: list[str]
 ) -> str | None:
     """Why this procedure is not for a session with nobody signed in, or nothing.
 
@@ -95,7 +95,7 @@ def unsigned(
 
 
 def revision_for(
-    registry: SkillRegistry, pin_sessions: bool, state: SessionState
+    registry: Catalog, pin_sessions: bool, state: SessionState
 ) -> tuple[str, str]:
     """The revision this turn opens on, and why it is that one.
 
@@ -130,7 +130,7 @@ def record_revision(ctx: TurnContext, revision: str, reason: str) -> None:
     ctx.emit("revision", {"from": previous, "to": revision, "reason": reason})
 
 
-def adopt_newest(registry: SkillRegistry, ctx: TurnContext) -> None:
+def adopt_newest(registry: Catalog, ctx: TurnContext) -> None:
     """Start a new task on the newest catalog this deployment serves.
 
     The turn was routed through the revision the session held, and the

@@ -8,7 +8,7 @@ before anything is routed or planned.
 
 from __future__ import annotations
 
-from oska.catalog.registry import SkillRegistry
+from oska.catalog.registry import Catalog
 from oska.contracts.common import Message, Outcome, PendingInfo, TurnResult
 from oska.contracts.skill import Skill
 from oska.engine.context import TurnContext
@@ -20,7 +20,7 @@ __all__ = ["Boundary"]
 class Boundary:
     """Applies the guardrail chain to what a turn receives and to what it answers."""
 
-    def __init__(self, chain: GuardrailChain, registry: SkillRegistry) -> None:
+    def __init__(self, chain: GuardrailChain, registry: Catalog) -> None:
         self._chain = chain
         self._registry = registry
 

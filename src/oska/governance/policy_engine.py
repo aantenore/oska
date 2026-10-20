@@ -24,7 +24,7 @@ from oska.contracts.common import PolicyDecision
 from oska.contracts.policy import CONDITION_OPERATORS, Policy, PolicyRule
 from oska.contracts.skill import OperationSpec, Skill
 from oska.governance.capabilities import CapabilityRegistry
-from oska.governance.ledger import WriteLedger
+from oska.storage.protocols import LedgerStore
 
 _MISSING = object()
 
@@ -44,7 +44,7 @@ class PolicyError(Exception):
 class PolicyEngine:
     """Applies a procedure's policy to one operation."""
 
-    def __init__(self, registry: Catalog, ledger: WriteLedger) -> None:
+    def __init__(self, registry: Catalog, ledger: LedgerStore) -> None:
         self._registry = registry
         self._ledger = ledger
         self._capabilities = CapabilityRegistry(registry)

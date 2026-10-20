@@ -256,7 +256,7 @@ def _fixture(integration_id: str, spec: dict, base_dir: Path) -> Path:
 
 
 def _resilience(
-    base: ResilienceConfig, declared: object = None, timeout: object = None
+    base: ResilienceConfig, declared: object = None, timeout: float | str | None = None
 ) -> ResilienceConfig:
     """The inherited resilience settings with what this level declares over them.
 

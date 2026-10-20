@@ -32,10 +32,10 @@ from tempfile import TemporaryDirectory
 
 from oska.catalog.evaluation import EvaluationSetError, Ranking, load_cases, run_cases
 from oska.catalog.loader import SkillParseError, parse_skill_text
-from oska.catalog.registry import SkillRegistry
+from oska.catalog.registry import Catalog
 from oska.catalog.validator import validate
 from oska.contracts.proposal import QualityReport
-from oska.contracts.skill import MIN_TRIGGERS, Skill, SkillType
+from oska.contracts.skill import MIN_TRIGGERS, OperationSpec, Skill, SkillType
 
 DESCRIPTION_MIN = 20
 DESCRIPTION_MAX = 200
@@ -50,7 +50,7 @@ _POLICY_FILENAME = "policy.json"
 
 def check(
     markdown: str,
-    registry: SkillRegistry,
+    registry: Catalog,
     *,
     policy: dict | None = None,
     schema_dir: Path | None = None,
@@ -85,7 +85,7 @@ def passed(report: QualityReport) -> bool:
     return not report.issues
 
 
-def _lints(skill: Skill, registry: SkillRegistry) -> list[str]:
+def _lints(skill: Skill, registry: Catalog) -> list[str]:
     frontmatter = skill.frontmatter
     issues: list[str] = []
     length = len(frontmatter.description)
@@ -107,7 +107,7 @@ def _lints(skill: Skill, registry: SkillRegistry) -> list[str]:
 
 def _evaluation_issues(
     skill: Skill,
-    registry: SkillRegistry,
+    registry: Catalog,
     ranking: Ranking | None,
 ) -> list[str]:
     """The cases the skill under review declares, and the ones it no longer answers.
@@ -134,14 +134,14 @@ def _evaluation_issues(
     ]
 
 
-def _write_issues(skill: Skill, registry: SkillRegistry) -> list[str]:
-    declared = {}
+def _write_issues(skill: Skill, registry: Catalog) -> list[str]:
+    declared: dict[str, OperationSpec] = {}
     for reference in skill.frontmatter.integrations:
         integration = registry.get(reference)
         if integration is None or integration.type is not SkillType.integration:
             continue
-        for spec in integration.frontmatter.operations:
-            declared[spec.name] = spec
+        for operation in integration.frontmatter.operations:
+            declared[operation.name] = operation
     issues: list[str] = []
     for name in skill.frontmatter.capabilities.writes:
         spec = declared.get(name)
@@ -152,7 +152,7 @@ def _write_issues(skill: Skill, registry: SkillRegistry) -> list[str]:
     return issues
 
 
-def _reused_triggers(skill: Skill, registry: SkillRegistry, triggers: list[str]) -> list[str]:
+def _reused_triggers(skill: Skill, registry: Catalog, triggers: list[str]) -> list[str]:
     taken: dict[str, str] = {}
     for published in registry.published():
         if published.type is not SkillType.runbook or published.id == skill.id:

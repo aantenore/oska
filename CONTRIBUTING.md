@@ -21,6 +21,7 @@ Run what your change touches, not everything, while you work:
 ```sh
 pytest tests/unit/test_kit.py          # the test files that cover what you changed
 ruff check src tests                   # lint, line length 100
+mypy                                   # static types over src/oska, configured in pyproject.toml
 oska validate                          # the catalog against its schemas
 oska conform                           # the scenario suite and the level reached
 ```

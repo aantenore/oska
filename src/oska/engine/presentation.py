@@ -30,7 +30,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 
-from oska.catalog.registry import SkillRegistry
+from oska.catalog.registry import Catalog
 from oska.contracts.common import Directive, Outcome, PendingGoal
 from oska.contracts.receipt import VerificationStatus
 from oska.contracts.skill import PresentationMoment, Skill
@@ -94,7 +94,7 @@ class Evidence:
 class Presenter:
     """Builds the directives of a turn, when the serving domain enables presentation."""
 
-    def __init__(self, registry: SkillRegistry, *, enabled: bool = False) -> None:
+    def __init__(self, registry: Catalog, *, enabled: bool = False) -> None:
         self._registry = registry
         self._enabled = enabled
 
@@ -299,7 +299,7 @@ def _verified_receipt(outcomes: Sequence[Outcome], writes: set[str]) -> Outcome 
 
 
 def _selected(
-    notes: TurnNotes, procedure: Skill, registry: SkillRegistry, records: list[dict]
+    notes: TurnNotes, procedure: Skill, registry: Catalog, records: list[dict]
 ) -> list:
     """The identifier values of the record this procedure took from the focus.
 

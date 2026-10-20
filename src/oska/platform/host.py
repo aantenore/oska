@@ -22,7 +22,7 @@ class HostedResolver(CapabilityResolver):
     """The catalog wording of one domain, introduced by the host of that domain."""
 
     def __init__(self, registry: Catalog, host: HostIdentity, *, conjunction: str = "and") -> None:
-        super().__init__(registry, conjunction=conjunction)  # type: ignore[arg-type]
+        super().__init__(registry, conjunction=conjunction)
         self._host = host
 
     @property

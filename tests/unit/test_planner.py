@@ -8,10 +8,13 @@ from pathlib import Path
 import httpx
 import pytest
 
+from oska.audit.trace import NullTraceSink
 from oska.catalog.registry import SkillRegistry
 from oska.catalog.resolver import CapabilityResolver, SuggestedAction
 from oska.contracts.common import Hydrated, Message, Outcome, RankedSkill
 from oska.contracts.plan import Plan
+from oska.engine.collaborators import GuidedPlanner
+from oska.governance.guardrails import GuardrailCatalog, GuardrailChain
 from oska.planner.openai_compatible import OpenAICompatibleProvider
 from oska.planner.planner import InvalidPlanError, Planner, validate_plan
 from oska.planner.provider import ModelProviderError
@@ -253,6 +256,33 @@ def test_a_presentation_preference_reaches_the_reply_and_never_the_plan(
 
     assert not any(preference in exchange for exchange in planned)
     assert any(preference in exchange for exchange in recorder.seen()[len(planned) :])
+
+
+def test_a_guided_planner_accepts_the_guidance_a_planner_takes(
+    hydrated: Hydrated, registry: SkillRegistry, resolver: CapabilityResolver
+) -> None:
+    promise = "Never restart a service outside its maintenance window."
+    script = [
+        {
+            "purpose": "plan",
+            "response": _plan_response(
+                [_operation("service.status", {"service": "checkout"}, False)]
+            ),
+        }
+    ]
+    recorder = _Recorder(ScriptedModelProvider(script))
+    guided = GuidedPlanner(
+        Planner(recorder, registry, resolver),
+        GuardrailChain(GuardrailCatalog.empty(), enabled=False),
+        registry,
+        resolver,
+        NullTraceSink(),
+    )
+
+    plan = guided.plan(hydrated, list(CONVERSATION), {}, guidance=[promise])
+
+    assert [operation.operation for operation in plan.operations] == ["service.status"]
+    assert any(promise in exchange for exchange in recorder.seen())
 
 
 def test_script_mismatch_names_the_expectation_and_the_message() -> None:

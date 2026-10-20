@@ -53,7 +53,7 @@ import re
 from collections.abc import Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 
-from oska.catalog.registry import SkillRegistry
+from oska.catalog.registry import Catalog
 from oska.contracts.common import Outcome
 from oska.contracts.receipt import VerificationStatus
 from oska.contracts.skill import OperationSpec, Skill, SkillFrontmatter
@@ -102,7 +102,7 @@ class Referent:
 
 
 def operation_spec(
-    registry: SkillRegistry, integration_id: str | None, operation: str | None
+    registry: Catalog, integration_id: str | None, operation: str | None
 ) -> OperationSpec | None:
     """The declaration of one operation, or nothing when the catalog holds none."""
     integration = registry.get(integration_id) if integration_id else None
@@ -111,7 +111,7 @@ def operation_spec(
     return integration.frontmatter.operation(operation)
 
 
-def shown_in(outcomes: Sequence[Outcome], registry: SkillRegistry) -> Shown | None:
+def shown_in(outcomes: Sequence[Outcome], registry: Catalog) -> Shown | None:
     """The records the turn showed, from reads and verified writes alone (rule 1)."""
     shown: Shown | None = None
     for outcome in outcomes:
@@ -141,7 +141,7 @@ def shown_in(outcomes: Sequence[Outcome], registry: SkillRegistry) -> Shown | No
 
 def record(
     state: SessionState,
-    registry: SkillRegistry,
+    registry: Catalog,
     shown: Shown | None,
     moment: str,
     selection: Referent | None = None,
@@ -207,7 +207,7 @@ def resolve(
 
 def join(
     procedures: Sequence[Skill],
-    registry: SkillRegistry,
+    registry: Catalog,
     state: SessionState,
     text: str,
     synonyms: Mapping[str, str] | None = None,
@@ -242,7 +242,7 @@ def join(
 
 
 def focus_inputs(
-    procedure: Skill, registry: SkillRegistry, state: SessionState, collected: Mapping
+    procedure: Skill, registry: Catalog, state: SessionState, collected: Mapping
 ) -> dict:
     """The collected inputs of this procedure that name a shown or focused record.
 
@@ -272,7 +272,7 @@ def focus_inputs(
 
 
 def refinements(
-    state: SessionState, registry: SkillRegistry, reads: Collection[str]
+    state: SessionState, registry: Catalog, reads: Collection[str]
 ) -> list[dict]:
     """What a comparative about the list in focus may refine on, and nothing else (rule 7)."""
     presented = state.presented
@@ -308,7 +308,11 @@ def normalize(text: str, synonyms: Mapping[str, str] | None = None) -> str:
     for spoken in sorted(synonyms or {}, key=len, reverse=True):
         named = str((synonyms or {})[spoken]).lower()
         if spoken.strip():
-            said = _phrase(spoken.lower()).sub(lambda _found, word=named: word, said)
+
+            def spell(_found: re.Match[str], word: str = named) -> str:
+                return word
+
+            said = _phrase(spoken.lower()).sub(spell, said)
     return said
 
 
@@ -417,7 +421,7 @@ def _is_number(value: object) -> bool:
     return isinstance(value, (int, float)) and not isinstance(value, bool)
 
 
-def _operations(procedure: Skill, registry: SkillRegistry) -> list[OperationSpec]:
+def _operations(procedure: Skill, registry: Catalog) -> list[OperationSpec]:
     found: list[OperationSpec] = []
     for integration_id in procedure.frontmatter.integrations:
         integration = registry.get(integration_id)

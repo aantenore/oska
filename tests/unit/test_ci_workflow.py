@@ -29,6 +29,7 @@ ACCESS_SKILLS = "examples/access/skills"
 PACKAGE_JOB = "package"
 POSTGRES_JOB = "postgres"
 PYTHON_VERSIONS = ["3.11", "3.12", "3.13"]
+TYPE_CHECK_VERSION = "3.12"
 NEWCOMER_PATH = (
     "oska --help",
     "oska new platform acme",
@@ -55,6 +56,14 @@ def _runs(job: str = "build") -> list[str]:
 
 def test_the_workflow_lints() -> None:
     assert any(run.strip().startswith("ruff check") for run in _runs())
+
+
+def test_the_workflow_type_checks_once_on_one_python_version() -> None:
+    steps = _jobs()["build"]["steps"]
+    checks = [step for step in steps if " ".join(step.get("run", "").split()) == "mypy"]
+    assert len(checks) == 1
+    assert checks[0]["if"] == f"matrix.python-version == '{TYPE_CHECK_VERSION}'"
+    assert TYPE_CHECK_VERSION in PYTHON_VERSIONS
 
 
 def test_the_workflow_runs_the_unit_and_scenario_suites() -> None:

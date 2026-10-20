@@ -29,7 +29,7 @@ from pathlib import Path
 
 from oska.audit.sink import AuditSink
 from oska.audit.trace import NullTraceSink, TraceSink, destination
-from oska.catalog.registry import SkillRegistry
+from oska.catalog.registry import Catalog
 from oska.catalog.resolver import CapabilityResolver
 from oska.config import RuntimeConfig
 from oska.connectors.registry import ConnectorRegistry
@@ -54,18 +54,17 @@ from oska.engine.goals import Answer, GoalRunner
 from oska.engine.phrases import Phrases
 from oska.engine.presentation import Presenter, TurnNotes, reply_event_fields
 from oska.engine.reply import ReplyBuilder
-from oska.engine.session_store import SessionStore
 from oska.engine.state import SessionState
 from oska.governance.approval import ApprovalGate
 from oska.governance.capabilities import CapabilityRegistry
 from oska.governance.guardrails import GuardrailCatalog, GuardrailChain
 from oska.governance.identity import Principal
-from oska.governance.ledger import WriteLedger
 from oska.governance.policy_engine import PolicyEngine
 from oska.governance.verification import Verifier
 from oska.index.discovery import Discovery
 from oska.planner.planner import Planner
 from oska.router import RoutingContext, TurnRouter
+from oska.storage.protocols import LedgerStore, SessionStateStore
 
 __all__ = ["BudgetExceeded", "BudgetedProvider", "Engine", "ModelBudget"]
 
@@ -82,7 +81,7 @@ class Engine:
 
     def __init__(
         self,
-        registry: SkillRegistry,
+        registry: Catalog,
         resolver: CapabilityResolver,
         discovery: Discovery,
         router: TurnRouter,
@@ -91,9 +90,9 @@ class Engine:
         capabilities: CapabilityRegistry,
         policy: PolicyEngine,
         approval: ApprovalGate,
-        ledger: WriteLedger,
+        ledger: LedgerStore,
         verifier: Verifier,
-        session_store: SessionStore,
+        session_store: SessionStateStore,
         audit: AuditSink,
         runtime_config: RuntimeConfig,
         *,
@@ -150,7 +149,7 @@ class Engine:
         self._synonyms = dict(synonyms or {})
 
     @property
-    def registry(self) -> SkillRegistry:
+    def registry(self) -> Catalog:
         """The catalog this engine runs from."""
         return self._registry
 
@@ -185,7 +184,7 @@ class Engine:
         return self._budget
 
     @property
-    def stores(self) -> tuple[WriteLedger, SessionStore]:
+    def stores(self) -> tuple[LedgerStore, SessionStateStore]:
         """The write ledger and the session store this engine keeps its record in."""
         return self._ledger, self._sessions
 

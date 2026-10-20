@@ -24,7 +24,7 @@ from pathlib import Path
 from pydantic import BaseModel, ConfigDict, Field
 
 from oska.catalog.evaluation import CatalogEvaluation, EvaluationSetError, evaluate_catalog
-from oska.catalog.registry import SkillRegistry
+from oska.catalog.registry import Catalog, SkillRegistry
 from oska.catalog.validator import (
     CatalogError,
     ValidationIssue,
@@ -225,7 +225,7 @@ def _run_checks(
     pack: Pack,
     domain: DomainSpec,
     settings: Settings,
-    registry: SkillRegistry,
+    registry: Catalog,
     *,
     run_scenarios: bool,
 ) -> tuple[CatalogEvaluation | None, SuiteReport | None, list[str]]:
@@ -261,7 +261,7 @@ def _run_checks(
     return evaluation, scenarios, errors
 
 
-def _discovery(settings: Settings, registry: SkillRegistry) -> Discovery:
+def _discovery(settings: Settings, registry: Catalog) -> Discovery:
     """The ranking `oska evaluate catalog` runs with no model provider configured."""
     runtime = load_runtime_config(settings=settings)
     learned = LearnedPhrases(state_path(Path(settings.state_dir), runtime.improvement.learned_root))

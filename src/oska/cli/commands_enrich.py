@@ -25,7 +25,7 @@ from oska.catalog.enrichment import (
     needs_enrichment,
     read_examples,
 )
-from oska.catalog.registry import SkillRegistry
+from oska.catalog.registry import Catalog
 from oska.cli.commands_run import Provider, ProviderOption, ScriptOption
 from oska.cli.options import JsonOption, SkillsOption, fail, registry_for, settings_for
 from oska.config import (
@@ -117,7 +117,7 @@ def show(
 
 
 def _planned(
-    registry: SkillRegistry,
+    registry: Catalog,
     config: EnrichmentConfig,
     languages: list[str],
 ) -> EnrichmentReport:

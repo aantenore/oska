@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from oska.catalog.enrichment import examples_fingerprint
-from oska.catalog.registry import SkillRegistry
+from oska.catalog.registry import Catalog
 from oska.config import EnrichmentConfig, FastPathConfig
 from oska.contracts.common import RouteDecision, TurnKind
 from oska.contracts.skill import Skill
@@ -43,7 +43,7 @@ class FastPath:
     def __init__(
         self,
         index_factory: Callable[[], SkillIndex],
-        registry: SkillRegistry,
+        registry: Catalog,
         config: FastPathConfig,
         enrichment: EnrichmentConfig | None = None,
         learned: LearnedPhrases | None = None,

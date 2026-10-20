@@ -22,6 +22,7 @@ refuses one that does not hold up. `signing.py` says who may sign.
 
 from __future__ import annotations
 
+import builtins
 import hashlib
 import json
 import shutil
@@ -271,7 +272,7 @@ class RevisionStore:
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(f"{revision}\n", encoding="utf-8")
 
-    def _directories(self, tenant: str) -> list[Path]:
+    def _directories(self, tenant: str) -> builtins.list[Path]:
         base = self._root / tenant
         if not base.is_dir():
             return []

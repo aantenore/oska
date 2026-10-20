@@ -34,7 +34,7 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
-from oska.catalog.registry import SkillRegistry
+from oska.catalog.registry import Catalog
 from oska.config import ImprovementConfig
 from oska.improvement.signals import TurnSignal
 from oska.index.base import (
@@ -141,7 +141,7 @@ def redact(text: str, redactions: Sequence[Redaction]) -> str:
 
 def learn(
     signals: Sequence[TurnSignal],
-    registry: SkillRegistry,
+    registry: Catalog,
     config: ImprovementConfig,
     *,
     provider: ModelProvider | None = None,

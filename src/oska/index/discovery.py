@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from oska.catalog.enrichment import examples_fingerprint
-from oska.catalog.registry import SkillRegistry
+from oska.catalog.registry import Catalog
 from oska.config import DiscoveryConfig, EnrichmentConfig
 from oska.contracts.common import DiscoveryResult
 from oska.contracts.skill import Skill
@@ -31,7 +31,7 @@ class Discovery:
 
     def __init__(
         self,
-        registry: SkillRegistry,
+        registry: Catalog,
         index: SkillIndex,
         config: DiscoveryConfig,
         enrichment: EnrichmentConfig | None = None,

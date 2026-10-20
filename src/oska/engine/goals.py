@@ -21,7 +21,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
-from oska.catalog.registry import SkillRegistry
+from oska.catalog.registry import Catalog
 from oska.catalog.resolver import CapabilityResolver, SuggestedAction, offer
 from oska.contracts.common import Hydrated, Outcome, PendingInfo
 from oska.contracts.plan import Plan
@@ -73,7 +73,7 @@ class GoalRunner:
 
     def __init__(
         self,
-        registry: SkillRegistry,
+        registry: Catalog,
         resolver: CapabilityResolver,
         planner: Planner | None,
         executor: PlanExecutor,

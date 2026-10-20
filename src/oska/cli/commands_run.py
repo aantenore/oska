@@ -282,7 +282,7 @@ def _pending_lines(result: TurnResult) -> list[str]:
 
 
 def _outcome_line(outcome: Outcome) -> str:
-    parts = [outcome.kind]
+    parts: list[str] = [outcome.kind]
     if outcome.integration_id and outcome.operation:
         parts.append(f"{outcome.integration_id} {outcome.operation}")
     if outcome.receipt_id:

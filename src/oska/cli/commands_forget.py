@@ -28,7 +28,7 @@ decision somebody takes and can say they took.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Annotated, Literal
+from typing import Annotated, Literal, TypedDict
 
 import typer
 from pydantic import Field
@@ -45,7 +45,13 @@ from oska.cli.options import (
     settings_for,
 )
 from oska.config import RuntimeConfig, Settings, load_runtime_config, state_path
-from oska.governance.retention import RetentionReport, expire, forget
+from oska.governance.retention import (
+    RetentionReport,
+    SessionFiles,
+    SessionRecords,
+    expire,
+    forget,
+)
 from oska.improvement.feedback import FeedbackStore, feedback_root
 from oska.improvement.preferences import PreferenceStore, preferences_root
 from oska.learning.changes import ChangeRequestStore
@@ -54,6 +60,7 @@ from oska.learning.proposals import ProposalStore
 from oska.platform import Platform, PlatformError
 from oska.services import PROPOSALS_DIRNAME
 from oska.storage import DEFAULT_NAMESPACE, open_ledger, open_sessions, storage_namespace
+from oska.storage.protocols import LedgerStore
 
 __all__ = ["app"]
 
@@ -202,9 +209,22 @@ def _platform_reach(
     return held, reached
 
 
+class _Stores(TypedDict):
+    """The keyword arguments `forget` and `expire` take for the stores they reach."""
+
+    ledger: LedgerStore
+    audit_path: Path
+    sessions: SessionRecords
+    feedback: SessionFiles
+    preferences: SessionFiles
+    traces: SessionFiles
+    proposals: SessionFiles
+    change_requests: SessionFiles
+
+
 def _stores(
     runtime: RuntimeConfig, settings: Settings, *, namespace: str = DEFAULT_NAMESPACE
-) -> dict[str, object]:
+) -> _Stores:
     """Every store retention reaches, opened the way the runtime opens them."""
     proposals = ProposalStore(Path(settings.state_dir) / PROPOSALS_DIRNAME)
     changes = ChangeRequestStore(state_path(settings.state_dir, runtime.changes.root))
@@ -220,7 +240,7 @@ def _stores(
     }
 
 
-def _stores_for(held: Platform, pair: tuple[str, str]) -> dict[str, object]:
+def _stores_for(held: Platform, pair: tuple[str, str]) -> _Stores:
     """The stores of one (tenant, domain) of a platform, opened under its own namespace."""
     tenant, domain = pair
     return _stores(

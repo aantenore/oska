@@ -27,8 +27,8 @@ from pydantic import BaseModel, Field
 
 from oska.contracts.events import AuditEvent
 from oska.contracts.receipt import VerificationStatus
-from oska.governance.ledger import WriteLedger
 from oska.improvement.feedback import TurnFeedback, latest
+from oska.storage.protocols import LedgerStore
 
 __all__ = ["TurnSignal", "load_signals", "read_events"]
 
@@ -89,7 +89,7 @@ def read_events(audit_path: Path) -> list[AuditEvent]:
 
 def load_signals(
     audit_path: Path,
-    ledger: WriteLedger | None = None,
+    ledger: LedgerStore | None = None,
     feedback: Sequence[TurnFeedback] | None = None,
 ) -> list[TurnSignal]:
     """One signal per turn of the trail, oldest first.
@@ -121,7 +121,7 @@ def _signal(
     session_id: str,
     turn_id: str,
     events: list[AuditEvent],
-    ledger: WriteLedger | None,
+    ledger: LedgerStore | None,
 ) -> TurnSignal:
     signal = TurnSignal(session_id=session_id, turn_id=turn_id, at=events[0].at)
     receipts: list[str] = []
@@ -170,7 +170,7 @@ def _record_execution(signal: TurnSignal, receipts: list[str], data: dict) -> No
         signal.outcomes.append(operation)
 
 
-def _verified(receipt_ids: list[str], ledger: WriteLedger) -> bool:
+def _verified(receipt_ids: list[str], ledger: LedgerStore) -> bool:
     """True when the ledger says one of these receipts was read back and matched."""
     for receipt_id in dict.fromkeys(receipt_ids):
         receipt = ledger.get(receipt_id)

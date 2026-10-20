@@ -7,7 +7,7 @@ no state of its own beyond the registry it reads.
 
 from __future__ import annotations
 
-from oska.catalog.registry import SkillRegistry
+from oska.catalog.registry import Catalog
 from oska.contracts.skill import (
     LifecycleTransition,
     OperationSpec,
@@ -20,7 +20,7 @@ from oska.contracts.skill import (
 class CapabilityRegistry:
     """Declared operations, read from the catalog."""
 
-    def __init__(self, registry: SkillRegistry) -> None:
+    def __init__(self, registry: Catalog) -> None:
         self._registry = registry
 
     def operation_spec(self, integration_id: str, operation: str) -> OperationSpec | None:

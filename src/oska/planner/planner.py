@@ -28,7 +28,7 @@ from collections.abc import Sequence
 from jsonschema import Draft202012Validator
 from pydantic import ValidationError
 
-from oska.catalog.registry import SkillRegistry
+from oska.catalog.registry import Catalog
 from oska.catalog.resolver import CapabilityResolver, SuggestedAction, relabel
 from oska.contracts.common import Hydrated, Message, Outcome, RankedSkill
 from oska.contracts.plan import Plan
@@ -194,7 +194,7 @@ class Planner:
     def __init__(
         self,
         provider: ModelProvider,
-        registry: SkillRegistry,
+        registry: Catalog,
         resolver: CapabilityResolver,
     ) -> None:
         self._provider = provider
@@ -269,7 +269,7 @@ class Planner:
         self,
         query: str,
         candidates: list[RankedSkill],
-        registry: SkillRegistry | None = None,
+        registry: Catalog | None = None,
     ) -> str:
         """Choose one candidate id; an answer outside the list falls back to the first."""
         if not candidates:
@@ -473,7 +473,7 @@ def _names(integration: Skill) -> str:
     return ", ".join(spec.name for spec in integration.frontmatter.operations) or "nothing"
 
 
-def _description(registry: SkillRegistry, skill_id: str) -> str:
+def _description(registry: Catalog, skill_id: str) -> str:
     skill = registry.get(skill_id)
     return skill.frontmatter.description if skill is not None else skill_id
 

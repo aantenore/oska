@@ -38,7 +38,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol, runtime_checkable
 
-from oska.catalog.registry import SkillRegistry
+from oska.catalog.registry import Catalog
 from oska.config import EnrichmentConfig
 from oska.contracts.common import Message
 from oska.contracts.skill import Skill
@@ -209,7 +209,7 @@ def enrich(
 
 
 def enrich_catalog(
-    registry: SkillRegistry,
+    registry: Catalog,
     provider: PhraseProvider,
     config: EnrichmentConfig,
     languages: Sequence[str],

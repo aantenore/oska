@@ -134,8 +134,10 @@ def _kind(value: object) -> TurnKind:
 
 
 def _confidence(value: object) -> float:
+    if not isinstance(value, int | float | str):
+        return 0.0
     try:
-        number = float(value)  # type: ignore[arg-type]
+        number = float(value)
     except (TypeError, ValueError):
         return 0.0
     return max(0.0, min(1.0, number))

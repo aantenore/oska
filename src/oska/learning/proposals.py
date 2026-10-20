@@ -15,10 +15,11 @@ import uuid
 from collections.abc import Iterable, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import cast
 
 import yaml
 
-from oska.catalog.registry import SkillRegistry
+from oska.catalog.registry import Catalog
 from oska.contracts.common import Message
 from oska.contracts.proposal import (
     ProposalState,
@@ -148,7 +149,7 @@ def draft_from_session(
     session_id: str,
     history: list[Message],
     receipts: list[WriteReceipt],
-    registry: SkillRegistry,
+    registry: Catalog,
     provider: ModelProvider | None,
     *,
     runbook_id_hint: str | None = None,
@@ -231,7 +232,7 @@ def _render(
         "version": 1,
         "status": "draft",
         "description": content["description"],
-        "triggers": list(content["triggers"]),  # type: ignore[arg-type]
+        "triggers": list(cast("list[str]", content["triggers"])),
     }
     if entities:
         frontmatter["entities"] = entities
@@ -252,7 +253,7 @@ def _template(
     skill_id: str,
     writes: list[str],
     fields: list[str],
-    registry: SkillRegistry,
+    registry: Catalog,
 ) -> dict[str, object]:
     phrase = skill_id.split(".", 1)[1].replace("_", " ")
     listed = ", ".join(writes) if writes else "no write operation"
@@ -291,7 +292,7 @@ def _triggers(
     phrase: str,
     writes: list[str],
     fields: list[str],
-    registry: SkillRegistry,
+    registry: Catalog,
 ) -> list[str]:
     candidates = [phrase, f"run {phrase}", f"start the {phrase} procedure"]
     for name in writes:
@@ -375,7 +376,7 @@ def _slug(value: str) -> str:
     return name or "procedure"
 
 
-def _integrations(receipts: list[WriteReceipt], registry: SkillRegistry) -> list[str]:
+def _integrations(receipts: list[WriteReceipt], registry: Catalog) -> list[str]:
     found = []
     for reference in _distinct(receipt.integration_id for receipt in receipts):
         skill = registry.get(reference)
@@ -384,7 +385,7 @@ def _integrations(receipts: list[WriteReceipt], registry: SkillRegistry) -> list
     return found
 
 
-def _entities(integrations: list[str], registry: SkillRegistry) -> list[str]:
+def _entities(integrations: list[str], registry: Catalog) -> list[str]:
     names: list[str] = []
     for reference in integrations:
         skill = registry.get(reference)

@@ -15,7 +15,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
-from oska.catalog.registry import SkillRegistry
+from oska.catalog.registry import Catalog
 from oska.contracts.skill import Skill, SkillType
 from oska.ontology.graph import OntologyCache, OntologyGraph
 from oska.ontology.queries import (
@@ -47,7 +47,7 @@ class SuggestedAction:
 class CapabilityResolver:
     """Every sentence the runtime says about what it can do comes from here."""
 
-    def __init__(self, registry: SkillRegistry, *, conjunction: str = "and") -> None:
+    def __init__(self, registry: Catalog, *, conjunction: str = "and") -> None:
         self._registry = registry
         self._conjunction = conjunction
         self._ontology = OntologyCache(registry)
