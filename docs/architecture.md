@@ -462,7 +462,11 @@ Spans nest inside the `turn` span: `route`, `plan` once per procedure planned,
 Each records how long it stayed open and what it was nested in. When tracing is
 on, the turn also emits a `trace` event naming where the spans are being
 written, so the audit trail says that a diagnostic record exists without
-becoming one.
+becoming one. The spans still open are held per context, so two turns an engine
+serves at once never nest under each other. With `tracing.exporter: otlp`,
+`audit.otlp` writes the same file and hands each span to an OpenTelemetry
+tracer as well, exporting only the fields it names; see
+[operating.md](operating.md#sending-traces-to-your-collector).
 
 ### Dispatch
 

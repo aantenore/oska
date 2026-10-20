@@ -112,7 +112,15 @@
   },
   "tracing": {
     "enabled": false,
-    "path": "state/traces.jsonl"
+    "path": "state/traces.jsonl",
+    "exporter": "file",
+    "otlp": {
+      "endpoint": null,
+      "protocol": "http/protobuf",
+      "service_name": "oska",
+      "headers_env": null,
+      "include_session": false
+    }
   },
   "turn": {
     "max_model_calls": 4

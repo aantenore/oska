@@ -45,6 +45,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from pathlib import Path
 
+from oska.audit.otlp import open_otlp_sink
 from oska.audit.sink import AuditSink
 from oska.audit.trace import JsonlTraceSink, TraceSink
 from oska.catalog.registry import (
@@ -127,7 +128,7 @@ def build_engine(
         provider = BudgetedProvider(provider, budget)
     declared = guardrails
     guardrails = _guardrail_catalog(runtime, settings, declared)
-    trace = trace_sink or _trace_sink(runtime, settings)
+    trace = trace_sink or _trace_sink(runtime, settings, namespace)
     registry = _catalog(runtime, settings)
     _refuse_a_broken_catalog(
         registry, settings, None if declared is None else frozenset(declared.ids())
@@ -254,11 +255,20 @@ def _guardrail_catalog(
     return GuardrailCatalog.load(guardrail_catalog_path(runtime.guardrails, settings))
 
 
-def _trace_sink(runtime: RuntimeConfig, settings: Settings) -> TraceSink | None:
-    """The diagnostic trace sink, or nothing at all, which is the default."""
+def _trace_sink(
+    runtime: RuntimeConfig, settings: Settings, namespace: str = DEFAULT_NAMESPACE
+) -> TraceSink | None:
+    """The diagnostic trace sink, or nothing at all, which is the default.
+
+    The `otlp` exporter writes the same file and sends each span to a collector
+    as well, labeled with the tenant and the domain the namespace names.
+    """
     if not runtime.tracing.enabled:
         return None
-    return JsonlTraceSink(state_path(settings.state_dir, runtime.tracing.path))
+    path = state_path(settings.state_dir, runtime.tracing.path)
+    if runtime.tracing.exporter == "otlp":
+        return open_otlp_sink(path, runtime.tracing.otlp, namespace)
+    return JsonlTraceSink(path)
 
 
 def _refuse_a_broken_catalog(

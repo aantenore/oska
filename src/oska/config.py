@@ -205,11 +205,76 @@ class GuardrailsConfig(BaseModel):
     catalog: Path = GUARDRAILS_CATALOG_PATH
 
 
+class OtlpConfig(BaseModel):
+    """Where spans are sent when `tracing.exporter` is `otlp`.
+
+    `endpoint` unset leaves the address to the standard OpenTelemetry
+    variables (`OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`, then
+    `OTEL_EXPORTER_OTLP_ENDPOINT`). `headers_env` names the variable holding
+    the headers sent with every export, as `key=value,key=value`; unset leaves
+    them to `OTEL_EXPORTER_OTLP_HEADERS`. Headers never appear in this file.
+    `include_session` adds the session id to every exported span; it is off,
+    because what a collector holds is out of reach of `oska forget`.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    endpoint: str | None = None
+    protocol: Literal["http/protobuf", "grpc"] = "http/protobuf"
+    service_name: str = Field(default="oska", min_length=1)
+    headers_env: str | None = None
+    include_session: bool = False
+
+    @model_validator(mode="before")
+    @classmethod
+    def _no_headers_in_the_file(cls, data: object) -> object:
+        if isinstance(data, Mapping) and "headers" in data:
+            raise ValueError(
+                "tracing.otlp takes its headers from the environment variable headers_env "
+                "names, never from the file"
+            )
+        return data
+
+    @model_validator(mode="after")
+    def _endpoint_and_variable_hold_up(self) -> OtlpConfig:
+        """An address carries no credentials, and a variable name is a name."""
+        from urllib.parse import urlsplit
+
+        if self.endpoint is not None:
+            endpoint = self.endpoint.strip()
+            if not endpoint or any(character.isspace() for character in endpoint):
+                raise ValueError("tracing.otlp.endpoint must be an address with no spaces")
+            if self.protocol == "http/protobuf" and not endpoint.startswith(
+                ("http://", "https://")
+            ):
+                raise ValueError(
+                    "tracing.otlp.endpoint must be an http:// or https:// URL with "
+                    "protocol http/protobuf"
+                )
+            if "@" in urlsplit(endpoint if "://" in endpoint else f"//{endpoint}").netloc:
+                raise ValueError(
+                    "tracing.otlp.endpoint must not carry credentials; name a variable "
+                    "in headers_env instead"
+                )
+            self.endpoint = endpoint
+        if self.headers_env is not None and not (
+            self.headers_env.isascii() and self.headers_env.isidentifier()
+        ):
+            raise ValueError("tracing.otlp.headers_env must name an environment variable")
+        return self
+
+
 class TracingConfig(BaseModel):
-    """Diagnostic traces, kept apart from the audit record and off by default."""
+    """Diagnostic traces, kept apart from the audit record and off by default.
+
+    `exporter` is `file`, the default, or `otlp`, which writes the same file
+    and also sends every span to an OpenTelemetry collector.
+    """
 
     enabled: bool = False
     path: Path = Path("state/traces.jsonl")
+    exporter: Literal["file", "otlp"] = "file"
+    otlp: OtlpConfig = Field(default_factory=OtlpConfig)
 
 
 class TurnConfig(BaseModel):

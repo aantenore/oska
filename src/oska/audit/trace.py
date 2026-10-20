@@ -10,7 +10,8 @@ tracing on.
 
 A span records a name, the fields handed to it, the moment it opened and how
 long it stayed open, and the span it opened inside. Sinks differ only in where
-that goes: nowhere, a list, or a file of one JSON object per line.
+that goes: nowhere, a list, or a file of one JSON object per line, which
+`oska.audit.otlp` also copies to an OpenTelemetry collector.
 
 A trace is optional and it is still a record of a conversation: the span a turn
 opens names the session, and the spans opened inside it belong to that session
@@ -25,6 +26,7 @@ import json
 import uuid
 from collections.abc import Iterator
 from contextlib import AbstractContextManager, contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -95,29 +97,47 @@ class NullTraceSink:
 
 
 class _RecordingSink:
-    """Timing and nesting, shared by the sinks that keep what they record."""
+    """Timing and nesting, shared by the sinks that keep what they record.
+
+    The spans still open are held per context, not per sink: two turns served
+    at once by one engine, on two threads or two tasks, each nest their spans
+    under their own `turn` and never under the other's.
+    """
 
     def __init__(self) -> None:
-        self._open: list[Span] = []
+        self._open: ContextVar[tuple[Span, ...]] = ContextVar(
+            f"oska_open_spans_{id(self)}", default=()
+        )
 
     @contextmanager
     def span(self, name: str, **fields: object) -> Iterator[Span]:
         """Time this stretch and record it under the span it opened inside."""
-        parent = self._open[-1] if self._open else None
+        enclosing = self._open.get()
+        parent = enclosing[-1] if enclosing else None
         current = Span(
             name=name,
             parent_id=parent.span_id if parent else None,
-            depth=len(self._open),
+            depth=len(enclosing),
             fields=dict(fields),
         )
-        self._open.append(current)
+        self._open.set((*enclosing, current))
+        self._opened(current, parent)
         started = perf_counter()
         try:
             yield current
+        except BaseException as error:
+            self._raised(current, error)
+            raise
         finally:
             current.duration_ms = (perf_counter() - started) * 1000
-            self._open.pop()
+            self._open.set(enclosing)
             self._record(current)
+
+    def _opened(self, span: Span, parent: Span | None) -> None:
+        """Called as a span opens; a sink that needs to know early overrides it."""
+
+    def _raised(self, span: Span, error: BaseException) -> None:
+        """Called when the block a span times raises; the error goes on regardless."""
 
     def _record(self, span: Span) -> None:
         raise NotImplementedError

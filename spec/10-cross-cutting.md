@@ -60,6 +60,14 @@ away. Nothing in the runtime reads a trace back and no decision is taken from
 one. A question that can only be answered from a trace is a missing audit
 event, not a reason to leave tracing on.
 
+A deployment may also send its spans to the collector its observability stack
+already reads. What leaves the process is narrower than what the file holds:
+names, nesting, timing and the identifiers, kinds, counts and flags of a turn,
+never what was said, sent or answered. The file is still written, because it is
+what the service-level numbers are read from and what forgetting a session
+reaches; a collector is out of that reach, so how long it keeps what it received
+is the deployment's to set.
+
 #### The service-level numbers
 
 What a deployment is woken up for is not what it logs. A few numbers say almost
@@ -465,6 +473,15 @@ signals alone and writing only into that pair's state.
   the default namespace and every (tenant, domain) namespace included, so a
   suite run against a database a deployment shares leaves that deployment's
   record as it found it and leaves nothing of its own behind.
+- **OSKA-XC-37** — Exporting diagnostic spans to an external collector MUST be
+  off unless configuration selects it, and selecting it MUST NOT stop the file
+  of OSKA-XC-12 from being written. An exported span MUST carry only its name,
+  its nesting, its timing and the identifiers, kinds, counts and flags of the
+  turn it belongs to; it MUST NOT carry a payload, the text a person sent or the
+  text a model produced, and it MUST NOT carry the session identifier unless
+  configuration asks for it, because what a collector holds is out of reach of
+  forgetting. Credentials for the collector MUST come from the environment and
+  MUST NOT be accepted in the configuration file.
 
 ## Rationale
 
@@ -540,6 +557,8 @@ is exactly the failure a gate exists to catch.
 - `src/oska/audit/sink.py` — memory, file and fan-out sinks.
 - `src/oska/audit/trace.py` — the diagnostic span sinks: none, memory and
   file, with the null sink in force whenever tracing is off.
+- `src/oska/audit/otlp.py` — the file sink that also exports each span over
+  OTLP, and the list of span fields allowed to leave the process.
 - `src/oska/engine/budget.py` — the per-turn model budget and the provider
   wrapper that counts every call through it, held by `src/oska/engine/engine.py`
   for the length of a turn.

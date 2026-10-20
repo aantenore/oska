@@ -214,6 +214,12 @@ so a typo is a startup failure rather than a promise nothing keeps.
 | --- | --- | --- |
 | `tracing.enabled` | `false` | Whether spans are recorded |
 | `tracing.path` | `state/traces.jsonl` | Where they are appended, resolved under the state directory |
+| `tracing.exporter` | `file` | `file`, or `otlp` to also send every span to an OpenTelemetry collector; the file is written either way |
+| `tracing.otlp.endpoint` | `null` | The collector's traces endpoint: a full URL such as `http://collector:4318/v1/traces` for `http/protobuf`, or `host:port` or a URL for `grpc`. Unset, the standard `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` or `OTEL_EXPORTER_OTLP_ENDPOINT` decides, and without either the SDK's local default |
+| `tracing.otlp.protocol` | `http/protobuf` | `http/protobuf` or `grpc` |
+| `tracing.otlp.service_name` | `oska` | The `service.name` resource attribute spans are exported under |
+| `tracing.otlp.include_session` | `false` | Add the session id to every exported span. Off, because a collector keeps what it receives and forgetting a session cannot reach it; turn on only with opaque session ids and a collector retention no longer than `retention` |
+| `tracing.otlp.headers_env` | `null` | Names the environment variable holding the export headers, as `key=value,key=value` with values URL-encoded. Unset, `OTEL_EXPORTER_OTLP_HEADERS` applies. A named variable that is unset stops the engine from starting |
 
 Off by default and safe to leave off. Traces are diagnostics: how long each
 stretch of a turn took and what it was nested in. They are not the audit
@@ -223,6 +229,14 @@ there is no rotation — so it is something to switch on while a question is ope
 and off again afterwards. A turn that is being traced emits a `trace` audit
 event naming where the spans are going, so the audit trail records that a
 diagnostic file exists.
+
+`exporter: otlp` needs the optional extra `otel` (`pip install 'oska[otel]'`);
+without it the engine refuses to start and names the extra. The endpoint may
+not carry credentials and `tracing.otlp` refuses a `headers` key: whatever the
+collector needs to authenticate goes in the variable `headers_env` names. The
+standard `OTEL_*` variables the SDK reads, such as `OTEL_TRACES_SAMPLER` and
+`OTEL_RESOURCE_ATTRIBUTES`, apply as well. What an exported span carries is in
+[Sending traces to your collector](operating.md#sending-traces-to-your-collector).
 
 ### `turn`
 

@@ -86,9 +86,10 @@ can be made to do.
   `OSKA-EVO-40`, `OSKA-GOV-49`), is how a deployment chooses to review what its
   lifecycle produced.
 - **Operations surface.** Exposing the service-level numbers for scraping and
-  the checks a deployment's integration pipeline runs (`OSKA-XC-24` to
-  `OSKA-XC-27`, `OSKA-XC-30`, `OSKA-XC-33`, `OSKA-XC-34`) are about where a
-  deployment runs and who watches it.
+  the checks a deployment's integration pipeline runs, and exporting spans to a
+  collector (`OSKA-XC-24` to `OSKA-XC-27`, `OSKA-XC-30`, `OSKA-XC-33`,
+  `OSKA-XC-34`, `OSKA-XC-37`) are about where a deployment runs and who
+  watches it.
 - **Platforms.** Packs, the manifest, domains and tenants, what a tenant and a
   pack binding may read and change, the kit that checks and builds a pack, and
   retention and the improvement job reaching every (tenant, domain)
@@ -887,6 +888,7 @@ accident.
 | OSKA-XC-34 | `src/oska/api/metrics.py`, `src/oska/observability/metrics.py`, `src/oska/config.py` | `tests/unit/test_metrics.py` |
 | OSKA-XC-35 | `src/oska/config.py`, `src/oska/platform/tenants.py` | `tests/unit/test_config.py` |
 | OSKA-XC-36 | `src/oska/conformance/runner.py`, `src/oska/platform/conformance.py`, `src/oska/platform/runtime.py`, `src/oska/storage/protocols.py` | `tests/unit/test_conformance_postgres.py`, `tests/unit/test_storage_contract.py`, `tests/unit/test_ci_workflow.py` |
+| OSKA-XC-37 | `src/oska/audit/otlp.py`, `src/oska/config.py`, `src/oska/engine/factory.py` | `tests/unit/test_trace_export.py` |
 
 ### Platform
 

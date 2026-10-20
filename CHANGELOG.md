@@ -35,6 +35,10 @@ All notable changes to this project are recorded here. The format follows
   reports the same service-level numbers and `/metrics`, and reviews one queue,
   and `oska forget` reaches them there (`OSKA-GOV-56`). The files backend keeps
   them where it always did.
+- `tracing.exporter: otlp`, with the optional `otel` extra, sends every span to
+  an OpenTelemetry collector as well as to the file, with identifiers, kinds and
+  counts only and never a payload or the text of a turn (`OSKA-XC-37`); two
+  turns traced at once no longer nest under each other.
 
 ### Changed
 

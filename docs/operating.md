@@ -24,7 +24,7 @@ read from a directory every replica mounts.
 | Audit trail | The database (`audit.path` with `sqlite`) | One trail; every replica appends to it |
 | Service-level report and `/metrics` | Computed from the audit trail | Any replica reports what all of them served |
 | Proposals and change requests, packages included | The database (`state/proposals`, `changes.root` with `sqlite`) | One review queue; any replica shows, publishes or applies a request |
-| Traces | `tracing.path` | Per replica; ship them to a collector |
+| Traces | `tracing.path` | Per replica; `tracing.exporter: otlp` sends them to a collector as well ([below](#sending-traces-to-your-collector)) |
 | Derived and learned phrases, improvement report | The state directory | Per replica |
 
 Each of them is kept under the namespace of its (tenant, domain), so a platform
@@ -212,6 +212,59 @@ step is not counted.
 
 `--audit` reads a trail other than the configured one, which is how a report is
 run over a copy rather than over the file a running deployment is appending to.
+
+## Sending traces to your collector
+
+With the `otel` extra installed (`pip install 'oska[otel]'`), every span a
+traced turn records can also go to an OpenTelemetry collector over OTLP:
+
+```json
+"tracing": {
+  "enabled": true,
+  "path": "state/traces.jsonl",
+  "exporter": "otlp",
+  "otlp": {
+    "endpoint": "https://<collector-host>:4318/v1/traces",
+    "protocol": "http/protobuf",
+    "service_name": "oska",
+    "headers_env": "OSKA_OTLP_HEADERS"
+  }
+}
+```
+
+```sh
+export OSKA_OTLP_HEADERS="authorization=Bearer%20<token>"
+```
+
+Leave `endpoint` out to use `OTEL_EXPORTER_OTLP_ENDPOINT` as the rest of the
+fleet does; use `"protocol": "grpc"` with `<collector-host>:4317` for a gRPC
+receiver. The file at `tracing.path` is still written: the service-level report
+reads its latencies there and `oska forget` rewrites it.
+
+A collector receives the same tree the file holds. `turn` is the root, with
+`route`, `discovery`, `plan`, `execute` and `reply` nested in it, each with the
+timing the file records. A `turn` opened while the host application has a span
+of its own active, a request span for instance, is nested under that span.
+Every span carries:
+
+| Attribute | From |
+| --- | --- |
+| `service.name` | `tracing.otlp.service_name`, on the resource |
+| `oska.turn` | The `turn` span, copied onto every span nested in it |
+| `session.id` | Only with `tracing.otlp.include_session`: a collector keeps what it is sent, and `oska forget` cannot reach it there |
+| `oska.tenant`, `oska.domain` | The (tenant, domain) the engine serves; absent on a single catalog |
+| `oska.kind`, `oska.source`, `oska.chosen`, `oska.tie`, `oska.runbook`, `oska.guardrails`, `oska.start`, `oska.stop`, `oska.operation`, `oska.approved`, `oska.outcome` | The span's own fields, where it has them |
+
+Nothing else leaves the process: no payload, nothing the person wrote and
+nothing a model answered (`OSKA-XC-37`). A span whose block raised is marked as
+an error carrying the exception's type, not its message. The list of fields
+allowed out is `EXPORTED_FIELDS` in `src/oska/audit/otlp.py`; a field a span
+gains later stays in the file until it is added there.
+
+`oska forget` cannot reach what a collector already holds, which is why the
+session identifier is not exported unless `tracing.otlp.include_session` asks
+for it. A deployment that turns it on uses opaque session identifiers and sets
+the collector's own retention no longer than `retention` here.
 
 ## Forgetting a conversation
 
