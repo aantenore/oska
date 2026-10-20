@@ -292,6 +292,7 @@ def test_http_turns_run_per_domain_and_a_session_stays_in_its_domain(
     assert [(entry["name"], entry["default"]) for entry in domains] == [
         ("operations", True),
         ("access", False),
+        ("data", False),
     ]
     assert domains[1]["host"]["name"] == "the access desk"
     assert here.status_code == 200 and "the access desk" in here.json()["reply"]
@@ -315,7 +316,7 @@ def test_the_tenant_comes_from_the_principal_before_the_header(
     for domain in document["domains"]:
         domain["tenants"] = ["default", "acme"]
     (tmp_path / "platform.yaml").write_text(yaml.safe_dump(document), encoding="utf-8")
-    for pack in ("ops", "access"):
+    for pack in ("ops", "access", "data"):
         (tmp_path / pack).symlink_to(examples / pack)
     held = Platform.from_file(tmp_path / "platform.yaml", platform_settings)
     client = TestClient(create_app(platform_settings, platform=held))
@@ -416,7 +417,7 @@ def test_a_transition_reads_the_tenant_s_languages(
     for domain in document["domains"]:
         domain["tenants"] = ["default", "acme"]
     (tmp_path / "platform.yaml").write_text(yaml.safe_dump(document), encoding="utf-8")
-    for pack in ("ops", "access"):
+    for pack in ("ops", "access", "data"):
         (tmp_path / pack).symlink_to(examples / pack)
     overlay = tmp_path / "tenants" / "acme"
     overlay.mkdir(parents=True)

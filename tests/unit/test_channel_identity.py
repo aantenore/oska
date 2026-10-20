@@ -482,7 +482,7 @@ def _platform(
     root = tmp_path / "platform"
     root.mkdir()
     (root / "platform.yaml").write_text(yaml.safe_dump(document), encoding="utf-8")
-    for pack in ("ops", "access"):
+    for pack in ("ops", "access", "data"):
         (root / pack).symlink_to(examples / pack)
     runtime = _runtime(repo_root, tmp_path / "platform-runtime.json", identity)
     held_settings = settings.model_copy(update={"runtime_config": runtime})
