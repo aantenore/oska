@@ -33,6 +33,7 @@ what you came to do.
 
 ## Operating an installation
 
+- [running-in-containers.md](running-in-containers.md): the container image, the compose file with PostgreSQL, turning identity on and pointing it at a model.
 - [operating.md](operating.md): releasing a catalog, deciding on a change request, the service-level report, forgetting a conversation, a connector that is down.
 - [governance.md](governance.md): the write path, lifecycles, failure classification, guardrails, policy, approval, verification, the ledger, audit, identity and retention.
 - [improvement.md](improvement.md): the self-improvement job, the autonomy ladder and how to revert what it did.

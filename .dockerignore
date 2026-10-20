@@ -1,0 +1,31 @@
+# The real .env holds credentials: it never enters a build context.
+.env
+**/.env
+.env.*
+!.env.example
+
+.git
+.github
+.venv
+venv
+state/
+**/state/
+*.sqlite
+*.sqlite3
+
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.DS_Store
+
+# Not needed to build or run the image.
+tests/
+docs/
+spec/
+ops/

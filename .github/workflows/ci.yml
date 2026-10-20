@@ -116,6 +116,27 @@ jobs:
           test -n "$greeting"
           grep -q "I can" <<< "$greeting"
 
+  image:
+    # The container image builds from a clean checkout and answers its health
+    # check. Nothing is pushed anywhere.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build the image
+        run: docker build --tag oska:ci .
+
+      - name: Start it and check health
+        run: |
+          set -euo pipefail
+          docker run -d --name oska-ci -p 127.0.0.1:8000:8000 oska:ci
+          for i in $(seq 1 30); do
+            if curl -fs http://127.0.0.1:8000/health; then exit 0; fi
+            sleep 2
+          done
+          docker logs oska-ci
+          exit 1
+
   postgres:
     # The relational backend against a live PostgreSQL 16, started as a service
     # container. Every suite runs twice in a row over the same database, so a

@@ -1,0 +1,16 @@
+{
+  "api": {
+    "host": "0.0.0.0",
+    "port": 8000
+  },
+  "storage": {
+    "backend": "postgres",
+    "url_env": "OSKA_DATABASE_URL"
+  },
+  "identity": {
+    "mode": "proxy",
+    "required": true,
+    "proxy_secret_env": "OSKA_PROXY_SECRET",
+    "proxy_secret_header": "X-Proxy-Secret"
+  }
+}

@@ -179,6 +179,19 @@ whenever it binds an address other than `127.0.0.1` while `identity.required`
 is off: anyone who can reach that port can then hold a conversation and ask
 for writes. See [docs/governance.md#identity](docs/governance.md#identity).
 
+### Run it in a container
+
+A Dockerfile and a compose file run the example catalog with PostgreSQL,
+published on 127.0.0.1 only. They are for trying it locally, not for exposing:
+identity is off by default. See
+[docs/running-in-containers.md](docs/running-in-containers.md) for turning
+token or proxy identity on and pointing it at a model.
+
+```sh
+docker compose up -d --build
+curl -s http://127.0.0.1:8000/health
+```
+
 ## How a turn works
 
 ```mermaid

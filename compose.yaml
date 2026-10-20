@@ -1,0 +1,53 @@
+# The example operations catalog served over HTTP, with its record kept in
+# PostgreSQL. For trying it on one machine: every credential below is a local
+# default, published ports are bound to 127.0.0.1, and identity is not required.
+# See docs/running-in-containers.md before changing any of that.
+name: oska
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: oska
+      POSTGRES_DB: oska
+      # Local use only. Set POSTGRES_PASSWORD in the shell or in .env to change it.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-oska-local}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U oska -d oska"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  oska:
+    build: .
+    image: oska:local
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      # Swap in deploy/compose/runtime.token.json or runtime.proxy.json to turn identity on.
+      - ${OSKA_RUNTIME_FILE:-./deploy/compose/runtime.json}:/srv/oska/runtime.json:ro
+      - oska-state:/srv/oska/state
+    environment:
+      OSKA_RUNTIME_CONFIG: /srv/oska/runtime.json
+      # The address carries the credential, so it is read from the environment
+      # and never written into runtime.json.
+      OSKA_DATABASE_URL: postgresql://oska:${POSTGRES_PASSWORD:-oska-local}@postgres:5432/oska
+      # Model access. Empty means no model: the runtime then routes by rule and
+      # declines to plan. Set these in the shell or in .env, never in the image.
+      OSKA_PROVIDER: ${OSKA_PROVIDER:-none}
+      OSKA_MODEL_BASE_URL: ${OSKA_MODEL_BASE_URL:-}
+      OSKA_MODEL_API_KEY: ${OSKA_MODEL_API_KEY:-}
+      OSKA_MODEL_CHAT: ${OSKA_MODEL_CHAT:-}
+      OSKA_MODEL_EMBEDDING: ${OSKA_MODEL_EMBEDDING:-}
+      # Read only when the mounted runtime.json turns the matching identity mode on.
+      OSKA_SESSION_TOKEN_KEY: ${OSKA_SESSION_TOKEN_KEY:-}
+      OSKA_PROXY_SECRET: ${OSKA_PROXY_SECRET:-}
+
+volumes:
+  postgres-data:
+  oska-state:

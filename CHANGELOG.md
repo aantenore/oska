@@ -18,6 +18,11 @@ All notable changes to this project are recorded here. The format follows
 
 ### Added
 
+- A Dockerfile and a compose file run the example catalog with PostgreSQL on
+  127.0.0.1, with token and proxy identity variants; CI builds the image and
+  checks its health.
+- A third reference pack, `examples/data`: data pipelines, served as a third
+  domain of the reference platform and conformed in CI at level 2.
 - `oska run --replay` with `--session` resumes where the last replay of that
   cassette and session stopped, so a session recorded one command per turn
   replays one command per turn; `--replay-from-start` starts over.

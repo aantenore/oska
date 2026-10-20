@@ -1,0 +1,14 @@
+{
+  "api": {
+    "host": "0.0.0.0",
+    "port": 8000
+  },
+  "storage": {
+    "backend": "postgres",
+    "url_env": "OSKA_DATABASE_URL"
+  },
+  "identity": {
+    "mode": "token",
+    "key_env": "OSKA_SESSION_TOKEN_KEY"
+  }
+}
