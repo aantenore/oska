@@ -273,6 +273,10 @@ def test_pack_check_builds_the_engine_a_domain_of_that_pack_builds(
     manifest = yaml.safe_load((target / "pack.yaml").read_text(encoding="utf-8"))
     manifest["synonyms"] = {"thing": "item"}
     (target / "pack.yaml").write_text(yaml.safe_dump(manifest), encoding="utf-8")
+    (target / "phrases.json").write_text(
+        json.dumps({"it": {"approval_head": "Questa archiviazione va approvata."}}),
+        encoding="utf-8",
+    )
     built: list[dict[str, Any]] = []
     real = platform_runtime.build_engine
 
@@ -290,6 +294,23 @@ def test_pack_check_builds_the_engine_a_domain_of_that_pack_builds(
         assert kwargs["guardrails"].get("guardrail.sample_reviewed") is not None
         assert kwargs["synonyms"] == {"thing": "item"}
         assert kwargs["host"].name == manifest["host"]["name"]
+        assert kwargs["phrase_layers"] == ((target / "phrases.json").resolve(),)
+
+
+def test_pack_check_refuses_a_phrase_naming_other_placeholders(tmp_path: Path) -> None:
+    target = new_pack("sample_pack", into=tmp_path)
+    (target / "phrases.json").write_text(
+        json.dumps({"it": {"approval_tail": "Rispondi {yes} per approvarla."}}),
+        encoding="utf-8",
+    )
+
+    report = check_pack(target)
+
+    assert not report.ok
+    refused = [error for error in report.errors if "approval_tail" in error]
+    assert refused, report.errors
+    assert refused[0].startswith("domain sample_pack: pack sample_pack: ")
+    assert "{yes}" in refused[0]
 
 
 # What a built pack holds

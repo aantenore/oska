@@ -12,26 +12,31 @@ force.
 
 ## Running more than one replica
 
-With `storage.backend: postgres`, the two stores a turn cannot do without are
-shared: the write ledger and the session store. A turn may land on any replica,
-the ledger still answers "already done" for a repeated write, and a session
-picks up where another replica left it. Catalogs are shared as revisions (below),
+With `storage.backend: postgres`, every store a turn writes and every store a
+reviewer reads is a table of one database. A turn may land on any replica, the
+ledger still answers "already done" for a repeated write, and a session picks
+up where another replica left it. Catalogs are shared as revisions (below),
 read from a directory every replica mounts.
-
-The rest of the state directory is still a directory, one per process:
 
 | What | Where | With two replicas |
 | --- | --- | --- |
-| Audit trail | `audit.path`, a JSONL file | Two files; ship both to your log pipeline and read them together |
-| Service-level report and `/metrics` | Computed from the local audit trail | Each replica reports what it served |
-| Proposals and change requests | `state/proposals`, `changes.root` | Two review queues |
-| Traces, derived and learned phrases | `tracing.path`, the state directory | Per replica |
+| Write ledger and session state | The database | Shared |
+| Audit trail | The database (`audit.path` with `sqlite`) | One trail; every replica appends to it |
+| Service-level report and `/metrics` | Computed from the audit trail | Any replica reports what all of them served |
+| Proposals and change requests, packages included | The database (`state/proposals`, `changes.root` with `sqlite`) | One review queue; any replica shows, publishes or applies a request |
+| Traces | `tracing.path` | Per replica; ship them to a collector |
+| Derived and learned phrases, improvement report | The state directory | Per replica |
 
-Until those move behind store interfaces of their own, run the review and
-learning loop (`oska improve`, the proposal and change request routes, `oska
-change`) against one replica, or one shared volume, and treat audit files as
-logs to collect rather than a database to query. Nothing in the write path
-depends on them: approval, the ledger and the read-back hold across replicas.
+Each of them is kept under the namespace of its (tenant, domain), so a platform
+serving several pairs from one database keeps their trails and queues apart.
+`oska forget` and `oska forget --older-than` reach the shared trail, proposals
+and change requests the same way they reach the ledger and the sessions.
+
+What stays on disk is what a job writes for the runtime to read: run
+`oska improve` against a state directory every replica mounts, or against one
+replica whose results you copy, and collect traces rather than query them.
+Applying a change request writes into the catalog root the operator names, as
+it always did, wherever the request was composed.
 
 ## Releasing a catalog
 

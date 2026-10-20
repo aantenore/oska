@@ -769,6 +769,15 @@ it for that publication.
   but the environment does not hold MUST refuse the call rather than trust it.
   A runtime that trusts proxy headers on a port others can reach without such a
   secret MUST say so when it starts.
+- **OSKA-GOV-56** — The audit trail, the proposals and the change requests,
+  their packages included, MUST be reached through declared interfaces kept on
+  the backend the configuration chooses for the ledger and the session store,
+  under the same namespace, and every backend MUST pass the same behavioral
+  contract. Where that backend is shared by several processes, a record
+  written through one process MUST be read through any other, so the
+  service-level report and the review queue are the same whichever process is
+  asked. Removal on request and by the retention window MUST reach them
+  through those interfaces.
 
 ## Rationale
 

@@ -162,13 +162,18 @@ def write_examples(
 ) -> Path:
     """Write the derived phrases beside the skill, stamped with the trigger hash."""
     path = examples_path(skill, config)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(render_examples(skill, examples), encoding="utf-8")
+    return path
+
+
+def render_examples(skill: Skill, examples: EnrichedExamples) -> str:
+    """The text of the derived-phrases file of a skill, stamped with the trigger hash."""
     document = {
         SOURCE_HASH_KEY: source_hash(skill),
         LANGUAGES_KEY: _clean(examples),
     }
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(document, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-    return path
+    return json.dumps(document, indent=2, ensure_ascii=False) + "\n"
 
 
 def needs_enrichment(

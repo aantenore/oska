@@ -54,12 +54,17 @@ from oska.governance.retention import (
 )
 from oska.improvement.feedback import FeedbackStore, feedback_root
 from oska.improvement.preferences import PreferenceStore, preferences_root
-from oska.learning.changes import ChangeRequestStore
 from oska.learning.forgetting import ChangeRequestRecords, ProposalRecords
-from oska.learning.proposals import ProposalStore
 from oska.platform import Platform, PlatformError
-from oska.services import PROPOSALS_DIRNAME
-from oska.storage import DEFAULT_NAMESPACE, open_ledger, open_sessions, storage_namespace
+from oska.services import open_changes, open_proposals
+from oska.storage import (
+    DEFAULT_NAMESPACE,
+    AuditStore,
+    open_audit,
+    open_ledger,
+    open_sessions,
+    storage_namespace,
+)
 from oska.storage.protocols import LedgerStore
 
 __all__ = ["app"]
@@ -213,7 +218,7 @@ class _Stores(TypedDict):
     """The keyword arguments `forget` and `expire` take for the stores they reach."""
 
     ledger: LedgerStore
-    audit_path: Path
+    audit: AuditStore
     sessions: SessionRecords
     feedback: SessionFiles
     preferences: SessionFiles
@@ -226,11 +231,11 @@ def _stores(
     runtime: RuntimeConfig, settings: Settings, *, namespace: str = DEFAULT_NAMESPACE
 ) -> _Stores:
     """Every store retention reaches, opened the way the runtime opens them."""
-    proposals = ProposalStore(Path(settings.state_dir) / PROPOSALS_DIRNAME)
-    changes = ChangeRequestStore(state_path(settings.state_dir, runtime.changes.root))
+    proposals = open_proposals(runtime, settings, namespace=namespace)
+    changes = open_changes(runtime, settings, namespace=namespace)
     return {
         "ledger": open_ledger(runtime, settings, namespace=namespace),
-        "audit_path": state_path(settings.state_dir, runtime.audit.path),
+        "audit": open_audit(runtime, settings, namespace=namespace),
         "sessions": open_sessions(runtime, settings, namespace=namespace),
         "feedback": FeedbackStore(feedback_root(settings.state_dir)),
         "preferences": PreferenceStore(preferences_root(settings.state_dir)),

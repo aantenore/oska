@@ -22,7 +22,7 @@ import typer
 from oska.cli.options import SkillsOption, fail, services_for, settings_for
 from oska.config import RuntimeConfig, load_runtime_config
 from oska.contracts.proposal import ActorSource, SkillProposal
-from oska.learning import LifecycleError, draft_from_session, store_for, transition
+from oska.learning import LifecycleError, draft_from_session, transition
 from oska.planner.provider import ModelProvider
 from oska.services import Services
 
@@ -102,7 +102,7 @@ def move(
 ) -> None:
     """Move one proposal to another state, recording who asked."""
     services = _services(skills)
-    changes = store_for(services.settings)
+    changes = services.changes
     try:
         proposal = transition(
             services.proposals,

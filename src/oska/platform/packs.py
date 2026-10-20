@@ -2,10 +2,12 @@
 
 A pack is a directory holding `pack.yaml` and a fixed layout under it:
 `skills/` (required), `configs/connectors.json` (required), `fixtures/`,
-`scenarios/`, `evaluation/`, and an optional `guardrails.json` whose entries are
-added to the platform guardrail catalog. Nothing here runs a pack; this module
-reads one, checks that it declares what it says it provides, and orders a set
-of packs so that every pack comes after the packs it depends on.
+`scenarios/`, `evaluation/`, an optional `guardrails.json` whose entries are
+added to the platform guardrail catalog, and an optional `phrases.json` laid
+over the phrase catalog of every domain that serves the pack. Nothing here runs
+a pack; this module reads one, checks that it declares what it says it
+provides, and orders a set of packs so that every pack comes after the packs it
+depends on.
 """
 
 from __future__ import annotations
@@ -43,6 +45,7 @@ FIXTURES_DIR = "fixtures"
 SCENARIOS_DIR = "scenarios"
 EVALUATION_DIR = "evaluation"
 GUARDRAILS_FILE = "guardrails.json"
+PHRASES_FILE = "phrases.json"
 
 
 @dataclass(frozen=True)
@@ -91,6 +94,12 @@ class Pack:
     def guardrails(self) -> Path | None:
         """The pack's own guardrail entries, when it declares any."""
         path = self.root / GUARDRAILS_FILE
+        return path if path.is_file() else None
+
+    @property
+    def phrases(self) -> Path | None:
+        """The pack's own layer of the phrase catalog, when it ships one."""
+        path = self.root / PHRASES_FILE
         return path if path.is_file() else None
 
 

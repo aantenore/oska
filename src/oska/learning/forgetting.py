@@ -17,35 +17,29 @@ text redacted, and its history of decisions kept.
 
 These are the two stores `oska.governance.retention` asks for, each answering
 for one session at a time. The change requests are asked first: they are found
-through the proposals they were composed from.
+through the proposals they were composed from. Both reach the proposals and the
+change requests through their store interfaces, so a directory on one machine
+and a database shared by several replicas are removed from the same way.
 """
 
 from __future__ import annotations
 
-import shutil
-
 from oska.contracts.proposal import QualityReport, SkillProposal
-from oska.learning.changes import (
-    REQUEST_FILENAME,
-    SUMMARY_FILENAME,
-    ChangeRequest,
-    ChangeRequestState,
-    ChangeRequestStore,
-)
-from oska.learning.proposals import ProposalStore
+from oska.contracts.stores import ChangeRequestRecordStore, ProposalRecordStore
+from oska.learning.changes import ChangeRequest, ChangeRequestState
 
 __all__ = ["FORGOTTEN", "ChangeRequestRecords", "ProposalRecords"]
 
 FORGOTTEN = "[forgotten]"
 """What a redacted field holds in place of what came from a forgotten session."""
 
-_KEPT_FILES = frozenset({REQUEST_FILENAME, SUMMARY_FILENAME})
-
 
 class ProposalRecords:
     """The proposals drafted from a session, as retention removes them."""
 
-    def __init__(self, proposals: ProposalStore, changes: ChangeRequestStore) -> None:
+    def __init__(
+        self, proposals: ProposalRecordStore, changes: ChangeRequestRecordStore
+    ) -> None:
         self._proposals = proposals
         self._changes = changes
 
@@ -69,7 +63,9 @@ class ProposalRecords:
 class ChangeRequestRecords:
     """The change requests composed from a session's proposals, as retention removes them."""
 
-    def __init__(self, proposals: ProposalStore, changes: ChangeRequestStore) -> None:
+    def __init__(
+        self, proposals: ProposalRecordStore, changes: ChangeRequestRecordStore
+    ) -> None:
         self._proposals = proposals
         self._changes = changes
 
@@ -87,22 +83,13 @@ class ChangeRequestRecords:
             if request.state is ChangeRequestState.applied:
                 count += self._redact(request)
                 continue
-            shutil.rmtree(self._changes.directory(request.request_id))
+            self._changes.delete(request.request_id)
             count += 1
         return count
 
     def _redact(self, request: ChangeRequest) -> int:
         """Take the package out of an applied request, keeping the record of the decision."""
-        directory = self._changes.directory(request.request_id)
-        removed = False
-        for entry in sorted(directory.iterdir()):
-            if entry.name in _KEPT_FILES:
-                continue
-            if entry.is_dir():
-                shutil.rmtree(entry)
-            else:
-                entry.unlink()
-            removed = True
+        removed = self._changes.drop_package(request.request_id)
         if not removed and not request.quality.issues:
             return 0
         kept = request.model_copy(

@@ -77,9 +77,10 @@ can be made to do.
   single-user.
 - **Storage.** The stores behind declared interfaces, the atomic claim, removal
   through the interfaces, the namespace of a shared database, and a conformance
-  run that keeps to namespaces of its own (`OSKA-GOV-35` to `OSKA-GOV-37`,
-  `OSKA-GOV-45`, `OSKA-XC-36`), are statements about the backend a deployment
-  chooses.
+  run that keeps to namespaces of its own, and the audit trail and review queue
+  every process of a shared backend reads alike (`OSKA-GOV-35` to `OSKA-GOV-37`,
+  `OSKA-GOV-45`, `OSKA-GOV-56`, `OSKA-XC-36`), are statements about the backend
+  a deployment chooses.
 - **Publication.** Handing a change request to a publisher, a branch or a pull
   request, and the actor a commit may be authored as (`OSKA-EVO-36` to
   `OSKA-EVO-40`, `OSKA-GOV-49`), is how a deployment chooses to review what its
@@ -724,6 +725,7 @@ accident.
 | OSKA-GOV-53 | `src/oska/engine/factory.py`, `src/oska/catalog/registry.py` | `tests/unit/test_revision.py` |
 | OSKA-GOV-54 | `src/oska/api/routes.py`, `src/oska/engine/budget.py` | `tests/unit/test_api.py` |
 | OSKA-GOV-55 | `src/oska/api/identity.py`, `src/oska/config.py`, `src/oska/cli/commands_serve.py` | `tests/unit/test_channel_identity.py` |
+| OSKA-GOV-56 | `src/oska/storage/protocols.py`, `src/oska/contracts/stores.py`, `src/oska/storage/postgres_audit.py`, `src/oska/storage/postgres_proposals.py`, `src/oska/storage/postgres_changes.py`, `src/oska/services.py` | `tests/unit/test_storage_contract_shared.py` |
 
 ### Cognition (L5)
 

@@ -13,16 +13,17 @@ rewrote the catalog it answered from. It now composes a change request: the
 same package, written under the change request root for a person to read, with
 the request id recorded in the transition note. `transition` takes no catalog
 root and cannot be given one. A caller that wants the package installed calls
-`ChangeRequestStore.apply` with the root it names, which is reachable from a
+`apply` on the change request store with the root it names, which is reachable from a
 terminal and from nowhere in the engine, the HTTP application or a job.
 
 Publication is also where the derived routing examples of the new procedure are
 written, when a provider is given and enrichment is enabled. They are written
 beside the package inside the change request, so they travel with it and land
-in the catalog when a person applies it. That work follows the publication and
-never gates it: a provider that fails, or a file that cannot be written, is
-recorded in the transition note and leaves the composed package exactly as it
-is.
+in the catalog when a person applies it. They are written through the change
+request store, so a package kept in a database carries them as a directory
+does. That work follows the publication and never gates it: a provider that
+fails, or a file that cannot be written, is recorded in the transition note and
+leaves the composed package exactly as it is.
 
 Once composed, the request is handed to a publisher. The default is the change
 request root itself; a `GitPublisher` also writes the package into a new branch
@@ -45,7 +46,7 @@ from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 
-from oska.catalog.enrichment import PhraseProvider, enrich, write_examples
+from oska.catalog.enrichment import PhraseProvider, enrich, render_examples
 from oska.catalog.loader import parse_skill_text
 from oska.catalog.registry import Catalog
 from oska.config import EnrichmentConfig
@@ -57,14 +58,14 @@ from oska.contracts.proposal import (
     SkillProposal,
 )
 from oska.contracts.skill import Skill
+from oska.contracts.stores import ChangeRequestRecordStore, ProposalRecordStore
 from oska.learning import quality
 from oska.learning.changes import (
     ChangeRequest,
     ChangeRequestError,
-    ChangeRequestStore,
     new_request,
 )
-from oska.learning.proposals import ProposalStore, render_skill, split_skill
+from oska.learning.proposals import render_skill, split_skill
 from oska.learning.publishers import ChangePublisher, DirectoryPublisher
 
 ALLOWED: dict[ProposalState, frozenset[ProposalState]] = {
@@ -81,14 +82,14 @@ class LifecycleError(RuntimeError):
 
 
 def transition(
-    store: ProposalStore,
+    store: ProposalRecordStore,
     proposal_id: str,
     to: ProposalState | str,
     by: str,
     note: str = "",
     *,
     registry: Catalog,
-    changes: ChangeRequestStore,
+    changes: ChangeRequestRecordStore,
     schema_dir: Path | None = None,
     provider: PhraseProvider | None = None,
     enrichment: EnrichmentConfig | None = None,
@@ -104,7 +105,7 @@ def transition(
 
     Reaching `published` composes a change request rather than writing into a
     catalog: there is no catalog root to pass here, and the effect of the last
-    step is a package under `changes.root` that a person reads and applies.
+    step is a package in the change request store that a person reads and applies.
     `publisher` then puts it in front of that person; the change request root
     is the default, and a git publisher adds a branch.
     """
@@ -129,9 +130,11 @@ def transition(
             raise LifecycleError(f"the proposal does not pass its checks: {listed}")
         markdown, composed, request = _compose(proposal, registry, changes, actor, source)
         proposal.skill_markdown = markdown
-        note = _and(note, f"change request {request.request_id} at {changes.root}")
+        note = _and(note, f"change request {request.request_id} at {changes.location}")
         note = _published(note, request, changes, publisher or DirectoryPublisher())
-        note = _with_enrichment(note, composed, provider, enrichment, languages)
+        note = _with_enrichment(
+            note, composed, request, changes, provider, enrichment, languages
+        )
     proposal.state = target
     proposal.history.append(
         ProposalTransition(
@@ -156,6 +159,8 @@ def next_version(registry: Catalog, skill_id: str) -> int:
 def _with_enrichment(
     note: str,
     skill: Skill,
+    request: ChangeRequest,
+    changes: ChangeRequestRecordStore,
     provider: PhraseProvider | None,
     config: EnrichmentConfig | None,
     languages: Sequence[str],
@@ -174,14 +179,17 @@ def _with_enrichment(
         examples = enrich(skill, provider, config, languages)
         if not examples:
             return _and(note, "no routing examples were written: the provider returned none")
-        write_examples(skill, examples, config)
+        changes.add_file(request.request_id, config.filename, render_examples(skill, examples))
     except Exception as exc:  # enrichment never blocks a publication
         return _and(note, f"the routing examples were not written: {type(exc).__name__}: {exc}")
     return _and(note, f"routing examples written for {', '.join(sorted(examples))}")
 
 
 def _published(
-    note: str, request: ChangeRequest, changes: ChangeRequestStore, publisher: ChangePublisher
+    note: str,
+    request: ChangeRequest,
+    changes: ChangeRequestRecordStore,
+    publisher: ChangePublisher,
 ) -> str:
     """Hand the composed request to its publisher, and say in the note what came of it."""
     try:
@@ -201,7 +209,7 @@ def _and(note: str, addition: str) -> str:
 def _compose(
     proposal: SkillProposal,
     registry: Catalog,
-    changes: ChangeRequestStore,
+    changes: ChangeRequestRecordStore,
     actor: str,
     source: ActorSource,
 ) -> tuple[str, Skill, ChangeRequest]:
@@ -212,7 +220,7 @@ def _compose(
     settled again by `apply`, which refuses to overwrite one that is there.
     """
     frontmatter, body = split_skill(proposal.skill_markdown)
-    skill = parse_skill_text(proposal.skill_markdown, changes.root / SKILL_FILENAME)
+    skill = parse_skill_text(proposal.skill_markdown, Path(changes.location) / SKILL_FILENAME)
     version = next_version(registry, skill.id)
     frontmatter["version"] = version
     frontmatter["status"] = "published"
@@ -220,6 +228,6 @@ def _compose(
     request = new_request(
         proposal.proposal_id, skill.id, version, actor, proposal.quality, actor_source=source
     )
-    directory = changes.save(request, skill_markdown=markdown, policy=proposal.policy)
-    path = directory / request.package / SKILL_FILENAME
+    where = changes.save(request, skill_markdown=markdown, policy=proposal.policy)
+    path = Path(str(where)) / request.package / SKILL_FILENAME
     return markdown, parse_skill_text(markdown, path), request

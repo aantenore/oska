@@ -2,7 +2,8 @@
 
 Every function here is pure over the packs it is given: which packs a domain
 serves and in what order, which integrations they bind and what those bindings
-may read, which guardrails they add, which synonyms they declare, and the
+may read, which guardrails they add, which synonyms they declare, which layers
+of phrases they lay over the catalog the runtime speaks from, and the
 connector registry of one tenant in one domain. The runtime in
 `oska.platform.runtime` calls them; nothing here holds state.
 """
@@ -15,10 +16,11 @@ from pathlib import Path
 
 from oska.catalog.registry import Catalog, SkillRegistry
 from oska.catalog.resolver import CapabilityResolver
-from oska.config import ResilienceConfig, RuntimeConfig
+from oska.config import ResilienceConfig, RuntimeConfig, Settings
 from oska.connectors.base import ConnectorError
 from oska.connectors.registry import ConnectorRegistry, check_bindings, read_bindings
 from oska.contracts.platform import DomainSpec, EnvironmentSpec, HostIdentity
+from oska.engine.phrases import load_phrases, read_catalog
 from oska.governance.guardrails import Guardrail, GuardrailCatalog, GuardrailError
 from oska.platform.errors import ManifestError, PlatformError
 from oska.platform.host import HostedResolver
@@ -32,6 +34,7 @@ __all__ = [
     "domain_guardrails",
     "domain_integrations",
     "domain_packs",
+    "domain_phrases",
     "domain_synonyms",
     "hosted",
     "merge_connectors",
@@ -147,6 +150,40 @@ def domain_synonyms(spec: DomainSpec, packs: Sequence[Pack]) -> dict[str, str]:
             merged.setdefault(term, named)
             owner.setdefault(term, pack.name)
     return merged
+
+
+def domain_phrases(
+    spec: DomainSpec, packs: Sequence[Pack], runtime: RuntimeConfig, settings: Settings
+) -> tuple[Path, ...]:
+    """The phrase layers a domain's packs ship, in pack order, each checked.
+
+    Each layer is checked laid over the packaged and the configured catalog,
+    the way the engine will load it: known phrases only, the placeholders of
+    each English phrase, and approval words the approval rules accept. A
+    phrase two packs of one domain give differently in one language is refused
+    with both packs named; two packs giving it the same way agree.
+    """
+    layers: list[Path] = []
+    owner: dict[tuple[str, str], tuple[str, object]] = {}
+    for pack in packs:
+        path = pack.phrases
+        if path is None:
+            continue
+        try:
+            catalog = read_catalog(path)
+            load_phrases(runtime, settings, (path,))
+        except (OSError, ValueError) as exc:
+            raise PlatformError(f"domain {spec.name}: pack {pack.name}: {exc}") from exc
+        for language, entries in catalog.items():
+            for key, entry in entries.items():
+                held = owner.setdefault((language, key), (pack.name, entry))
+                if held[1] != entry:
+                    raise PlatformError(
+                        f"domain {spec.name}: phrase {key} in language {language!r} is "
+                        f"given one way by pack {held[0]} and another by pack {pack.name}"
+                    )
+        layers.append(path)
+    return tuple(layers)
 
 
 def check_domain_bindings(spec: DomainSpec, packs: Sequence[Pack]) -> None:

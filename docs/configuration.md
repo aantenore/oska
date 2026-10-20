@@ -112,9 +112,11 @@ the session is waiting for something.
 | `reject_tokens` | a write is waiting | The message refuses it |
 | `cancel_tokens` | a write is waiting, or a goal is under way | The message drops what is under way |
 
-The shipped lists carry English and Italian. Add the languages your operators
-use; these are also shown to the model router in its prompt, so the two layers
-agree on what a yes looks like. The words an approval request tells a person to
+The shipped lists carry English and Italian, and the yes and no of Spanish,
+French and German (`sí`/`no`, `oui`/`non`, `ja`/`nein`), which are the words
+the packaged phrase catalog asks for in those languages. Add the languages
+your operators use; these are also shown to the model router in its prompt, so
+the two layers agree on what a yes looks like. The words an approval request tells a person to
 type (`approve_word` and `reject_word` in the phrase catalog) must be among these
 lists in every language the deployment answers in (`reply.default_language` and
 `discovery.languages`), or the runtime refuses to start. An empty list is not
@@ -139,7 +141,7 @@ call on phrasings an author wrote down, not to guess.
 | Key | Default | Meaning |
 | --- | --- | --- |
 | `ledger.path` | `state/ledger.sqlite` | The write ledger |
-| `audit.path` | `state/audit.jsonl` | The audit trail |
+| `audit.path` | `state/audit.jsonl` | The audit trail, with the `sqlite` backend; with `postgres` it is a table of the database and this path is not read |
 | `sessions.path` | `state/sessions.sqlite` | Conversation state, one row per session |
 | `learning.publish_root` | `state/skills` | The catalog root a change request is meant to land in |
 
@@ -340,7 +342,7 @@ person approved was composed from it.
 
 | Key | Default | Meaning |
 | --- | --- | --- |
-| `changes.root` | `state/changes` | Where a proposed catalog change is written for a person to review, resolved under the state directory |
+| `changes.root` | `state/changes` | Where a proposed catalog change is written for a person to review, resolved under the state directory, with the `sqlite` backend; with `postgres` the requests and their packages are tables of the database and this path is not read |
 
 One directory per request, holding the package laid out the way a catalog root
 is laid out, the request record and a summary. Moving it moves where a reviewer
@@ -430,6 +432,14 @@ also why the number deserves a decision rather than a default.
 | `storage.url_env` | `"OSKA_DATABASE_URL"` | The environment variable the address is read from, only when the backend is `postgres` |
 | `storage.busy_timeout_seconds` | `10.0` | SQLite: how long a connection waits for another to finish before it gives up. PostgreSQL: the connect and lock timeout derived from the same value |
 
+The backend keeps five stores: the ledger, the sessions, the audit trail, the
+proposals and the change requests with their packages. With `sqlite` they are
+files under the state directory: the two SQLite files, `audit.path`,
+`proposals/` and `changes.root`. With `postgres` all five are tables of one
+database, so several replicas share one ledger, one set of sessions, one audit
+trail (and so one service-level report and one `/metrics`), and one review
+queue.
+
 With `sqlite`, the sessions and the ledger are files, and two turns of the same
 process may write at once; this is how long one waits for the other rather
 than failing the turn. Raising it is worth doing only when turns start failing
@@ -440,13 +450,14 @@ setting to run with. With `postgres`, both stores go through `psycopg`
 with, as in `pip install 'oska[postgres]==<version>'`) against the address
 `url_env` names, with numbered migrations applied under an advisory lock the
 first time a process opens the database. The two backends satisfy the same
-`LedgerStore` and `SessionStateStore` protocols in `oska.storage`, run through
-one contract test suite (`tests/unit/test_storage_contract.py`) — always
-against SQLite, and against PostgreSQL when `OSKA_TEST_POSTGRES_URL`
+`LedgerStore`, `SessionStateStore`, `AuditStore`, `ProposalRecordStore` and
+`ChangeRequestRecordStore` protocols in `oska.storage`, run through one
+contract test suite (`tests/unit/test_storage_contract.py` and
+`tests/unit/test_storage_contract_shared.py`) — always against the files
+backend, and against PostgreSQL when `OSKA_TEST_POSTGRES_URL`
 names a real server, which the `postgres` job of this repository's CI does
 against a PostgreSQL 16 service container.
-Choosing `postgres` is for more than one process sharing one ledger and one
-set of sessions, where SQLite's single-file lock would serialize every write
+Choosing `postgres` is for more than one process sharing one record, where SQLite's single-file lock would serialize every write
 across every replica instead of only the ones that collide.
 
 Isolating a (tenant, domain) pair's state differs by backend as well. SQLite
@@ -783,10 +794,10 @@ Everything mutable lives under `OSKA_STATE_DIR`, `state/` by default, and
 state/
   sessions.sqlite     session state: history, principal, revision, pending goal, pending approval, language
   ledger.sqlite       write receipts
-  audit.jsonl         one JSON event per line
+  audit.jsonl         one JSON event per line (sqlite backend; a table with postgres)
   traces.jsonl        one span per line, only when tracing is on
-  proposals/          one JSON file per proposal, named by proposal id
-  changes/            one directory per change request: the package, the request, the summary
+  proposals/          one JSON file per proposal, named by proposal id (sqlite backend)
+  changes/            one directory per change request: the package, the request, the summary (sqlite backend)
   revisions/          one directory per tenant, holding its built revisions and the CURRENT file
   skills/             a catalog root an applied change request lands in
   learned/            one directory per procedure, holding the phrasings learned for it

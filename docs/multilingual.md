@@ -152,8 +152,10 @@ in the language the session settled on.
 }
 ```
 
-The package ships the catalog in English and Italian; `reply.phrases` names the
-file a deployment lays over it. The rules it is held to:
+The package ships the catalog in English, Italian, Spanish, French and German;
+`reply.phrases` names the file a deployment lays over it, and on a platform
+each pack may ship a `phrases.json` of its own (see below). The rules every
+layer is held to:
 
 - **English is complete.** The set of phrases is fixed by the code that asks
   for them, and the packaged English holds every one. A configured file may
@@ -180,23 +182,60 @@ file a deployment lays over it. The rules it is held to:
   languages the deployment answers in, `reply.default_language` and
   `discovery.languages`, not every language the catalog holds; a token list
   left empty is not checked, because the model router then reads the answer.
-  The shipped Italian says `sì` and `no`.
+  The shipped catalog says `sì` and `no` in Italian, `sí` and `no` in Spanish,
+  `oui` and `non` in French, and `ja` and `nein` in German, and the shipped
+  token lists accept each of them.
 
 Two entries are lists rather than sentences. `claim_verified` holds the words
 that call a write verified and `negations` the phrases that say it is not. The
 conformance check for an overstated write reads both, in every language the
-catalog holds, so a reply in Italian is held to the same check as one in
+catalog holds, so a reply in any of them is held to the same check as one in
 English. They are matched as case-insensitive substrings, so a stem such as
-`verificat` covers every ending.
+`verificat` covers every ending. The shipped claim words are `verified`,
+`verificat`, `verificad`, `vérifié` and `verifiziert`; the negations of each
+language cover the ways its receipt lines and an honest reply say a write is
+not verified. Because the words of every language are applied to every reply,
+a claim word of one language must not appear in a sentence of another that
+does not claim anything; the shipped catalog is checked for that phrase by
+phrase.
 
 What is handed to a model stays in English and out of the catalog: the facts
 about whether a write landed, the instruction about a capability that is down,
 the brief for a request outside the catalog, and the host facts. A model reads
 them; a person does not.
 
-Possible next steps, not taken yet: letting a pack contribute its own layer of
-phrases, which the layered load already allows for, and translating the
-catalog into further languages.
+Holding a language in the catalog does not add it to `discovery.languages`.
+The shipped list stays `["en", "it"]`, because that list is also what
+`oska enrich run` derives routing examples for, and each language on it costs
+one enrichment pass over the catalog. A turn in Spanish, French or German is
+answered in its language whatever the list says; a deployment that expects
+requests in one of them adds it there and runs a pass, and its approval words
+are then checked against the rules as well.
+
+### Layers, and a pack's own phrases
+
+The catalog is built in layers, each laid over the ones before it per phrase
+and per language:
+
+1. the packaged catalog;
+2. the catalog `reply.phrases` names;
+3. on a platform, the `phrases.json` at the root of each pack a domain serves,
+   in the order the domain serves its packs (a pack after the packs it depends
+   on).
+
+A pack file has the same shape as the catalog. It may translate a phrase into
+a language the catalog lacks, or reword one it holds, for the domains that
+serve the pack and no other; it may not name a phrase the runtime does not ask
+for. Each pack file is checked laid over the first two layers, by the same
+rules as above, when the platform is assembled and by `oska pack check`: a
+placeholder that differs from the English phrase, a list given as a sentence,
+or an approval word the rules do not accept is refused with the domain and the
+pack named. Two packs of one domain that give the same phrase in the same
+language differently are refused with both packs named; two that give it the
+same way agree.
+
+Possible next step, not taken yet: translating the catalog into further
+languages.
 
 ## Configuration
 

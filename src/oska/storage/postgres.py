@@ -15,7 +15,9 @@ next number and never edited once released.
 Every row carries the namespace of the store that wrote it, and every key and
 every query names it, so tenants and domains pointed at one database never
 read each other's rows. The second migration added it; rows written before it
-belong to the default namespace.
+belong to the default namespace. The third added the audit trail, the
+proposals and the change requests with their packages, namespaced from the
+start, so several replicas append to one trail and review one queue.
 
 Every call opens its own connection and closes it, the way the SQLite stores
 do, and a connection waits at most `busy_timeout` seconds for a lock another
@@ -128,6 +130,56 @@ MIGRATIONS: tuple[Migration, ...] = (
             "ON oska_sessions (namespace, updated_at)",
         ),
     ),
+    Migration(
+        3,
+        "the audit trail, proposals and change requests, shared by every replica",
+        (
+            """
+            CREATE TABLE IF NOT EXISTS oska_audit_events (
+                namespace TEXT NOT NULL,
+                seq BIGINT GENERATED ALWAYS AS IDENTITY,
+                session_id TEXT NOT NULL,
+                turn_id TEXT NOT NULL,
+                kind TEXT NOT NULL,
+                at TIMESTAMPTZ NOT NULL,
+                event JSONB NOT NULL,
+                PRIMARY KEY (namespace, seq)
+            )
+            """,
+            "CREATE INDEX IF NOT EXISTS oska_audit_events_namespace_session "
+            "ON oska_audit_events (namespace, session_id)",
+            """
+            CREATE TABLE IF NOT EXISTS oska_proposals (
+                namespace TEXT NOT NULL,
+                proposal_id TEXT NOT NULL,
+                state TEXT NOT NULL,
+                source_session_id TEXT NOT NULL,
+                proposal JSONB NOT NULL,
+                PRIMARY KEY (namespace, proposal_id)
+            )
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS oska_change_requests (
+                namespace TEXT NOT NULL,
+                request_id TEXT NOT NULL,
+                proposal_id TEXT NOT NULL,
+                state TEXT NOT NULL,
+                created_at TIMESTAMPTZ NOT NULL,
+                request JSONB NOT NULL,
+                PRIMARY KEY (namespace, request_id)
+            )
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS oska_change_request_files (
+                namespace TEXT NOT NULL,
+                request_id TEXT NOT NULL,
+                name TEXT NOT NULL,
+                content TEXT NOT NULL,
+                PRIMARY KEY (namespace, request_id, name)
+            )
+            """,
+        ),
+    ),
 )
 
 _MIGRATIONS_TABLE = """
@@ -186,6 +238,11 @@ class Database:
         self._busy_timeout = DEFAULT_BUSY_TIMEOUT_SECONDS if busy_timeout is None else busy_timeout
         self._ready = False
         self._opening = threading.Lock()
+
+    @property
+    def identity(self) -> str:
+        """A name for this database that tells two addresses apart and carries no credential."""
+        return hashlib.sha256(self._url.encode("utf-8")).hexdigest()[:12]
 
     @contextmanager
     def connect(self) -> Iterator[Any]:

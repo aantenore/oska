@@ -30,14 +30,11 @@ from typing import Annotated
 import typer
 
 from oska.cli.options import SkillsOption, fail, settings_for
-from oska.learning.changes import (
-    REQUEST_FILENAME,
-    SUMMARY_FILENAME,
-    ChangeRequestError,
-    ChangeRequestStore,
-    store_for,
-)
+from oska.config import load_runtime_config
+from oska.contracts.change import ChangeRequestError
 from oska.learning.publishers import DEFAULT_REMOTE, CommandOpener, GitPublisher
+from oska.services import open_changes
+from oska.storage import ChangeRequestRecordStore
 
 __all__ = ["app"]
 
@@ -123,10 +120,8 @@ def show(request_id: str, skills: SkillsOption = None) -> None:
     except (KeyError, ChangeRequestError) as exc:
         fail(str(exc))
     typer.echo(json.dumps(request.model_dump(mode="json"), indent=2, ensure_ascii=False))
-    directory = store.directory(request_id)
-    for path in sorted(directory.rglob("*")):
-        if path.is_file() and path.name not in (REQUEST_FILENAME, SUMMARY_FILENAME):
-            typer.echo(f"  {path.relative_to(directory)}")
+    for name in sorted(store.files(request_id)):
+        typer.echo(f"  {request.package}/{name}")
 
 
 @app.command("apply")
@@ -199,6 +194,7 @@ def reject(
     typer.echo(f"rejected {request.request_id} by {request.decided_by}")
 
 
-def _store(skills: list[Path] | None) -> ChangeRequestStore:
-    """The change request store these settings configure."""
-    return store_for(settings_for(skills))
+def _store(skills: list[Path] | None) -> ChangeRequestRecordStore:
+    """The change request store these settings configure, on the configured backend."""
+    settings = settings_for(skills)
+    return open_changes(load_runtime_config(settings=settings), settings)

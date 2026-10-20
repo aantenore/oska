@@ -9,6 +9,11 @@ thing that removes lines from it is retention, and it does so by writing a new
 file beside the old one and renaming it over the top: a trail half-rewritten by
 an interrupted process is worse than one that still holds what should have gone,
 so the replacement is never partially visible.
+
+`JsonlSink` is also the file-backed audit store: what the report, the metrics,
+the improvement job and retention read and remove goes through the same
+interface a database-backed trail answers (`oska.storage.AuditStore`), so a
+reader is handed either and does not ask which.
 """
 
 from __future__ import annotations
@@ -16,11 +21,14 @@ from __future__ import annotations
 import json
 import os
 import tempfile
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from pathlib import Path
-from typing import Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from oska.contracts.events import AuditEvent
+
+if TYPE_CHECKING:
+    from oska.storage.protocols import AuditStore
 
 
 @runtime_checkable
@@ -58,11 +66,63 @@ class JsonlSink:
         """File this sink appends to."""
         return self._path
 
+    @property
+    def location(self) -> str:
+        """The file, as a person finds it."""
+        return str(self._path)
+
     def emit(self, event: AuditEvent) -> None:
         """Append the event as a single line."""
         self._path.parent.mkdir(parents=True, exist_ok=True)
         with self._path.open("a", encoding="utf-8") as handle:
             handle.write(event.model_dump_json() + "\n")
+
+    def events(self) -> list[AuditEvent]:
+        """Every audit event of the file, in the order it was appended.
+
+        A line that is not a readable event is skipped: a trail is append-only
+        and a half-written last line must not stop the rest from being read.
+        """
+        if not self._path.is_file():
+            return []
+        events: list[AuditEvent] = []
+        with self._path.open(encoding="utf-8") as handle:
+            for line in handle:
+                stripped = line.strip()
+                if not stripped:
+                    continue
+                try:
+                    events.append(AuditEvent.model_validate_json(stripped))
+                except ValueError:
+                    continue
+        return events
+
+    def exists(self) -> bool:
+        """Whether the file is there."""
+        return self._path.is_file()
+
+    def delete_sessions(
+        self, session_ids: Iterable[str], *, keep_kinds: Iterable[str] = ()
+    ) -> dict[str, int]:
+        """Rewrite the file without these sessions' events, keeping the kinds named."""
+        targets = set(session_ids)
+        kept = set(keep_kinds)
+        dropped: dict[str, int] = {}
+
+        def keep(entry: dict) -> bool:
+            held = entry.get("session_id")
+            if held in targets and entry.get("kind") not in kept:
+                dropped[held] = dropped.get(held, 0) + 1
+                return False
+            return True
+
+        if targets:
+            rewrite_jsonl(self._path, keep)
+        return dropped
+
+    def purge(self) -> int:
+        """Remove nothing: the namespace of a file trail is its file, which is not its to remove."""
+        return 0
 
 
 class MultiSink:
@@ -75,6 +135,13 @@ class MultiSink:
         """Hand the event to every sink."""
         for sink in self.sinks:
             sink.emit(event)
+
+
+def audit_trail(source: Path | str | AuditStore) -> AuditStore:
+    """The audit store a caller named: itself, or the file trail at a path."""
+    if isinstance(source, (str, Path)):
+        return JsonlSink(Path(source))
+    return source
 
 
 def rewrite_jsonl(path: Path, keep: Callable[[dict], bool]) -> int:

@@ -27,6 +27,7 @@ out so it can be deployed on its own or alongside other packs.
 <pack root>/scenarios/               optional: the pack's conformance suite
 <pack root>/evaluation/              optional: routing and redaction sets
 <pack root>/guardrails.json          optional: guardrail entries the pack adds
+<pack root>/phrases.json             optional: phrases the pack's domains say
 ```
 
 `examples/ops/` and `examples/access/` are both packs; each carries its own
@@ -298,6 +299,17 @@ each of its packs' own `guardrails.json` entries added; an identifier declared
 twice is refused, and the domain's skills are validated against the merged
 result — so a guardrail claimed by a runbook always resolves, and never to two
 different wordings.
+
+**Phrases.** A domain's phrase catalog is the packaged one, then the one
+`reply.phrases` names, then each of its packs' own `phrases.json`, in the
+order the domain serves its packs, laid per phrase and per language. A pack
+file has the shape of the phrase catalog and may only translate or reword
+phrases the runtime knows; each one is checked when the platform is assembled
+and by `oska pack check`, the way the catalog itself is (the placeholders of
+each English phrase, approval words the approval rules accept). A phrase two
+packs of one domain give differently in one language is refused with both
+packs named. Another domain never hears it. See
+[multilingual.md](multilingual.md#what-the-runtime-says-in-its-own-words).
 
 **State.** Every path a runtime writes to — sessions, the write ledger, the
 audit trail, traces, learned phrasings, proposals, change requests, catalog

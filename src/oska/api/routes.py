@@ -90,14 +90,13 @@ from oska.contracts.skill import Skill
 from oska.governance.identity import Principal, PrincipalMismatch
 from oska.learning import (
     ChangeRequest,
-    ChangeRequestStore,
     LifecycleError,
     draft_from_session,
-    store_for,
     transition,
 )
 from oska.platform import DomainMismatch, Platform, UnknownDomain, UnknownTenant
 from oska.services import Services
+from oska.storage import ChangeRequestRecordStore
 
 __all__ = [
     "ATTRIBUTES_HEADER",
@@ -613,9 +612,10 @@ def _refused() -> Iterator[None]:
         raise ApiError(404, "unknown_tenant", str(exc)) from exc
 
 
-def _changes(request: Request) -> ChangeRequestStore:
-    """The change request store these settings configure, read-only from here."""
-    return store_for(_services(request).settings)
+def _changes(request: Request) -> ChangeRequestRecordStore:
+    """The change request store of the runtime serving this request, read-only from here."""
+    store: ChangeRequestRecordStore = _services(request).changes
+    return store
 
 
 def _summary(skill: Skill) -> SkillSummary:

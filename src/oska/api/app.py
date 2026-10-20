@@ -61,10 +61,10 @@ from oska.api.metrics import metrics_router
 from oska.api.routes import ApiError, router
 from oska.config import Settings, load_runtime_config
 from oska.engine.engine import Engine
-from oska.learning.proposals import ProposalStore
 from oska.planner.provider import ModelProvider
 from oska.platform import Platform
 from oska.services import PROPOSALS_DIRNAME, Services, build_services
+from oska.storage import ProposalRecordStore
 
 __all__ = ["PROPOSALS_DIRNAME", "Services", "create_app"]
 
@@ -75,7 +75,7 @@ def create_app(
     settings: Settings | None = None,
     *,
     engine: Engine | None = None,
-    proposal_store: ProposalStore | None = None,
+    proposal_store: ProposalRecordStore | None = None,
     platform: Platform | None = None,
     provider: ModelProvider | None = None,
 ) -> FastAPI:

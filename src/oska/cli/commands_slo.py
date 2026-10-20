@@ -13,10 +13,12 @@ from typing import Annotated
 
 import typer
 
+from oska.audit.sink import audit_trail
 from oska.cli.options import JsonOption, SkillsOption, fail, settings_for
 from oska.config import Settings, load_runtime_config, state_path
 from oska.observability.metrics import ServiceReport, service_report
 from oska.observability.report import render_json, render_text
+from oska.storage import AuditStore, StorageError, open_audit
 
 __all__ = ["app"]
 
@@ -50,23 +52,28 @@ def report(
 ) -> None:
     """Print the service-level numbers, and name the ones that could not be computed."""
     settings = settings_for(skills)
-    path = audit or _audit_path(settings)
-    if not Path(path).is_file():
-        fail(f"no audit trail at {path}")
     try:
-        measured = service_report(Path(path), since_days=since, trace_path=_trace_path(settings))
-    except (OSError, ValueError) as exc:
+        trail = audit_trail(audit) if audit is not None else _configured_trail(settings)
+        found = trail.exists()
+    except StorageError as exc:
+        fail(str(exc))
+    if not found:
+        fail(f"no audit trail at {trail.location}")
+    try:
+        measured = service_report(trail, since_days=since, trace_path=_trace_path(settings))
+    except (OSError, ValueError, StorageError) as exc:
         fail(f"the record could not be read: {exc}")
-    typer.echo(render_json(measured) if as_json else _text(measured, Path(path)))
+    typer.echo(render_json(measured) if as_json else _text(measured, trail.location))
 
 
-def _text(measured: ServiceReport, audit: Path) -> str:
+def _text(measured: ServiceReport, audit: str) -> str:
     return "\n".join([f"audit trail {audit}", render_text(measured)])
 
 
-def _audit_path(settings: Settings) -> Path:
+def _configured_trail(settings: Settings) -> AuditStore:
+    """The trail this deployment keeps, on the storage backend it is configured with."""
     runtime = load_runtime_config(settings=settings)
-    return state_path(Path(settings.state_dir), runtime.audit.path)
+    return open_audit(runtime, settings)
 
 
 def _trace_path(settings: Settings) -> Path | None:

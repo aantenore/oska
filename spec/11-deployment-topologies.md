@@ -187,12 +187,20 @@ everything in the sections above holds for it as written.
 
 A relational backend behind the ledger and the session store is what lets a
 turn land on any replica: the claim, the receipt and the session state are the
-records a write depends on, and they are shared. The audit trail, the proposals
-and change requests of the learning loop, traces and derived phrases are still
-kept per process in the reference runtime. That is a limit of the runtime, not
-of the layers: a system that runs several replicas either keeps those behind
-shared stores of its own, or runs the learning loop against one replica and
-collects the audit trails as logs. The write path does not read them.
+records a write depends on, and they are shared. The same backend keeps the
+audit trail, the proposals and the change requests with their packages
+(`OSKA-GOV-56`), so every replica appends to one trail, the service-level
+report reads the same numbers whichever replica is asked, and a reviewer sees
+one queue whichever replica serves the review. Each of them is kept under the
+namespace of its (tenant, domain), and removal on request reaches all of them
+through the same interfaces.
+
+Traces and derived or learned phrases are still kept per process in the
+reference runtime. Traces are diagnostic and optional; derived and learned
+phrases are files a job writes for the runtime to read. A system that runs
+several replicas either ships traces to a collector and runs the improvement
+job against a volume every replica mounts, or keeps those behind shared stores
+of its own. The write path reads none of them.
 
 ## Trust boundaries
 

@@ -94,7 +94,11 @@ _NAME_ALLOWED = re.compile(r"[^a-z0-9]+")
 
 
 class ProposalStore:
-    """Proposals kept as one JSON file each, named after the proposal id."""
+    """Proposals kept as one JSON file each, named after the proposal id.
+
+    This is the file-backed `oska.contracts.stores.ProposalRecordStore`; a database
+    keeps the same proposals for several replicas behind the same interface.
+    """
 
     def __init__(self, directory: Path) -> None:
         self._directory = Path(directory)
@@ -103,6 +107,11 @@ class ProposalStore:
     def directory(self) -> Path:
         """Where the files are kept."""
         return self._directory
+
+    @property
+    def location(self) -> str:
+        """The directory, as a person finds it."""
+        return str(self._directory)
 
     def save(self, proposal: SkillProposal) -> Path:
         """Write a proposal, replacing any earlier copy. Returns its path."""
@@ -137,6 +146,10 @@ class ProposalStore:
         if not path.is_file():
             raise KeyError(f"unknown proposal: {proposal_id}")
         path.unlink()
+
+    def purge(self) -> int:
+        """Remove nothing: the namespace of a directory store is its directory, not its own."""
+        return 0
 
     def _path(self, proposal_id: str) -> Path:
         name = Path(proposal_id).name

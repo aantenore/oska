@@ -1,7 +1,8 @@
 """Where a change request is published for review: a directory, or a branch.
 
-A change request is always written under the change request root; that record
-is what every decision is read from. Publishing it is the step that puts the
+A change request is always written to the change request store; that record
+is what every decision is read from, whether the store is a directory or a
+database every replica shares. Publishing it is the step that puts the
 package in front of the person who reviews it, and there are two ways to do so.
 
 `directory` is the record itself: the package is already there, and a person
@@ -34,11 +35,11 @@ from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any, Protocol
 
+from oska.contracts.stores import ChangeRequestRecordStore
 from oska.learning.changes import (
     ChangeRequest,
     ChangeRequestError,
     ChangeRequestState,
-    ChangeRequestStore,
 )
 
 __all__ = [
@@ -69,7 +70,9 @@ class ChangePublisher(Protocol):
         """The name this publisher is selected by and recorded under."""
         ...
 
-    def publish(self, request: ChangeRequest, store: ChangeRequestStore) -> ChangeRequest:
+    def publish(
+        self, request: ChangeRequest, store: ChangeRequestRecordStore
+    ) -> ChangeRequest:
         """Publish one open request whose package the store holds, and record how."""
         ...
 
@@ -87,9 +90,11 @@ class DirectoryPublisher:
 
     name = "directory"
 
-    def publish(self, request: ChangeRequest, store: ChangeRequestStore) -> ChangeRequest:
+    def publish(
+        self, request: ChangeRequest, store: ChangeRequestRecordStore
+    ) -> ChangeRequest:
         """Return the request as it is, once the store is known to hold its package."""
-        if not (store.directory(request.request_id) / request.package).is_dir():
+        if not store.files(request.request_id):
             raise ChangeRequestError(f"change request {request.request_id} holds no package")
         return request
 
@@ -177,7 +182,9 @@ class GitPublisher:
         self._git = git
         self._allow_unverified = allow_unverified_actor
 
-    def publish(self, request: ChangeRequest, store: ChangeRequestStore) -> ChangeRequest:
+    def publish(
+        self, request: ChangeRequest, store: ChangeRequestRecordStore
+    ) -> ChangeRequest:
         """Write the package into a new branch, commit it as the actor, and record it.
 
         The branch and the commit are recorded as soon as the commit exists, so
@@ -198,8 +205,7 @@ class GitPublisher:
                 "not verified; a commit is authored as a verified actor only, unless the "
                 "operator allows an unverified one explicitly"
             )
-        source = store.directory(request.request_id) / request.package
-        if not source.is_dir():
+        if not store.files(request.request_id):
             raise ChangeRequestError(f"change request {request.request_id} holds no package")
         repository = self._repository.resolve()
         self._run(repository, "rev-parse", "--git-dir")
@@ -209,7 +215,7 @@ class GitPublisher:
             raise ChangeRequestError(
                 f"{relative} is already on {self._base}: a version is never overwritten"
             )
-        request.commit = self._commit(repository, branch, relative, source, request)
+        request.commit = self._commit(repository, branch, relative, store, request)
         request.publisher = self.name
         request.repository = str(repository)
         request.branch = branch
@@ -229,14 +235,14 @@ class GitPublisher:
         repository: Path,
         branch: str,
         relative: str,
-        source: Path,
+        store: ChangeRequestRecordStore,
         request: ChangeRequest,
     ) -> str:
         """Make the branch in a worktree of its own, commit the package, and remove the tree."""
         worktree = Path(tempfile.mkdtemp(prefix="oska-change-"))
         self._run(repository, "worktree", "add", "-b", branch, str(worktree), self._base)
         try:
-            shutil.copytree(source, worktree / relative)
+            store.write_package(request.request_id, worktree / relative)
             self._run(worktree, "add", "--", relative)
             self._run(
                 worktree,

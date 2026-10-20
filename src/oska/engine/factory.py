@@ -45,7 +45,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from pathlib import Path
 
-from oska.audit.sink import AuditSink, JsonlSink
+from oska.audit.sink import AuditSink
 from oska.audit.trace import JsonlTraceSink, TraceSink
 from oska.catalog.registry import (
     Catalog,
@@ -80,7 +80,13 @@ from oska.index.keyword import KeywordIndex
 from oska.planner.planner import Planner
 from oska.planner.provider import ModelProvider, provider_embeds
 from oska.router import FastPath, ModelRouter, RuleRouter, TurnRouter
-from oska.storage import DEFAULT_NAMESPACE, LedgerStore, open_ledger, open_sessions
+from oska.storage import (
+    DEFAULT_NAMESPACE,
+    LedgerStore,
+    open_audit,
+    open_ledger,
+    open_sessions,
+)
 
 __all__ = ["build_engine", "revision_ledger"]
 
@@ -100,6 +106,7 @@ def build_engine(
     synonyms: Mapping[str, str] | None = None,
     host: HostIdentity | None = None,
     namespace: str = DEFAULT_NAMESPACE,
+    phrase_layers: tuple[Path, ...] = (),
 ) -> Engine:
     """Assemble an engine from the settings and the configuration files they name.
 
@@ -110,7 +117,9 @@ def build_engine(
     `resolver` builds the catalog wording over the registry built here.
     `presentation` and `synonyms` are the serving domain's, `host` is who the
     reply writer is told it answers as, and `namespace` is what the session
-    store and the ledger are kept under.
+    store, the ledger and the audit trail are kept under. `phrase_layers` are
+    laid over the configured phrase catalog in order: the `phrases.json` of the
+    domain's packs.
     """
     runtime = runtime or load_runtime_config(settings=settings)
     budget = ModelBudget(runtime.turn.max_model_calls)
@@ -154,9 +163,9 @@ def build_engine(
     ledger = revision_ledger(
         open_ledger(runtime, settings, namespace=namespace), catalog=registry
     )
-    audit = audit_sink or JsonlSink(state_path(settings.state_dir, runtime.audit.path))
+    audit = audit_sink or open_audit(runtime, settings, namespace=namespace)
     preferences = preferences_root(settings.state_dir)
-    phrases = load_phrases(runtime, settings)
+    phrases = load_phrases(runtime, settings, phrase_layers)
     return Engine(
         registry=registry,
         resolver=wording,

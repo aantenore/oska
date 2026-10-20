@@ -13,8 +13,10 @@ The set of phrases is fixed here, in `REQUIRED`, because it is the code that
 asks for them. The catalog shipped with the package holds every one of them in
 English, the reference language, and loading refuses a packaged catalog that
 does not. A configured catalog is laid over it phrase by phrase, so it may
-translate a single sentence and leave the rest alone, and further layers can be
-laid the same way.
+translate a single sentence and leave the rest alone. Further layers are laid
+the same way after it: on a platform, the `phrases.json` of each pack a domain
+serves, in the order the domain serves them. Every layer is held to the same
+checks.
 
 A phrase is a template with named placeholders. The values put into it (an
 operation name, an integration id, a payload, a receipt id, a reason) are
@@ -65,6 +67,7 @@ __all__ = [
     "PhraseCatalogError",
     "Phrases",
     "load_phrases",
+    "read_catalog",
 ]
 
 REFERENCE_LANGUAGE = "en"
@@ -219,10 +222,17 @@ class Phrases:
         raise PhraseCatalogError(f"phrase {key!r} is missing from {REFERENCE_LANGUAGE!r}")
 
 
-def load_phrases(runtime: RuntimeConfig, settings: Settings) -> Phrases:
-    """The phrase catalog this deployment speaks with, checked against its approval rules."""
+def load_phrases(
+    runtime: RuntimeConfig, settings: Settings, layers: Sequence[Path] = ()
+) -> Phrases:
+    """The phrase catalog this deployment speaks with, checked against its approval rules.
+
+    The configured catalog is laid over the packaged one, and each of `layers`
+    over both, in order.
+    """
     return Phrases.load(
         phrases_path(runtime.reply, settings),
+        *layers,
         default_language=runtime.reply.default_language,
         rules=runtime.router.rules,
         spoken=runtime.discovery.languages,
@@ -298,6 +308,11 @@ def _merge(layers: Sequence[Mapping[str, Mapping[str, Entry]]]) -> dict[str, dic
         for language, entries in layer.items():
             merged.setdefault(language, {}).update(entries)
     return merged
+
+
+def read_catalog(path: Path) -> dict[str, dict[str, Entry]]:
+    """One catalog file as it is written, before any other layer is laid under it."""
+    return _read(path)
 
 
 def _read(path: Path) -> dict[str, dict[str, Entry]]:

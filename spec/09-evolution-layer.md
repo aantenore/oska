@@ -116,9 +116,10 @@ receipts and reads, never invented.
 
 ```text
 ProposalStore:
-  save(proposal) -> path
+  save(proposal)
   get(proposal_id) -> SkillProposal
   list(state) -> [SkillProposal]
+  delete(proposal_id)
 
 draft_from_session(state, catalog, provider | null) -> SkillProposal
 ```

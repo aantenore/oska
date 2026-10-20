@@ -8,7 +8,8 @@ on its own with its own connectors, reach the conformance level it claims.
 The pack is run the way a platform serves it: as the one pack of a domain,
 assembled by `oska.platform`, so its guardrails, synonyms and host reach the
 engine its scenarios run on, its skills are validated against the guardrail
-catalog that domain would hold, and the level it reports is the level a
+catalog that domain would hold, its `phrases.json`, when it ships one, is
+checked the way a platform checks it, and the level it reports is the level a
 platform will measure. The bindings are held to what a platform holds them to:
 a mock fixture is read only from inside the pack and nothing is read from the
 environment. A check runs the pack's bindings, and a pack may come from anyone,
@@ -53,7 +54,7 @@ from oska.index.base import LearnedPhrases
 from oska.index.discovery import Discovery
 from oska.index.keyword import KeywordIndex
 from oska.kit.scaffold import DEFAULT_HOST
-from oska.platform.assembly import domain_guardrails
+from oska.platform.assembly import domain_guardrails, domain_phrases
 from oska.platform.errors import PackError, PlatformError
 from oska.platform.packs import Pack, check_provides, check_requires, load_pack
 from oska.platform.runtime import Platform
@@ -108,6 +109,10 @@ def check_pack(
     except PackError as exc:
         errors.append(str(exc))
     guardrail_ids = _guardrail_ids(pack, domain, pack_settings, errors)
+    try:
+        domain_phrases(domain, [pack], load_runtime_config(settings=pack_settings), pack_settings)
+    except PlatformError as exc:
+        errors.append(str(exc))
     skills = registry.skills()
     validation_issues = list(registry.parse_errors())
     validation_issues.extend(

@@ -257,7 +257,7 @@ def test_a_failing_command_is_reported(tmp_path: Path) -> None:
 def test_the_cli_publishes_a_request_as_a_branch(
     store: ChangeRequestStore, repository: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr("oska.cli.commands_change.store_for", lambda settings: store)
+    monkeypatch.setattr("oska.cli.commands_change._store", lambda skills: store)
     request_id = _saved(store)
     result = runner.invoke(
         change_app, ["publish", request_id, "--repo", str(repository), "--path", "skills"]
@@ -272,7 +272,7 @@ def test_the_cli_publishes_a_request_as_a_branch(
 def test_the_cli_publishes_a_stated_approver_only_when_the_operator_allows_it(
     store: ChangeRequestStore, repository: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr("oska.cli.commands_change.store_for", lambda settings: store)
+    monkeypatch.setattr("oska.cli.commands_change._store", lambda skills: store)
     request_id = _saved(store, actor_source=ActorSource.stated)
 
     refused = runner.invoke(change_app, ["publish", request_id, "--repo", str(repository)])

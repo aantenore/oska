@@ -37,6 +37,10 @@ What a domain's runtime is built from:
   inside its pack. Each of these is checked when the platform is assembled;
 - its guardrail catalog is the platform's catalog with each pack's
   `guardrails.json` entries added, where an id defined twice is refused;
+- its phrase catalog is the packaged one with the configured one laid over it
+  and then the `phrases.json` of each of its packs, in the order it serves
+  them, each checked when the platform is assembled; a phrase two of its packs
+  give differently in one language is refused;
 - its synonyms are the `synonyms` of its packs merged, where a term two packs
   map to different catalog words is refused; its presentation is on when the
   domain enables it; its host is handed to the reply writer as well as to the
@@ -49,7 +53,8 @@ What a domain's runtime is built from:
   audit, traces, proposals, revisions and preferences of one tenant in one
   domain never share a file with another. Every state path in the runtime
   configuration must therefore be relative; an absolute one is refused. A
-  database backend keeps them apart by the storage namespace of the pair.
+  database backend keeps them apart by the storage namespace of the pair: the
+  ledger, the sessions, the audit trail, the proposals and the change requests.
 
 A session belongs to one tenant and one domain for its whole life. Its first
 turn records both on the session, and a turn naming the same session id in
@@ -89,6 +94,7 @@ from oska.platform.assembly import (
     domain_guardrails,
     domain_integrations,
     domain_packs,
+    domain_phrases,
     domain_synonyms,
     hosted,
     merge_connectors,
@@ -156,6 +162,12 @@ class Platform:
         }
         self._synonyms = {
             spec.name: domain_synonyms(spec, self._ordered[spec.name])
+            for spec in manifest.domains
+        }
+        self._phrases = {
+            spec.name: domain_phrases(
+                spec, self._ordered[spec.name], self._runtime, self._settings
+            )
             for spec in manifest.domains
         }
         self._overlays = self._load_overlays(
@@ -337,6 +349,7 @@ class Platform:
                 resolver=hosted(spec.host),
                 synonyms=self._synonyms[spec.name],
                 host=spec.host,
+                phrase_layers=self._phrases[spec.name],
                 namespace=pair if scope is None else f"{scope}/{pair}",
                 # The builder's keywords are checked where they are declared; mypy cannot
                 # match an open mapping against build_engine's fixed signature.
@@ -377,7 +390,9 @@ class Platform:
                     return self._claimed(held, lease)
             settings = self.settings_for(domain, tenant)
             engine = self.builder(domain, tenant)(settings, provider=self._provider)
-            built = build_services(settings, engine=engine)
+            built = build_services(
+                settings, engine=engine, namespace=storage_namespace(tenant, domain)
+            )
             evicted: list[Services] = []
             with self._lock:
                 self._cache[key] = built

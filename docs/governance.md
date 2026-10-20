@@ -544,8 +544,10 @@ each of those three does to the receipt.
 
 ## Audit
 
-Every step emits a typed event. The sink appends one JSON object per line to
-`state/audit.jsonl`; each event carries its kind, the session, a turn id that is
+Every step emits a typed event. With the `sqlite` backend the sink appends one
+JSON object per line to `state/audit.jsonl`; with `postgres` it appends one row
+per event to a table every replica shares, so the trail, the service-level
+report and retention see every replica's turns. Each event carries its kind, the session, a turn id that is
 unique per turn, the time, and a data object. The turn also returns its own
 events, which is what the conformance runner inspects.
 

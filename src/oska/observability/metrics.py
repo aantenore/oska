@@ -43,9 +43,10 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field
 
+from oska.audit.sink import audit_trail
 from oska.contracts.events import AuditEvent
 from oska.contracts.receipt import VerificationStatus
-from oska.improvement.signals import read_events
+from oska.storage.protocols import AuditStore
 
 __all__ = [
     "DEFAULT_REPORT_INTERVAL_SECONDS",
@@ -161,7 +162,7 @@ class _Turn:
 
 
 def service_report(
-    audit_path: Path,
+    audit_path: Path | AuditStore,
     *,
     since_days: int | None = None,
     trace_path: Path | None = None,
@@ -169,14 +170,16 @@ def service_report(
 ) -> ServiceReport:
     """Read the record of a deployment and report what it can say about itself.
 
-    `since_days` bounds the window backwards from `now`; without it the window
-    opens at the first event of the trail. `trace_path` is where the durations
+    The trail is a file path or an audit store, so a deployment whose replicas
+    share one trail reports what all of them served. `since_days` bounds the
+    window backwards from `now`; without it the window opens at the first event
+    of the trail. `trace_path` is where the durations
     are read from; without it, the trail is asked, because a deployment that
     records traces says in the audit event of every turn where they go.
     """
     moment = _aware(now)
-    trail = Path(audit_path)
-    events = read_events(trail)
+    trail = audit_trail(audit_path)
+    events = trail.events()
     since = moment - timedelta(days=since_days) if since_days is not None else None
     kept = [event for event in events if since is None or _aware(event.at) >= since]
     turns = _turns(kept)
@@ -192,7 +195,7 @@ def service_report(
     durations = _durations(trace_path or _traced_to(kept), window)
     return ServiceReport(
         turns=len(turns),
-        turns_missing="" if trail.is_file() else _NO_TRAIL,
+        turns_missing="" if trail.exists() else _NO_TRAIL,
         latency_p50=_percentile(durations, 0.50),
         latency_p95=_percentile(durations, 0.95),
         fallback_rate=_rate(
@@ -244,15 +247,18 @@ class ReportCache:
         """How long a computed report is served again."""
         return self._interval
 
-    def report(self, audit_path: Path, *, trace_path: Path | None = None) -> ServiceReport:
+    def report(
+        self, audit_path: Path | AuditStore, *, trace_path: Path | None = None
+    ) -> ServiceReport:
         """The report of this trail, computed at most once per interval."""
-        key = (str(audit_path), "" if trace_path is None else str(trace_path))
+        trail = audit_trail(audit_path)
+        key = (trail.location, "" if trace_path is None else str(trace_path))
         now = self._clock()
         with self._lock:
             held = self._held.get(key)
             if held is not None and now - held[0] < self._interval:
                 return held[1]
-        computed = service_report(audit_path, trace_path=trace_path)
+        computed = service_report(trail, trace_path=trace_path)
         with self._lock:
             self._held[key] = (now, computed)
         return computed

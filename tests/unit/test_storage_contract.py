@@ -676,7 +676,8 @@ def test_every_postgres_statement_is_scoped_to_the_namespace(
 
 def test_the_namespace_migration_gives_existing_rows_the_default_namespace() -> None:
     added = next(migration for migration in MIGRATIONS if migration.version == 2)
-    assert [migration.version for migration in MIGRATIONS] == [1, 2]
+    versions = [migration.version for migration in MIGRATIONS]
+    assert versions == list(range(1, len(versions) + 1))
     defaults = [statement for statement in added.statements if "ADD COLUMN" in statement]
     assert len(defaults) == 3
     assert all(f"DEFAULT '{DEFAULT_NAMESPACE}'" in statement for statement in defaults)

@@ -29,7 +29,10 @@
         "confermo",
         "approva",
         "procedi",
-        "va bene"
+        "va bene",
+        "s\u00ed",
+        "oui",
+        "ja"
       ],
       "reject_tokens": [
         "no",
@@ -44,7 +47,9 @@
         "rifiuta",
         "ferma",
         "interrompi",
-        "no grazie"
+        "no grazie",
+        "non",
+        "nein"
       ],
       "cancel_tokens": [
         "cancel",

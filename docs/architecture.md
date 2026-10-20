@@ -353,7 +353,14 @@ ledger and the session store already worked against an interface, not a file
 format — `oska.storage.protocols` names it, `oska.storage.sqlite*` and
 `oska.storage.postgres*` satisfy it, and `oska.storage.openers` picks one from
 `storage.backend`. Nothing in `oska.governance` or `oska.engine` imports
-either backend directly.
+either backend directly. The audit trail is reached the same way
+(`AuditStore`: the JSONL sink, or `postgres_audit`), and so are the proposals
+and the change requests. Their interfaces (`ProposalRecordStore`,
+`ChangeRequestRecordStore`) and the change request record are declared in
+`oska.contracts`, because their directory stores belong to `oska.learning`,
+which `oska.storage` may not import and which may not import it;
+`oska.services` opens them on the configured backend. With `postgres` all five
+stores are shared by every replica.
 
 `oska.platform` assembles a process from several packs rather than serving
 one catalog: `contracts.platform` holds the pack and manifest models,
@@ -567,9 +574,9 @@ that were read and the ledger.
 
 **Evolution proposes and does not install.** `oska.learning` parses,
 validates and renders skill files, and publication composes a change request: a
-package written under the change request root for a person to read.
+package written to the change request store for a person to read.
 `transition` takes no catalog root and cannot be given one. Copying that
-package into a catalog root is `ChangeRequestStore.apply`, which takes the root
+package into a catalog root is `apply` on the change request store, which takes the root
 from whoever calls it and is called from a terminal and from nowhere in the
 engine, the HTTP application or a job. So the process that answers people can
 propose a change to the catalog it answers from and can never make one.

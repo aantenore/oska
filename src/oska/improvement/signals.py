@@ -18,17 +18,17 @@ is still read from the trail and the ledger alone.
 
 from __future__ import annotations
 
-import json
 from collections.abc import Sequence
 from datetime import datetime
 from pathlib import Path
 
 from pydantic import BaseModel, Field
 
+from oska.audit.sink import audit_trail
 from oska.contracts.events import AuditEvent
 from oska.contracts.receipt import VerificationStatus
 from oska.improvement.feedback import TurnFeedback, latest
-from oska.storage.protocols import LedgerStore
+from oska.storage.protocols import AuditStore, LedgerStore
 
 __all__ = ["TurnSignal", "load_signals", "read_events"]
 
@@ -65,30 +65,18 @@ class TurnSignal(BaseModel):
         return self.verified_write or bool(self.outcomes)
 
 
-def read_events(audit_path: Path) -> list[AuditEvent]:
+def read_events(audit_path: Path | AuditStore) -> list[AuditEvent]:
     """Every audit event of a trail, in the order it was appended.
 
-    A line that is not a readable event is skipped: a trail is append-only and
-    a half-written last line must not stop the rest from being read.
+    The trail is a file path or an audit store; a line that is not a readable
+    event is skipped, because a half-written last line must not stop the rest
+    from being read.
     """
-    path = Path(audit_path)
-    if not path.is_file():
-        return []
-    events: list[AuditEvent] = []
-    with path.open(encoding="utf-8") as handle:
-        for line in handle:
-            stripped = line.strip()
-            if not stripped:
-                continue
-            try:
-                events.append(AuditEvent.model_validate_json(stripped))
-            except (ValueError, json.JSONDecodeError):
-                continue
-    return events
+    return audit_trail(audit_path).events()
 
 
 def load_signals(
-    audit_path: Path,
+    audit_path: Path | AuditStore,
     ledger: LedgerStore | None = None,
     feedback: Sequence[TurnFeedback] | None = None,
 ) -> list[TurnSignal]:

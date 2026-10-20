@@ -359,7 +359,10 @@ for, read in
 SQLite is the default and needs nothing installed beyond the base package.
 Moving to PostgreSQL is for more than one process sharing one write ledger
 and one set of sessions — a deployment with replicas, where two processes
-must agree on which write already happened.
+must agree on which write already happened. The same database then keeps the
+audit trail, the proposals and the change requests, so every replica reports
+the same numbers and reviews the same queue
+([docs/operating.md](operating.md#running-more-than-one-replica)).
 
 ```sh
 pip install 'oska[postgres]'
@@ -381,7 +384,9 @@ bounded by `storage.busy_timeout_seconds`; PostgreSQL claims a row with
 `INSERT ... ON CONFLICT DO NOTHING` and a `SELECT ... FOR UPDATE`, which locks
 only the row in question and scales across replicas instead of serializing
 every write behind one file. Both satisfy the same contract
-(`tests/unit/test_storage_contract.py`), run against SQLite always and against
+(`tests/unit/test_storage_contract.py`, and
+`tests/unit/test_storage_contract_shared.py` for the trail and the review
+queue), run against the files backend always and against
 PostgreSQL when `OSKA_TEST_POSTGRES_URL` names a real server. The `postgres`
 job of `.github/workflows/ci.yml` does that on every change: it starts the
 official `postgres:16` image as a service container, installs the `postgres`

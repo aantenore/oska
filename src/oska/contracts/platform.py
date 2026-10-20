@@ -65,10 +65,12 @@ class PackManifest(BaseModel):
     """Contents of `pack.yaml`: one business area, versioned and self-contained.
 
     The layout under the manifest is fixed: `skills/`, `configs/connectors.json`,
-    `fixtures/`, `scenarios/`, `evaluation/`, and an optional `guardrails.json`
-    whose entries are added to the platform catalog. `synonyms` maps how people
-    say a thing to how the catalog names it, so the runtime keeps no word list
-    of its own.
+    `fixtures/`, `scenarios/`, `evaluation/`, an optional `guardrails.json`
+    whose entries are added to the platform catalog, and an optional
+    `phrases.json`, shaped like the phrase catalog, laid over it for the
+    domains that serve the pack: it may translate or reword known phrases and
+    is held to the catalog's checks. `synonyms` maps how people say a thing to
+    how the catalog names it, so the runtime keeps no word list of its own.
     """
 
     name: str

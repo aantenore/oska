@@ -54,10 +54,10 @@ from oska.index.base import LearnedPhrases, SkillIndex
 from oska.index.discovery import Discovery
 from oska.index.embedding import EmbeddingIndex
 from oska.index.keyword import KeywordIndex
-from oska.learning.proposals import ProposalStore, draft_from_session
+from oska.learning.proposals import draft_from_session
 from oska.ontology.graph import OntologyGraph
 from oska.planner.provider import ModelProvider, provider_embeds
-from oska.storage import open_ledger
+from oska.storage import ProposalRecordStore, open_audit, open_ledger
 
 __all__ = ["PROPOSALS_DIRNAME", "run_job"]
 
@@ -71,7 +71,7 @@ def run_job(
     apply_tuning: bool = False,
     cases_path: Path | None = None,
     redactions_path: Path | None = None,
-    proposals: ProposalStore | None = None,
+    proposals: ProposalRecordStore | None = None,
     feedback: FeedbackStore | None = None,
 ) -> ImprovementReport:
     """Run the five steps, write the report, and return it."""
@@ -82,7 +82,7 @@ def run_job(
     ledger = open_ledger(runtime, settings)
 
     judged = (feedback or FeedbackStore(feedback_root(state_dir))).all()
-    signals = load_signals(state_path(state_dir, runtime.audit.path), ledger, judged)
+    signals = load_signals(open_audit(runtime, settings), ledger, judged)
     preferences = learn_preferences(judged, preferences_root(state_dir), provider=provider)
     kept = learned_phrases.learn(
         signals,
@@ -115,7 +115,12 @@ def run_job(
         min_score=runtime.discovery.min_score,
         provider=provider,
     )
-    store = proposals or ProposalStore(state_dir / PROPOSALS_DIRNAME)
+    if proposals is None:
+        # The assembly imports the engine, which imports this package.
+        from oska.services import open_proposals
+
+        proposals = open_proposals(runtime, settings)
+    store = proposals
     drafted = [_draft(gap, registry, store, settings, provider) for gap in gaps]
 
     report_path = state_path(state_dir, improvement.report_path)
@@ -170,7 +175,7 @@ def _tune(
 def _draft(
     gap: Gap,
     registry: Catalog,
-    store: ProposalStore,
+    store: ProposalRecordStore,
     settings: Settings,
     provider: ModelProvider | None,
 ) -> DraftedProposal:

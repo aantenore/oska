@@ -42,6 +42,7 @@ POSTGRES_IMAGE = "postgres:16"
 FIRST_PARTY_ACTIONS = ("actions/checkout@", "actions/setup-python@")
 CONTRACT_SUITE = "tests/unit/test_storage_contract.py"
 ISOLATION_SUITE = "tests/unit/test_conformance_postgres.py"
+SHARED_SUITE = "tests/unit/test_storage_contract_shared.py"
 
 
 def _jobs() -> dict:
@@ -117,7 +118,10 @@ def test_the_postgres_job_runs_every_suite_twice_in_a_row() -> None:
     suites = [
         run
         for run in runs
-        if run.startswith("pytest") and CONTRACT_SUITE in run and ISOLATION_SUITE in run
+        if run.startswith("pytest")
+        and CONTRACT_SUITE in run
+        and SHARED_SUITE in run
+        and ISOLATION_SUITE in run
     ]
     assert len(suites) == 2
     conform = [run for run in runs if run.startswith("oska conform")]

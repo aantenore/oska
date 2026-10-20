@@ -67,7 +67,7 @@
       "type": "object"
     }
   },
-  "description": "Contents of `pack.yaml`: one business area, versioned and self-contained.\n\nThe layout under the manifest is fixed: `skills/`, `configs/connectors.json`,\n`fixtures/`, `scenarios/`, `evaluation/`, and an optional `guardrails.json`\nwhose entries are added to the platform catalog. `synonyms` maps how people\nsay a thing to how the catalog names it, so the runtime keeps no word list\nof its own.",
+  "description": "Contents of `pack.yaml`: one business area, versioned and self-contained.\n\nThe layout under the manifest is fixed: `skills/`, `configs/connectors.json`,\n`fixtures/`, `scenarios/`, `evaluation/`, an optional `guardrails.json`\nwhose entries are added to the platform catalog, and an optional\n`phrases.json`, shaped like the phrase catalog, laid over it for the\ndomains that serve the pack: it may translate or reword known phrases and\nis held to the catalog's checks. `synonyms` maps how people say a thing to\nhow the catalog names it, so the runtime keeps no word list of its own.",
   "properties": {
     "name": {
       "title": "Name",

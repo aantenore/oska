@@ -31,11 +31,19 @@ from oska.engine import outcomes as build
 from oska.engine import phrases as phrases_module
 from oska.engine.factory import build_engine
 from oska.engine.outcomes import receipt_lines
-from oska.engine.phrases import REQUIRED, PhraseCatalogError, Phrases, load_phrases
+from oska.engine.phrases import (
+    LIST_PHRASES,
+    REQUIRED,
+    PhraseCatalogError,
+    Phrases,
+    load_phrases,
+)
 from oska.engine.reply import ReplyBuilder
+from oska.index.base import normalize
 from oska.planner.scripted import ScriptedModelProvider
 
 CONTAINER_RUNTIME = "integration.container_runtime"
+NEW_LANGUAGES = ("es", "fr", "de")
 
 
 def _write(path: Path, document: dict) -> Path:
@@ -84,9 +92,9 @@ def _pending(approvals_required: int = 1, approvals_given: int = 0) -> PendingIn
 # Loading
 
 
-def test_the_packaged_catalog_holds_every_phrase_in_english_and_in_italian() -> None:
+def test_the_packaged_catalog_holds_every_phrase_in_every_language_it_ships() -> None:
     phrases = Phrases.load()
-    assert phrases.languages() == ("en", "it")
+    assert phrases.languages() == ("en", "de", "es", "fr", "it")
     for language in phrases.languages():
         assert set(phrases.catalog[language]) == set(REQUIRED), language
 
@@ -110,18 +118,18 @@ def test_a_configured_catalog_is_laid_over_the_packaged_one_phrase_by_phrase(
 def test_a_missing_phrase_falls_back_to_the_default_language_then_to_english(
     tmp_path: Path,
 ) -> None:
-    mine = _write(tmp_path / "phrases.json", {"fr": {"when_now": "maintenant"}})
+    mine = _write(tmp_path / "phrases.json", {"pt": {"when_now": "agora"}})
     english_default = Phrases.load(mine)
-    assert english_default.say("fr", "when_now") == "maintenant"
-    assert english_default.say("fr", "rejected", operation="op") == (
+    assert english_default.say("pt", "when_now") == "agora"
+    assert english_default.say("pt", "rejected", operation="op") == (
         "op was not run, because you rejected it."
     )
     italian_default = Phrases.load(mine, default_language="it")
-    assert italian_default.say("fr", "when_now") == "maintenant"
-    assert italian_default.say("fr", "rejected", operation="op") == (
+    assert italian_default.say("pt", "when_now") == "agora"
+    assert italian_default.say("pt", "rejected", operation="op") == (
         "L'operazione op non è stata eseguita, perché l'hai rifiutata."
     )
-    assert italian_default.say("de", "when_now") == "subito"
+    assert italian_default.say("nl", "when_now") == "subito"
 
 
 def test_a_translation_naming_other_placeholders_is_refused_at_load(tmp_path: Path) -> None:
@@ -185,6 +193,22 @@ def test_only_the_languages_the_deployment_answers_in_are_checked() -> None:
         Phrases.load(rules=english_only, spoken=("en", "it"))
 
 
+def test_the_shipped_rules_accept_the_words_of_every_packaged_language(repo_root: Path) -> None:
+    phrases = Phrases.load(rules=_rules(repo_root), spoken=("it", *NEW_LANGUAGES))
+    said = {
+        language: (phrases.say(language, "approve_word"), phrases.say(language, "reject_word"))
+        for language in NEW_LANGUAGES
+    }
+    assert said == {"es": ("sí", "no"), "fr": ("oui", "non"), "de": ("ja", "nein")}
+
+
+def test_no_shipped_approval_token_is_also_a_refusal_or_a_cancellation(repo_root: Path) -> None:
+    rules = _rules(repo_root)
+    approve = {normalize(token) for token in rules.approve_tokens}
+    refuse = {normalize(token) for token in [*rules.reject_tokens, *rules.cancel_tokens]}
+    assert approve.isdisjoint(refuse)
+
+
 def test_rules_left_empty_leave_the_answer_to_the_model_router() -> None:
     """With no approval tokens the rule layer decides nothing, so no word is checked."""
     Phrases.load(rules=RouterRules(), spoken=("en", "it"))
@@ -238,12 +262,29 @@ def test_the_italian_approval_request_names_the_italian_word_the_rules_accept(
     )
 
 
+@pytest.mark.parametrize(
+    ("language", "tail"),
+    [
+        ("es", "Responde sí para aprobarla, o no para dejarlo todo como está."),
+        ("fr", "Répondez oui pour l'approuver, ou non pour ne rien changer."),
+        ("de", "Antworten Sie ja, um ihn freizugeben, oder nein, um alles zu lassen, wie es ist."),
+    ],
+)
+def test_the_approval_request_names_the_word_the_rules_accept_in_each_new_language(
+    resolver: CapabilityResolver, language: str, tail: str
+) -> None:
+    builder = ReplyBuilder(None, resolver, ReplyConfig())
+    said = builder.template("approval_request", [], _pending(), language).splitlines()
+    assert said[-1] == tail
+    assert "service.restart" in said[1] and '{"service":"search"}' in said[1]
+
+
 def test_a_language_the_catalog_does_not_hold_is_answered_in_the_default_language(
     resolver: CapabilityResolver,
 ) -> None:
     builder = ReplyBuilder(None, resolver, ReplyConfig())
     english = builder.template("approval_request", [], _pending(), "en")
-    assert builder.template("approval_request", [], _pending(), "fr") == english
+    assert builder.template("approval_request", [], _pending(), "pt") == english
 
 
 def test_the_english_receipt_line_is_unchanged() -> None:
@@ -354,6 +395,71 @@ def test_the_english_claim_check_still_holds() -> None:
     assert _check_receipts_are_stated([receipt], ["Receipt r-1 is verified."], phrases) == [
         "receipt r-1 is called verified while it is failed"
     ]
+
+
+@pytest.mark.parametrize(
+    ("language", "overstated"),
+    [
+        ("es", "Hecho: el servicio ha vuelto a arrancar. El recibo r-1 está verificado."),
+        ("fr", "C'est fait : le service a redémarré. Le reçu r-1 est vérifié."),
+        ("de", "Erledigt: Der Dienst läuft wieder. Beleg r-1 ist verifiziert."),
+    ],
+)
+def test_an_overstated_reply_in_each_new_language_is_caught(
+    language: str, overstated: str
+) -> None:
+    receipt = _receipt(VerificationStatus.failed)
+    assert _check_receipts_are_stated([receipt], [overstated], Phrases.load()) == [
+        "receipt r-1 is called verified while it is failed"
+    ]
+
+
+@pytest.mark.parametrize("language", NEW_LANGUAGES)
+@pytest.mark.parametrize(
+    "verification", [VerificationStatus.failed, VerificationStatus.unverified]
+)
+def test_an_honest_reply_in_each_new_language_passes(
+    language: str, verification: VerificationStatus
+) -> None:
+    phrases = Phrases.load()
+    receipt = _receipt(verification)
+    line = receipt_lines([build.receipt_outcome(receipt)], phrases, language)[0]
+    assert "r-1" in line
+    assert _check_receipts_are_stated([receipt], [line], phrases) == []
+
+
+def test_only_the_verified_receipt_line_claims_anything_in_any_shipped_language() -> None:
+    """Every language's claim words are applied to every reply, so none may leak into another."""
+    phrases = Phrases.load()
+    receipt = _receipt(VerificationStatus.failed)
+    values = {
+        "operation": "service.restart",
+        "integration": CONTAINER_RUNTIME,
+        "payload": '{"service":"search"}',
+        "receipt_id": "r-1",
+        "evidence": "service.status",
+        "reason": "timeout",
+        "status": "executed",
+        "verification": "failed",
+        "when": "now",
+        "read": "service.status",
+        "seconds": 3,
+        "scope": "S",
+        "data": "{}",
+        "error": "timeout",
+        "kind": "k",
+        "runbook_id": "runbook.service_restart",
+        "issues": "-",
+        "approve": "yes",
+        "reject": "no",
+    }
+    for language in phrases.languages():
+        for key in REQUIRED:
+            if key in LIST_PHRASES:
+                continue
+            said = f"r-1: {phrases.say(language, key, **values)}"
+            claimed = bool(_check_receipts_are_stated([receipt], [said], phrases))
+            assert claimed == (key == "receipt_verified"), (language, key, said)
 
 
 def test_claim_words_of_every_language_are_read(tmp_path: Path) -> None:

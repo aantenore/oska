@@ -21,6 +21,12 @@ The layout under the change request root is one directory per request::
 The package is laid out the way a catalog root is laid out, so applying a
 request is a copy of one subtree and not a translation.
 
+`ChangeRequestStore` is the directory-backed `ChangeRequestRecordStore`
+(`oska.contracts.stores`). With `storage.backend: postgres` the same requests,
+packages included, are kept in the database instead, so every replica reads one
+review queue; `oska.services.open_changes` opens whichever the configuration
+names.
+
 A request may also be published as a branch of a git repository, for a person
 to review there. `publishers.py` does that and records the branch and the
 commit on the request; the request stays open until a person decides on it.
@@ -33,12 +39,19 @@ import json
 import shutil
 import uuid
 from datetime import UTC, datetime
-from enum import StrEnum
 from pathlib import Path
 
-from pydantic import BaseModel, Field
-
 from oska.config import Settings, load_runtime_config, state_path
+from oska.contracts.change import (
+    POLICY_FILENAME,
+    SKILL_FILENAME,
+    ChangeRequest,
+    ChangeRequestError,
+    ChangeRequestState,
+    package_file,
+    require_actor,
+    require_open,
+)
 from oska.contracts.proposal import VERIFIED_SOURCES, ActorSource, QualityReport
 
 __all__ = [
@@ -51,66 +64,15 @@ __all__ = [
     "ChangeRequestState",
     "ChangeRequestStore",
     "new_request",
+    "package_file",
     "package_of",
+    "require_actor",
+    "require_open",
     "store_for",
 ]
 
 REQUEST_FILENAME = "request.json"
 SUMMARY_FILENAME = "summary.md"
-SKILL_FILENAME = "skill.md"
-POLICY_FILENAME = "policy.json"
-
-
-class ChangeRequestError(RuntimeError):
-    """A change request cannot be read, applied or rejected the way it was asked."""
-
-
-class ChangeRequestState(StrEnum):
-    """Where a change request stands.
-
-    `open` is what composing one produces, and the only state from which a
-    person may decide. `applied` and `rejected` are decisions, and both are
-    final: a request is a record of one review, not a queue entry to reuse.
-    """
-
-    open = "open"
-    applied = "applied"
-    rejected = "rejected"
-
-
-class ChangeRequest(BaseModel):
-    """What one review is about: a package, its origin and its decision.
-
-    `publisher` names how the package was published for review. A request
-    published as a branch records the repository, the branch, the commit and,
-    when one was opened, what the pull request command answered.
-
-    `actor_source` and `actor_verified` say whether `actor` is an identity
-    the runtime established or only a name the approving call gave; a request
-    written before they were kept reads as stated.
-    """
-
-    request_id: str
-    proposal_id: str
-    skill_id: str
-    version: int
-    actor: str
-    actor_source: ActorSource = ActorSource.stated
-    actor_verified: bool = False
-    created_at: datetime
-    quality: QualityReport = Field(default_factory=QualityReport)
-    state: ChangeRequestState = ChangeRequestState.open
-    package: str
-    decided_at: datetime | None = None
-    decided_by: str = ""
-    note: str = ""
-    applied_to: str = ""
-    publisher: str = "directory"
-    repository: str = ""
-    branch: str = ""
-    commit: str = ""
-    pushed: bool = False
-    pull_request: str = ""
 
 
 def package_of(skill_id: str, version: int) -> str:
@@ -161,6 +123,11 @@ class ChangeRequestStore:
     def root(self) -> Path:
         """Where the requests are kept."""
         return self._root
+
+    @property
+    def location(self) -> str:
+        """The change request root, as a person finds it."""
+        return str(self._root)
 
     def directory(self, request_id: str) -> Path:
         """The directory of one request, whether or not it is there yet."""
@@ -219,6 +186,56 @@ class ChangeRequestStore:
         held.sort(key=lambda request: (request.created_at, request.request_id))
         return held
 
+    def files(self, request_id: str) -> dict[str, str]:
+        """The files of one request's package, by their path inside it."""
+        source = self.directory(request_id) / self.get(request_id).package
+        if not source.is_dir():
+            return {}
+        return {
+            path.relative_to(source).as_posix(): path.read_text(encoding="utf-8")
+            for path in sorted(source.rglob("*"))
+            if path.is_file()
+        }
+
+    def add_file(self, request_id: str, name: str, text: str) -> None:
+        """Write one more file into a request's package, replacing one of the same name."""
+        path = self.package(request_id) / package_file(name)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+
+    def write_package(self, request_id: str, target: Path) -> builtins.list[Path]:
+        """Copy the package of one request into a directory, and name the files written."""
+        source = self.directory(request_id) / self.get(request_id).package
+        if not source.is_dir():
+            raise ChangeRequestError(f"change request {request_id} holds no package")
+        shutil.copytree(source, target)
+        return sorted(path for path in Path(target).rglob("*") if path.is_file())
+
+    def delete(self, request_id: str) -> None:
+        """Remove one request and its package. Raises `KeyError` when it is not there."""
+        directory = self.directory(request_id)
+        if not directory.is_dir():
+            raise KeyError(f"unknown change request: {request_id}")
+        shutil.rmtree(directory)
+
+    def drop_package(self, request_id: str) -> bool:
+        """Remove everything but the record and its summary, and say whether anything went."""
+        directory = self.directory(request_id)
+        removed = False
+        for entry in sorted(directory.iterdir()):
+            if entry.name in (REQUEST_FILENAME, SUMMARY_FILENAME):
+                continue
+            if entry.is_dir():
+                shutil.rmtree(entry)
+            else:
+                entry.unlink()
+            removed = True
+        return removed
+
+    def purge(self) -> int:
+        """Remove nothing: the namespace of a directory store is its directory, not its own."""
+        return 0
+
     def apply(self, request_id: str, catalog_root: Path, *, by: str) -> builtins.list[Path]:
         """Copy the package of one open request into a catalog root a person names.
 
@@ -228,14 +245,9 @@ class ChangeRequestStore:
         An existing version is never overwritten; a request whose version is
         already there is refused and stays open.
         """
-        actor = by.strip()
-        if not actor:
-            raise ChangeRequestError("applying a change request records who applied it")
+        actor = require_actor(by, "applying a change request records who applied it")
         request = self.get(request_id)
-        if request.state is not ChangeRequestState.open:
-            raise ChangeRequestError(
-                f"change request {request_id} is {request.state.value}, not open"
-            )
+        require_open(request)
         source = self.directory(request_id) / request.package
         if not source.is_dir():
             raise ChangeRequestError(f"change request {request_id} holds no package")
@@ -255,14 +267,9 @@ class ChangeRequestStore:
 
     def reject(self, request_id: str, *, by: str, note: str = "") -> ChangeRequest:
         """Close one open request without copying anything, recording who and why."""
-        actor = by.strip()
-        if not actor:
-            raise ChangeRequestError("rejecting a change request records who rejected it")
+        actor = require_actor(by, "rejecting a change request records who rejected it")
         request = self.get(request_id)
-        if request.state is not ChangeRequestState.open:
-            raise ChangeRequestError(
-                f"change request {request_id} is {request.state.value}, not open"
-            )
+        require_open(request)
         request.state = ChangeRequestState.rejected
         request.decided_at = datetime.now(UTC)
         request.decided_by = actor
@@ -323,6 +330,10 @@ def summarize(request: ChangeRequest) -> str:
 
 
 def store_for(settings: Settings) -> ChangeRequestStore:
-    """The change request store these settings configure."""
+    """The directory store these settings configure.
+
+    A deployment on another storage backend opens its store with
+    `oska.services.open_changes`, which picks the backend the configuration names.
+    """
     runtime = load_runtime_config(settings=settings)
     return ChangeRequestStore(state_path(Path(settings.state_dir), runtime.changes.root))

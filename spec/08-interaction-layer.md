@@ -450,7 +450,11 @@ One user turn. Numbered steps, executed in order.
   the catalog MUST be refused when it is loaded. A reason the runtime gives in
   its own words for dropping a request or holding a write back is such a
   sentence; a reason written by a policy, a plan check or a connector is a
-  value.
+  value. A catalog MAY be laid in layers, each over the ones before it phrase
+  by phrase and language by language (the shipped catalog, then the
+  deployment's, then those of the packs a domain serves); every layer MUST be
+  held to the checks above, and two packs of one domain that give one phrase in
+  one language differently MUST be refused.
 - **OSKA-IXN-29** — The conformance check for a reply that calls a write
   verified when its receipt is not MUST read the words that make that claim, and
   the words that negate it, from the same phrase catalog, in every language the
@@ -513,7 +517,10 @@ whether it may run is current.
   it (`OSKA-IXN-29`). `tests/unit/test_phrases.py` and
   `examples/ops/scenarios/20_other_language.json` — the approval request and
   the receipt line in Italian, and an Italian reply that overstates a write
-  caught by the conformance check.
+  caught by the conformance check; the same for Spanish, French and German.
+  `src/oska/platform/assembly.py` (`domain_phrases`) — a pack's `phrases.json`
+  checked and laid over its domains' catalog, and two packs giving a phrase
+  differently refused (`tests/unit/test_platform.py`, `tests/unit/test_kit.py`).
 - `src/oska/services.py` — the one assembly both channels are built over:
   engine, catalog, proposal store, publication root.
 - `src/oska/cli/` (`main.py`, `commands_run.py`, `commands_serve.py`,

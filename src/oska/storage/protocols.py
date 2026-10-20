@@ -3,9 +3,13 @@
 Two stores hold the account of a conversation between turns and across
 restarts: the write ledger, which holds a receipt for every write attempted,
 and the session store, which holds what a session carries from one turn to the
-next. The runtime reaches both through these two interfaces and nothing else,
-so where they are kept — a file on one machine, a database shared by several
-processes — is configuration.
+next. Three more hold what is read about conversations afterwards: the audit
+trail, the proposals drafted from sessions, and the change requests composed
+from those. The runtime reaches each through one of these interfaces and
+nothing else, so where they are kept — a file on one machine, a database shared
+by several processes — is configuration. The interfaces of the proposals and
+the change requests are declared with the contracts, because the evolution
+layer that keeps them in files sits above this one; they are named here too.
 
 Every implementation has to keep the same promises, and one behavioral
 contract is run against each of them. The one that matters most is `claim`:
@@ -37,13 +41,20 @@ from oska.contracts.receipt import (
     VerificationStatus,
     WriteReceipt,
 )
+from oska.contracts.stores import ChangeRequestRecordStore, ProposalRecordStore
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable
+
+    from oska.contracts.events import AuditEvent
     from oska.contracts.session import SessionState
 
 __all__ = [
     "DEFAULT_NAMESPACE",
+    "AuditStore",
+    "ChangeRequestRecordStore",
     "LedgerStore",
+    "ProposalRecordStore",
     "SessionStateStore",
     "StorageError",
     "refuse_default_purge",
@@ -191,4 +202,40 @@ class SessionStateStore(Protocol):
 
     def purge(self) -> int:
         """Remove every session of this store's namespace and report how many went."""
+        ...
+
+
+@runtime_checkable
+class AuditStore(Protocol):
+    """The audit trail: appended to by the runtime, read by the report and the improvement job.
+
+    `location` names where the trail is kept, for a person and for a cache
+    key; it never carries a credential.
+    """
+
+    @property
+    def location(self) -> str:
+        """Where this trail is kept, in words a person can find it by."""
+        ...
+
+    def emit(self, event: AuditEvent) -> None:
+        """Append one event."""
+        ...
+
+    def events(self) -> list[AuditEvent]:
+        """Every readable event of the trail, in the order it was appended."""
+        ...
+
+    def exists(self) -> bool:
+        """Whether a trail was ever started here, as opposed to one that holds nothing."""
+        ...
+
+    def delete_sessions(
+        self, session_ids: Iterable[str], *, keep_kinds: Iterable[str] = ()
+    ) -> dict[str, int]:
+        """Remove the events of these sessions, except those of the kinds kept; count by session."""
+        ...
+
+    def purge(self) -> int:
+        """Remove every event of this store's namespace and report how many went."""
         ...

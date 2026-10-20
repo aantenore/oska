@@ -11,9 +11,10 @@ does.
 
 What it cannot do is know which of them a deployment keeps. The receipts, the
 trail and the session state are the account itself and are always asked for.
-The ledger and the session store are asked for by interface, not by backend:
-anything that satisfies `LedgerStore` and `SessionRecords` — a file on one
-machine or a database shared by several — is removed from the same way.
+The ledger, the session store and the audit trail are asked for by interface,
+not by backend: anything that satisfies `LedgerStore`, `SessionRecords` and
+`AuditStore` — a file on one machine or a database shared by several — is
+removed from the same way. A caller may still name the trail by its file path.
 The others belong to layers above this one, so they are handed in by the
 caller as stores that answer to a session, the way the session store already
 is; a store nobody hands in is one this deployment does not keep. A proposal
@@ -46,9 +47,9 @@ from typing import Literal, Protocol, runtime_checkable
 from pydantic import BaseModel, Field
 
 from oska.audit.events import new_event
-from oska.audit.sink import JsonlSink, rewrite_jsonl
+from oska.audit.sink import audit_trail
 from oska.contracts.events import EventKind
-from oska.storage.protocols import LedgerStore
+from oska.storage.protocols import AuditStore, LedgerStore
 
 __all__ = ["RetentionReport", "SessionFiles", "SessionRecords", "expire", "forget"]
 
@@ -127,8 +128,9 @@ def forget(
     session_id: str,
     *,
     ledger: LedgerStore,
-    audit_path: Path,
     sessions: SessionRecords,
+    audit_path: Path | None = None,
+    audit: AuditStore | None = None,
     feedback: SessionFiles | None = None,
     preferences: SessionFiles | None = None,
     traces: SessionFiles | None = None,
@@ -140,12 +142,13 @@ def forget(
     This answers a request, so it runs whatever the configured window is and
     whether or not the session is past it. A caller that keeps judgments,
     preferences, traces, proposals or change requests hands them in; one that
-    keeps none hands in nothing and the counts for those stores are zero.
+    keeps none hands in nothing and the counts for those stores are zero. The
+    trail is `audit`, or the file at `audit_path` when no store is given.
     """
     return _remove(
         [session_id],
         ledger=ledger,
-        audit_path=audit_path,
+        audit=_trail(audit, audit_path),
         sessions=sessions,
         feedback=feedback,
         preferences=preferences,
@@ -160,8 +163,9 @@ def expire(
     older_than_days: int,
     *,
     ledger: LedgerStore,
-    audit_path: Path,
     sessions: SessionRecords,
+    audit_path: Path | None = None,
+    audit: AuditStore | None = None,
     feedback: SessionFiles | None = None,
     preferences: SessionFiles | None = None,
     traces: SessionFiles | None = None,
@@ -182,7 +186,7 @@ def expire(
     return _remove(
         sessions.expired(cutoff),
         ledger=ledger,
-        audit_path=audit_path,
+        audit=_trail(audit, audit_path),
         sessions=sessions,
         feedback=feedback,
         preferences=preferences,
@@ -197,7 +201,7 @@ def _remove(
     session_ids: list[str],
     *,
     ledger: LedgerStore,
-    audit_path: Path,
+    audit: AuditStore,
     sessions: SessionRecords,
     feedback: SessionFiles | None,
     preferences: SessionFiles | None,
@@ -208,9 +212,9 @@ def _remove(
 ) -> RetentionReport:
     """Take these sessions out of every store that holds them, and record that.
 
-    The audit trail is rewritten once for all the sessions named rather than
-    once per session, so a window that catches many conversations does not
-    rewrite the file many times. The events it records are written afterwards,
+    The audit trail is asked once for all the sessions named rather than once
+    per session, so a window that catches many conversations does not rewrite
+    a file many times. The events it records are written afterwards,
     into the trail that replaced it. The stores the caller hands in are asked
     one session at a time, because each of them answers for one session.
     Change requests are asked before proposals, because a change request is
@@ -226,19 +230,9 @@ def _remove(
     spans = _counted(traces, session_ids)
     changed = _counted(change_requests, session_ids)
     drafted = _counted(proposals, session_ids)
-    dropped: dict[str, int] = {}
-
-    def keep(entry: dict) -> bool:
-        held = entry.get("session_id")
-        if held in targets and entry.get("kind") != RETENTION_KIND:
-            dropped[held] = dropped.get(held, 0) + 1
-            return False
-        return True
-
-    rewrite_jsonl(Path(audit_path), keep)
-    sink = JsonlSink(Path(audit_path))
+    dropped = audit.delete_sessions(targets, keep_kinds=(RETENTION_KIND,))
     for name in session_ids:
-        sink.emit(
+        audit.emit(
             new_event(
                 RETENTION_KIND,
                 name,
@@ -268,6 +262,15 @@ def _remove(
         proposals=sum(drafted.values()),
         change_requests=sum(changed.values()),
     )
+
+
+def _trail(audit: AuditStore | None, audit_path: Path | None) -> AuditStore:
+    """The trail a removal reaches: the store handed in, or the file at the path named."""
+    if audit is not None:
+        return audit
+    if audit_path is None:
+        raise TypeError("a removal reaches the audit trail: pass `audit` or `audit_path`")
+    return audit_trail(audit_path)
 
 
 def _counted(store: SessionFiles | None, session_ids: list[str]) -> dict[str, int]:

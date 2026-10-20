@@ -11,6 +11,10 @@ principal carrying the reviewer role, and by nobody without an identity.
 reaches the runtime over a private network and presents no identity. Where no
 identity is required the route stays open, as every other read there is.
 
+The trail is the one the storage backend keeps: the local file with the files
+backend, so each replica reports what it served, or the table every replica
+appends to with a database, so each replica reports what all of them served.
+
 An application serving one catalog reports one series per metric, unlabeled.
 An application serving a platform reports every (tenant, domain) the platform
 declares, each computed from that pair's own audit trail and traces and
@@ -43,6 +47,7 @@ from oska.api.identity import (
 from oska.config import RuntimeConfig, Settings, state_path
 from oska.observability.exposition import render_series
 from oska.observability.metrics import ReportCache, ServiceReport
+from oska.storage import DEFAULT_NAMESPACE, open_audit, storage_namespace
 
 __all__ = ["CONTENT_TYPE", "metrics_router"]
 
@@ -64,7 +69,7 @@ def get_metrics(request: Request) -> PlainTextResponse:
         if not runtime.metrics.enabled:
             raise _disabled()
         cache = _cache(request, runtime)
-        series.append(({}, _report(cache, settings, runtime)))
+        series.append(({}, _report(cache, settings, runtime, DEFAULT_NAMESPACE)))
     else:
         if not platform.runtime.metrics.enabled:
             raise _disabled()
@@ -75,7 +80,8 @@ def get_metrics(request: Request) -> PlainTextResponse:
                 continue
             settings = platform.settings_for(domain, tenant)
             labels = {"tenant": tenant, "domain": domain}
-            series.append((labels, _report(cache, settings, runtime)))
+            namespace = storage_namespace(tenant, domain)
+            series.append((labels, _report(cache, settings, runtime, namespace)))
     return PlainTextResponse(render_series(series), media_type=CONTENT_TYPE)
 
 
@@ -103,14 +109,14 @@ def _disabled() -> ApiError:
     return ApiError(404, "metrics_disabled", "metrics are switched off in this deployment")
 
 
-def _report(cache: ReportCache, settings: Settings, runtime: RuntimeConfig) -> ServiceReport:
+def _report(
+    cache: ReportCache, settings: Settings, runtime: RuntimeConfig, namespace: str
+) -> ServiceReport:
+    """The report of one trail: the file of this process, or the table every replica shares."""
     return cache.report(
-        _audit_path(settings, runtime), trace_path=_trace_path(settings, runtime)
+        open_audit(runtime, settings, namespace=namespace),
+        trace_path=_trace_path(settings, runtime),
     )
-
-
-def _audit_path(settings: Settings, runtime: RuntimeConfig) -> Path:
-    return state_path(Path(settings.state_dir), runtime.audit.path)
 
 
 def _trace_path(settings: Settings, runtime: RuntimeConfig) -> Path | None:

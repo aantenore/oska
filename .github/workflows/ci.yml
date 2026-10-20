@@ -136,10 +136,16 @@ jobs:
         run: pip install -e '.[dev,postgres]'
 
       - name: Storage contract and conformance isolation (first run)
-        run: pytest -q tests/unit/test_storage_contract.py tests/unit/test_conformance_postgres.py
+        run: >-
+          pytest -q tests/unit/test_storage_contract.py
+          tests/unit/test_storage_contract_shared.py
+          tests/unit/test_conformance_postgres.py
 
       - name: Storage contract and conformance isolation (second run)
-        run: pytest -q tests/unit/test_storage_contract.py tests/unit/test_conformance_postgres.py
+        run: >-
+          pytest -q tests/unit/test_storage_contract.py
+          tests/unit/test_storage_contract_shared.py
+          tests/unit/test_conformance_postgres.py
 
       - name: Select the relational backend
         run: |

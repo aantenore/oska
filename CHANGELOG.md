@@ -24,6 +24,17 @@ All notable changes to this project are recorded here. The format follows
 - CI runs on Python 3.11, 3.12 and 3.13, and a package job installs the wheel
   outside the checkout and walks the newcomer path end to end.
 - `SECURITY.md`, `CONTRIBUTING.md`, issue and pull request templates.
+- The runtime's own sentences ship in Spanish, French and German as well, and
+  the approval rules accept their yes and no (`sí`, `oui`, `ja`; `non`,
+  `nein`). A pack may ship a `phrases.json` laid over the phrase catalog of
+  the domains that serve it; `oska pack check` and the platform check it, and
+  two packs of one domain that give a phrase differently are refused.
+- With `storage.backend: postgres`, the audit trail, the proposals and the
+  change requests with their packages are kept in the database as well, under
+  the namespace of each (tenant, domain): every replica appends to one trail,
+  reports the same service-level numbers and `/metrics`, and reviews one queue,
+  and `oska forget` reaches them there (`OSKA-GOV-56`). The files backend keeps
+  them where it always did.
 
 ### Changed
 

@@ -273,9 +273,10 @@ full argument, including when not to use it.
   A scripted provider for tests, and none at all for a runtime that only
   answers what it can do.
 - **Multilingual turns.** A turn is answered in the language it was asked in.
-  The runtime's own sentences ship in English and Italian, and a deployment
-  can add its own; a catalog is reached in more languages than it was written
-  in through paraphrases derived outside the turn.
+  The runtime's own sentences ship in English, Italian, Spanish, French and
+  German, and a pack or a deployment can add its own; a catalog is reached in
+  more languages than it was written in through paraphrases derived outside
+  the turn.
 - **Storage.** SQLite by default, PostgreSQL behind an extra, both held to one
   contract suite that CI runs against a live server.
 - **Conformance.** Three levels (Declared, Governed, Adaptive), a scenario

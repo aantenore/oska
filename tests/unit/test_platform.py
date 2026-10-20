@@ -835,6 +835,87 @@ def test_synonyms_of_two_packs_merge_and_a_term_mapped_apart_is_refused(
         Platform.from_file(_write_platform(tmp_path / "two", document), platform_settings)
 
 
+def _phrases(pack: Path, document: dict) -> Path:
+    (pack / "phrases.json").write_text(json.dumps(document), encoding="utf-8")
+    return pack
+
+
+def test_a_pack_phrase_is_said_in_the_domains_of_that_pack_only(
+    examples: Path, tmp_path: Path, platform_settings: Settings
+) -> None:
+    ops = _phrases(
+        _copy_pack(examples / "ops", tmp_path / "packs" / "ops"),
+        {"it": {"approval_head": "Questa modifica va approvata dal turno di reperibilità."}},
+    )
+    document = _manifest(examples)
+    document["packs"]["ops"] = {"path": str(ops)}
+    held = Platform.from_file(_write_platform(tmp_path, document), platform_settings)
+
+    operations = held.engine("operations").phrases
+    access = held.engine("access").phrases
+
+    assert operations.say("it", "approval_head") == (
+        "Questa modifica va approvata dal turno di reperibilità."
+    )
+    assert operations.say("it", "approval_tail", approve="sì", reject="no") == (
+        "Rispondi sì per approvarla, oppure no per lasciare tutto com'è."
+    )
+    assert operations.say("en", "approval_head") == (
+        "This changes something, so it needs your approval first."
+    )
+    assert access.say("it", "approval_head") == (
+        "Questa operazione modifica qualcosa, quindi serve prima la tua approvazione."
+    )
+
+
+def test_a_pack_phrase_naming_other_placeholders_is_refused_when_the_platform_is_built(
+    examples: Path, tmp_path: Path, platform_settings: Settings
+) -> None:
+    ops = _phrases(
+        _copy_pack(examples / "ops", tmp_path / "packs" / "ops"),
+        {"it": {"approval_tail": "Rispondi {yes} per approvarla."}},
+    )
+    document = _manifest(examples)
+    document["packs"]["ops"] = {"path": str(ops)}
+
+    with pytest.raises(PlatformError) as refused:
+        Platform.from_file(_write_platform(tmp_path, document), platform_settings)
+
+    message = str(refused.value)
+    assert message.startswith("domain operations: pack ops: ")
+    assert "approval_tail" in message and "{yes}" in message
+
+
+def test_two_packs_of_one_domain_giving_a_phrase_differently_are_refused(
+    examples: Path, tmp_path: Path, platform_settings: Settings
+) -> None:
+    said = {"it": {"approval_head": "Serve la tua approvazione."}}
+    ops = _phrases(_copy_pack(examples / "ops", tmp_path / "packs" / "ops"), said)
+    agreeing = _phrases(
+        _copy_pack(examples / "access", tmp_path / "packs" / "agreeing", name="extra"), said
+    )
+    document = _manifest(examples)
+    document["packs"]["ops"] = {"path": str(ops)}
+    document["packs"]["extra"] = {"path": str(agreeing)}
+    document["domains"][0]["packs"] = ["ops", "extra"]
+    held = Platform.from_file(_write_platform(tmp_path / "one", document), platform_settings)
+    assert held.engine("operations").phrases.say("it", "approval_head") == (
+        "Serve la tua approvazione."
+    )
+
+    clashing = _phrases(
+        _copy_pack(examples / "access", tmp_path / "packs" / "clashing", name="extra"),
+        {"it": {"approval_head": "Approvi?"}},
+    )
+    document["packs"]["extra"] = {"path": str(clashing)}
+    with pytest.raises(PlatformError) as refused:
+        Platform.from_file(_write_platform(tmp_path / "two", document), platform_settings)
+    assert str(refused.value) == (
+        "domain operations: phrase approval_head in language 'it' is given one way "
+        "by pack ops and another by pack extra"
+    )
+
+
 def test_a_domain_that_enables_presentation_returns_directives_and_one_that_does_not_none(
     examples: Path, tmp_path: Path, platform_settings: Settings
 ) -> None:
