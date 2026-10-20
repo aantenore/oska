@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import math
+
 from oska.catalog.resolver import CapabilityResolver
 from oska.config import RouterConfig
 from oska.contracts.common import Message, RouteDecision, TurnKind
@@ -134,11 +136,13 @@ def _kind(value: object) -> TurnKind:
 
 
 def _confidence(value: object) -> float:
-    if not isinstance(value, int | float | str):
+    if isinstance(value, bool) or not isinstance(value, int | float | str):
         return 0.0
     try:
         number = float(value)
     except (TypeError, ValueError):
+        return 0.0
+    if not math.isfinite(number):
         return 0.0
     return max(0.0, min(1.0, number))
 

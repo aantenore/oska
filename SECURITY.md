@@ -32,7 +32,9 @@ The full account is in [docs/governance.md](docs/governance.md). In short:
 - **Identity is read in one place.** `identity.mode` is `proxy` (an
   authenticated proxy in front of the HTTP application sets the principal) or
   `token` (a signed session token checked before any claim is read). Proxy mode
-  is unsafe on a port that anything but the proxy can reach
+  is unsafe on a port that anything but the proxy can reach, unless the proxy
+  sends a secret the runtime checks (`identity.proxy_secret_env`); `oska serve`
+  warns when it listens publicly without one
   ([Identity](docs/governance.md#identity)).
 - **Secrets come from the environment only.** Keys, tokens and provider
   credentials are read from environment variables that configuration names;

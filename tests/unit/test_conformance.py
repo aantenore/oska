@@ -327,3 +327,14 @@ def test_a_scenario_never_writes_to_an_absolute_state_path(
 
     assert result.passed, result.failures
     assert list(real.iterdir()) == [], "a conformance run wrote into the deployment's files"
+
+
+def test_behaviors_for_a_binding_that_is_not_a_mock_are_refused_by_name() -> None:
+    """A scenario cannot script a real connector; it is told so instead of crashing."""
+    from types import SimpleNamespace
+
+    from oska.conformance.runner import _apply_behaviors
+
+    engine = SimpleNamespace(connectors=SimpleNamespace(get=lambda integration_id: None))
+    with pytest.raises(ValueError, match="integration.nowhere"):
+        _apply_behaviors(engine, {"integration.nowhere": {"x.read": {"fail": True}}})  # type: ignore[arg-type]

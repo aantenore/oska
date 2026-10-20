@@ -275,3 +275,18 @@ def test_without_a_model_an_unmatched_turn_is_a_new_request(
 
 def test_the_keyword_index_satisfies_the_index_protocol() -> None:
     assert isinstance(KeywordIndex(), SkillIndex)
+
+
+@pytest.mark.parametrize("value", ["nan", float("nan"), "inf", float("inf"), True, None, [0.9]])
+def test_a_confidence_that_is_not_a_finite_number_counts_as_none(value: object) -> None:
+    from oska.router.model_router import _confidence
+
+    assert _confidence(value) == 0.0
+
+
+def test_a_confidence_is_clamped_to_the_unit_interval() -> None:
+    from oska.router.model_router import _confidence
+
+    assert _confidence("0.75") == 0.75
+    assert _confidence(7) == 1.0
+    assert _confidence(-2) == 0.0

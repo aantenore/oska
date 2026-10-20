@@ -72,6 +72,7 @@ from oska.api.identity import (
     ATTRIBUTES_HEADER,
     SUBJECT_HEADER,
     application_runtime,
+    check_proxy_secret,
     identity_config,
     identity_required,
     is_reviewer,
@@ -134,9 +135,12 @@ def _identified(request: Request) -> None:
     held to its session and every other token is.
     """
     path = getattr(request.scope.get("route"), "path", "")
-    if path in OPEN_PATHS:
-        return
     config = _identity(request)
+    if path in OPEN_PATHS:
+        # Open to a call without an identity, never to a proxy header the proxy did
+        # not send: the tenant header still picks which catalog answers.
+        check_proxy_secret(request, config)
+        return
     session_id = request.path_params.get(SESSION_PARAMETER)
     if path in REVIEWER_SESSION_PATHS:
         principal = resolve_principal(request, config, session_id=None)

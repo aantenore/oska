@@ -293,11 +293,12 @@ catalog is opened.
 ## 8. Move from proxy identity to token identity
 
 Proxy identity — the default — trusts `X-Principal-Subject` and
-`X-Principal-Attributes` set by whatever sits in front of the port, and
-verifies nothing itself. Token identity asks the runtime to verify a signed
-token instead, so the runtime is the thing checking who is calling rather
-than trusting a header nothing guarantees was set by a proxy and not by the
-caller.
+`X-Principal-Attributes` set by whatever sits in front of the port. What it can
+check is that the proxy sent them: name `identity.proxy_secret_env` and have the
+proxy send that secret with every call, and headers arriving without it are
+refused. Token identity goes further and asks the runtime to verify a signed
+token, so the runtime checks who is calling rather than trusting what a proxy
+says about it.
 
 ```json
 // configs/runtime.json

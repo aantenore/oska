@@ -51,6 +51,7 @@ __all__ = [
     "ROLES_ATTRIBUTE",
     "SUBJECT_HEADER",
     "application_runtime",
+    "check_proxy_secret",
     "identity_config",
     "identity_required",
     "is_reviewer",
@@ -165,11 +166,13 @@ def resolve_principal(
     source = os.environ if env is None else env
     if config.mode == "token":
         return _from_token(request, config, session_id, source)
-    _check_proxy_secret(request, config, source)
+    check_proxy_secret(request, config, source)
     return _from_proxy(request)
 
 
-def _check_proxy_secret(request: Request, config: IdentityConfig, env: Mapping[str, str]) -> None:
+def check_proxy_secret(
+    request: Request, config: IdentityConfig, env: Mapping[str, str] | None = None
+) -> None:
     """Refuse identity headers that did not come through the proxy, when a secret is named.
 
     A call that carries none of the headers the proxy owns is a call without an
@@ -177,8 +180,9 @@ def _check_proxy_secret(request: Request, config: IdentityConfig, env: Mapping[s
     carry the secret, compared in constant time.
     """
     variable = config.proxy_secret_env.strip()
-    if not variable:
+    if config.mode != "proxy" or not variable:
         return
+    env = os.environ if env is None else env
     owned = [SUBJECT_HEADER, ATTRIBUTES_HEADER, config.tenant_header.strip()]
     if not any(name and request.headers.get(name, "").strip() for name in owned):
         return

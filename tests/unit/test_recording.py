@@ -610,3 +610,30 @@ def test_replay_provider_resumes_from_a_start_and_reports_its_position(tmp_path:
     assert replay.position == 2
     with pytest.raises(ValueError, match="negative"):
         ReplayProvider(path, start=-1)
+
+
+def test_a_replay_position_is_kept_only_after_a_turn_completes() -> None:
+    """A turn that fails half way keeps nothing, so the next command replays it whole."""
+    from oska.cli.commands_run import _saving
+
+    class _Progress:
+        def __init__(self) -> None:
+            self.saved: list[int] = []
+
+        def save(self, position: int) -> None:
+            self.saved.append(position)
+
+    class _Replay:
+        position = 3
+
+    progress = _Progress()
+
+    def broken(session: str, text: str) -> object:
+        raise ScriptMismatchError("the recorded answers no longer match")
+
+    with pytest.raises(ScriptMismatchError):
+        _saving(broken, progress, _Replay())("s", "t")  # type: ignore[arg-type]
+    assert progress.saved == []
+
+    _saving(lambda session, text: "done", progress, _Replay())("s", "t")  # type: ignore[arg-type]
+    assert progress.saved == [3]

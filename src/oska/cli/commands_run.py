@@ -152,14 +152,27 @@ def run(
             progress = ReplayProgress.open(held, replay, session, replay_from_start)
         chosen = _provider(load_settings(), provider, script, record, replay, volatile, progress)
         turn = _platform_turn(platform, domain, tenant, chosen)
-    try:
-        if text is not None:
-            _turn(turn, session, text)
-            return
-        _repl(turn, session)
-    finally:
-        if progress is not None and isinstance(chosen, ReplayProvider):
-            progress.save(chosen.position)
+    if progress is not None and isinstance(chosen, ReplayProvider):
+        turn = _saving(turn, progress, chosen)
+    if text is not None:
+        _turn(turn, session, text)
+        return
+    _repl(turn, session)
+
+
+def _saving(turn: Turn, progress: ReplayProgress, replay: ReplayProvider) -> Turn:
+    """The same turn, keeping the replay position after each turn that completes.
+
+    A turn that fails half way keeps nothing, so the next command replays that
+    turn from its start rather than from the middle of it.
+    """
+
+    def kept(session: str, text: str) -> TurnResult:
+        result = turn(session, text)
+        progress.save(replay.position)
+        return result
+
+    return kept
 
 
 def receipts(

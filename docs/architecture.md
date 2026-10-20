@@ -179,7 +179,9 @@ read back by anything. See [governance.md](governance.md).
 Two more modules sit here. `identity` holds the `Principal` a channel
 authenticated and resolves the payload fields a procedure declares as taken
 from it. In `proxy` mode it authenticates nothing, because what the channel
-reported is the only thing it has; in `token` mode it verifies a signed HS256
+reported is the only thing it has, and the channel can at most check that the
+proxy sent it, by a secret the two share (`identity.proxy_secret_env`); in
+`token` mode it verifies a signed HS256
 session token itself before trusting any claim in it. `retention` is the only
 place in the system that takes anything out of the record: it removes the
 eight stores of a session together — receipts, audit entries, session state,

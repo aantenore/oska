@@ -48,7 +48,7 @@ import tempfile
 import uuid
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -368,8 +368,8 @@ def _replay(
     events: list = []
     ran = 0
     for position, turn in enumerate(scenario.turns, start=1):
-        _apply_behaviors(engine, turn.connector_behaviors or {})
         try:
+            _apply_behaviors(engine, turn.connector_behaviors or {})
             result = engine.turn(scenario.name, turn.user, principal)
         except Exception as exc:  # a turn that raises is a failure of the scenario
             failures.append(f"turn {position}: the turn raised {type(exc).__name__}: {exc}")
@@ -724,8 +724,12 @@ def _claims_verified(reply: str, claims: list[str], negations: list[str]) -> boo
 
 def _apply_behaviors(engine: Engine, behaviors: dict) -> None:
     for integration_id, operations in behaviors.items():
-        # Behaviors are only ever declared for the mock bindings the harness builds.
-        connector = cast(MockConnector, engine.connectors.get(integration_id))
+        connector = engine.connectors.get(integration_id)
+        if not isinstance(connector, MockConnector):
+            raise ValueError(
+                f"connector_behaviors names {integration_id}, which is not a mock binding; "
+                "behaviors can only be scripted for mock connectors"
+            )
         for operation, behavior in operations.items():
             connector.set_behavior(operation, behavior)
 

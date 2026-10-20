@@ -931,3 +931,15 @@ def test_serve_warns_when_a_public_port_trusts_proxy_headers_without_a_secret() 
         IdentityConfig(required=True, proxy_secret_env=PROXY_SECRET_ENV), "0.0.0.0"
     )
     assert "proxy_secret_env" in proxy_trust_warning("0.0.0.0", 8000)
+
+
+def test_health_does_not_take_a_tenant_header_without_the_proxy_secret(
+    guarded_proxy_app: FastAPI,
+) -> None:
+    """An open route still refuses a proxy header the proxy did not send."""
+    client = TestClient(guarded_proxy_app)
+
+    assert client.get("/health").status_code == 200
+    forged = client.get("/health", headers=_proxied("mallory"))
+    assert forged.status_code == 401
+    assert forged.json()["error"] == "proxy_unverified"
