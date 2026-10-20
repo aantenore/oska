@@ -1,0 +1,130 @@
+name: live-model
+
+# Manual only. Nothing here runs on a push or a pull request, so no key is spent
+# unless a maintainer starts it. See "Against a live model" in docs/conformance.md.
+on:
+  workflow_dispatch:
+    inputs:
+      provider:
+        description: Protocol the endpoint speaks
+        type: choice
+        options:
+          - openai_compatible
+          - anthropic
+        default: openai_compatible
+      base_url:
+        description: Base URL of the endpoint
+        type: string
+        required: true
+      chat_model:
+        description: Model name for completions
+        type: string
+        required: true
+      embedding_model:
+        description: Model name for embeddings (leave empty to use the built-in ranking)
+        type: string
+        required: false
+        default: ""
+      record:
+        description: Keep the recorded cassette for 30 days instead of one day
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  live:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      OSKA_MODEL_API_KEY: ${{ secrets.OSKA_MODEL_API_KEY }}
+      OSKA_MODEL_BASE_URL: ${{ inputs.base_url }}
+      OSKA_MODEL_CHAT: ${{ inputs.chat_model }}
+      OSKA_MODEL_EMBEDDING: ${{ inputs.embedding_model }}
+      OSKA_PROVIDER: ${{ inputs.provider }}
+      LIVE_SESSION: live-${{ github.run_id }}
+    steps:
+      - name: Check that the key is set
+        id: key
+        run: |
+          if [ -z "$OSKA_MODEL_API_KEY" ]; then
+            echo "::notice::The repository secret OSKA_MODEL_API_KEY is empty, so there is nothing to run against. Add it under Settings, Secrets and variables, Actions."
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.key.outputs.present == 'true'
+
+      - uses: actions/setup-python@v5
+        if: steps.key.outputs.present == 'true'
+        with:
+          python-version: "3.12"
+
+      - name: Install
+        if: steps.key.outputs.present == 'true'
+        run: pip install -e '.[dev,api]'
+
+      - name: Run the restart session against the endpoint
+        if: steps.key.outputs.present == 'true'
+        run: |
+          set -euo pipefail
+          export OSKA_STATE_DIR="$RUNNER_TEMP/state"
+          cassette="$RUNNER_TEMP/live.json"
+          request="the search service in staging needs a restart, it is wedged again"
+
+          turn() {
+            oska run --provider "$OSKA_PROVIDER" --session "$LIVE_SESSION" \
+              --record "$cassette" --text "$1" | tee "$RUNNER_TEMP/turn.out"
+          }
+
+          echo "::group::turn 1, the request"
+          turn "$request"
+          echo "::endgroup::"
+          grep -q '^approval_pending  ' "$RUNNER_TEMP/turn.out" \
+            || { echo "::error::the first turn did not stop for approval"; exit 1; }
+
+          echo "::group::turn 2, the approval"
+          turn "yes"
+          echo "::endgroup::"
+          grep -q '^receipt  ' "$RUNNER_TEMP/turn.out" \
+            || { echo "::error::the second turn produced no receipt"; exit 1; }
+          oska receipts --session "$LIVE_SESSION" | tee "$RUNNER_TEMP/receipts.out"
+          [ "$(wc -l < "$RUNNER_TEMP/receipts.out")" -eq 1 ] \
+            && grep -q '  verified$' "$RUNNER_TEMP/receipts.out" \
+            || { echo "::error::the receipt is not one verified receipt"; exit 1; }
+
+          echo "::group::turn 3, the same request again"
+          turn "$request"
+          echo "::endgroup::"
+          grep -q '^ledger_hit  ' "$RUNNER_TEMP/turn.out" \
+            || { echo "::error::the repeated request was not answered from the ledger"; exit 1; }
+          [ "$(oska receipts --session "$LIVE_SESSION" | wc -l)" -eq 1 ] \
+            || { echo "::error::the repeated request wrote a second receipt"; exit 1; }
+
+      - name: Check the cassette does not hold the key
+        id: scan
+        if: ${{ !cancelled() && steps.key.outputs.present == 'true' }}
+        run: |
+          set -euo pipefail
+          cassette="$RUNNER_TEMP/live.json"
+          if [ ! -f "$cassette" ]; then
+            echo "::notice::No cassette was written."
+            exit 0
+          fi
+          if grep -qF -f <(printf '%s' "$OSKA_MODEL_API_KEY") "$cassette"; then
+            echo "::error::The cassette contains the API key. It was not uploaded."
+            exit 1
+          fi
+          echo "The cassette does not contain the key."
+
+      - name: Upload the cassette
+        if: ${{ !cancelled() && steps.scan.outcome == 'success' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: live-cassette
+          path: ${{ runner.temp }}/live.json
+          if-no-files-found: warn
+          retention-days: ${{ inputs.record && 30 || 1 }}

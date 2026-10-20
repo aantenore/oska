@@ -512,6 +512,58 @@ each step carries alongside its stored `expect_contains` — so a cassette
 recorded before this cut existed, whose stored expectation was truncated mid
 uuid, still replays; nothing needs to be re-recorded.
 
+## Against a live model
+
+Every suite in this repository runs offline, and the committed cassettes are the
+only evidence that the runtime holds up against a real model. The workflow
+`.github/workflows/live-model.yml` produces that evidence on demand. It starts
+only from the Actions tab (`workflow_dispatch`); no push or pull request
+triggers it, so no key is spent by accident.
+
+**Setting it up.** Add the endpoint's key as the repository secret
+`OSKA_MODEL_API_KEY` (Settings, Secrets and variables, Actions). If the secret
+is empty, the run prints a notice and ends successfully without calling
+anything.
+
+**Running it.** Start the workflow and fill in the inputs:
+
+| Input | Meaning |
+| --- | --- |
+| `provider` | `openai_compatible` or `anthropic`, the protocol the endpoint speaks |
+| `base_url` | The endpoint's base URL (`OSKA_MODEL_BASE_URL`) |
+| `chat_model` | The model for completions (`OSKA_MODEL_CHAT`) |
+| `embedding_model` | The model for embeddings (`OSKA_MODEL_EMBEDDING`); optional, and empty uses the built-in ranking |
+| `record` | When true, the cassette artifact is kept for 30 days instead of one |
+
+**What it proves.** It runs the example operations catalog through three
+`oska run` processes on one session, recording every model call into one
+cassette: the restart request in English, then "yes", then the same request
+again. The job fails unless the first turn stops for approval, the second
+produces exactly one receipt that reads back as `verified`, and the third is
+answered by the ledger (`ledger_hit`) without a second receipt. That is the
+runtime's own contract, exercised against whatever the model actually wrote:
+the plan must survive validation, the write must stop for its exact payload,
+and the repeat must not be sent twice.
+
+**Keeping the key out of the artifact.** Before the upload, the job compares the
+cassette with the secret in the shell, without printing either, and fails if it
+finds the key. The key and the inputs reach the steps only through `env:`, never
+through the script text. The cassette is uploaded as `live-cassette`.
+
+**Turning the artifact into a replay test.** Download `live-cassette`, read it
+for anything you would not want in the repository, and commit it under
+`examples/ops/cassettes/`. Then add a test beside
+`tests/unit/test_live_cassette.py`: build the engine with
+`ReplayProvider(cassette)` and `build_engine`, replay the same three turns,
+assert the outcome kinds and the receipt, and finish with
+`assert provider.remaining() == 0`. Replaying needs no endpoint and no key; see
+"Replaying" above. To seed a scenario instead, use `oska cassette to-script`,
+as described in "Recording a real session".
+
+**Data.** Whatever is sent to the endpoint is in the cassette, and an endpoint on
+a free tier may keep it and train on it. Use the example data only, never a real
+catalog, a real person or a real system.
+
 ## Keeping the scripts honest
 
 A scripted provider is a recording, and a recording can drift out of step with
