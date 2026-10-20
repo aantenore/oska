@@ -1,0 +1,20 @@
+{
+  "skill_id": "runbook.partition_backfill",
+  "default": "deny",
+  "rules": [
+    {
+      "operation": "pipeline.backfill",
+      "effect": "allow",
+      "when": { "days": { "lte": 7 } },
+      "max_per_session": 2,
+      "reason": "A week or less of reloaded partitions is the size of an ordinary correction, and the owner can read every day of it back."
+    },
+    {
+      "operation": "pipeline.backfill",
+      "effect": "require_second_approval",
+      "when": { "days": { "gt": 7 } },
+      "max_per_session": 2,
+      "reason": "More than seven days rewrites history other teams have already reported on, so the person asking is not the only person who agrees to it."
+    }
+  ]
+}

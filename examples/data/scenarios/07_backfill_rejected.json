@@ -1,0 +1,139 @@
+{
+  "name": "07_backfill_rejected",
+  "description": "A backfill within the policy's seven days stops for one approval of its exact range and reason, and the person rejects it: nothing is queued.",
+  "level": 2,
+  "provider_script": [
+    {
+      "purpose": "router classification",
+      "expect_contains": "reload customers_hourly for the three days from 2026-03-08",
+      "response": {
+        "kind": "new_task",
+        "runbook_id": "runbook.partition_backfill",
+        "confidence": 0.9,
+        "language": "en"
+      }
+    },
+    {
+      "purpose": "plan, which asks for the reason",
+      "expect_contains": "reload customers_hourly",
+      "response": {
+        "runbook_id": "runbook.partition_backfill",
+        "operations": [],
+        "missing": [
+          {
+            "field": "reason",
+            "question": "Why are these days being reloaded?"
+          }
+        ],
+        "reply_intent": "ask why the three days are being reloaded"
+      }
+    },
+    {
+      "purpose": "router classification of the answer",
+      "expect_contains": "replayed by the source with corrections",
+      "response": {
+        "kind": "provide_input",
+        "runbook_id": "runbook.partition_backfill",
+        "confidence": 0.9,
+        "language": "en"
+      }
+    },
+    {
+      "purpose": "plan with the reason the person gave",
+      "expect_contains": "Inputs already collected",
+      "response": {
+        "runbook_id": "runbook.partition_backfill",
+        "operations": [
+          {
+            "integration_id": "integration.orchestrator",
+            "operation": "pipeline.get",
+            "payload": {
+              "pipeline": "customers_hourly"
+            },
+            "write": false,
+            "purpose": "read whether the schedule is in force"
+          },
+          {
+            "integration_id": "integration.orchestrator",
+            "operation": "partition.list",
+            "payload": {
+              "pipeline": "customers_hourly"
+            },
+            "write": false,
+            "purpose": "read which days are stale or missing"
+          },
+          {
+            "integration_id": "integration.orchestrator",
+            "operation": "pipeline.backfill",
+            "payload": {
+              "pipeline": "customers_hourly",
+              "start_date": "2026-03-08",
+              "days": 3,
+              "reason": "the address changes for those days were replayed by the source with corrections"
+            },
+            "write": true,
+            "purpose": "queue the reload with the reason the person gave"
+          }
+        ],
+        "missing": [],
+        "reply_intent": "report the backfill of customers_hourly"
+      }
+    },
+    {
+      "purpose": "reply writing",
+      "expect_contains": "\"kind\": \"rejected\"",
+      "response": {
+        "reply": "Nothing was queued. You rejected the backfill, so the customers_hourly partitions stay as they were loaded."
+      }
+    }
+  ],
+  "turns": [
+    {
+      "user": "reload customers_hourly for the three days from 2026-03-08",
+      "expect": {
+        "kind": "new_task",
+        "contains": [
+          "Why are these days being reloaded?"
+        ],
+        "outcomes": [],
+        "pending": "input",
+        "receipts": 0,
+        "verification": null
+      }
+    },
+    {
+      "user": "the address changes for those days were replayed by the source with corrections",
+      "expect": {
+        "kind": "provide_input",
+        "contains": [
+          "pipeline.backfill",
+          "{\"days\":3,\"pipeline\":\"customers_hourly\",\"reason\":\"the address changes for those days were replayed by the source with corrections\",\"start_date\":\"2026-03-08\"}",
+          "approval"
+        ],
+        "outcomes": [
+          "read",
+          "read",
+          "approval_pending"
+        ],
+        "pending": "approval",
+        "receipts": 0,
+        "verification": null
+      }
+    },
+    {
+      "user": "no",
+      "expect": {
+        "kind": "reject",
+        "contains": [
+          "Nothing was queued"
+        ],
+        "outcomes": [
+          "rejected"
+        ],
+        "pending": null,
+        "receipts": 0,
+        "verification": null
+      }
+    }
+  ]
+}

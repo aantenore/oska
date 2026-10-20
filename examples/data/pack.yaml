@@ -1,0 +1,22 @@
+name: data
+version: 0.1.0
+description: >-
+  Data pipelines: why a run failed, rerunning a failed run and backfilling a
+  pipeline over a range of days, over an orchestrator that schedules the runs
+  and tracks the partitions they write.
+requires:
+  oska: ">=0.1.0,<1.0.0"
+provides:
+  entities:
+    - entity.partition
+    - entity.pipeline
+    - entity.pipeline_run
+  procedures:
+    - runbook.partition_backfill
+    - runbook.run_diagnosis
+    - runbook.run_rerun
+host:
+  name: the pipeline desk
+  voice: exact and unhurried
+  languages: [en]
+level: 2

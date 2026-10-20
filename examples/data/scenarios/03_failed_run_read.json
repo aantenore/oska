@@ -1,0 +1,63 @@
+{
+  "name": "03_failed_run_read",
+  "description": "Why a pipeline failed is answered from the latest run and the error the orchestrator recorded on it, and nothing is changed. The wording is close enough to a declared trigger that the request is routed without a model call.",
+  "level": 1,
+  "provider_script": [
+    {
+      "purpose": "plan",
+      "expect_contains": "why did the nightly orders pipeline fail",
+      "response": {
+        "runbook_id": "runbook.run_diagnosis",
+        "operations": [
+          {
+            "integration_id": "integration.orchestrator",
+            "operation": "pipeline.get",
+            "payload": {
+              "pipeline": "orders_nightly"
+            },
+            "write": false,
+            "purpose": "read the pipeline, its schedule and its owner"
+          },
+          {
+            "integration_id": "integration.orchestrator",
+            "operation": "run.latest",
+            "payload": {
+              "pipeline": "orders_nightly"
+            },
+            "write": false,
+            "purpose": "read the latest run and the error it stopped on"
+          }
+        ],
+        "missing": [],
+        "reply_intent": "report which run failed, at which task, and the error the orchestrator recorded"
+      }
+    },
+    {
+      "purpose": "reply writing",
+      "expect_contains": "timed out after 900 seconds",
+      "response": {
+        "reply": "The latest run of orders_nightly, run-0412, failed at the load_orders task while loading the 2026-03-10 partition: the load into orders_daily timed out after 900 seconds waiting for a table lock held by another session. The pipeline is active, so it will run again at 02:00 UTC on its own."
+      }
+    }
+  ],
+  "turns": [
+    {
+      "user": "why did the nightly orders pipeline fail",
+      "expect": {
+        "kind": "new_task",
+        "contains": [
+          "run-0412",
+          "load_orders",
+          "timed out after 900 seconds"
+        ],
+        "outcomes": [
+          "read",
+          "read"
+        ],
+        "pending": null,
+        "receipts": 0,
+        "verification": null
+      }
+    }
+  ]
+}

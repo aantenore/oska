@@ -1,0 +1,24 @@
+{
+  "name": "01_greeting",
+  "description": "An opening greeting is answered from this catalog alone, with no model call and no vocabulary of its own.",
+  "level": 1,
+  "provider_script": [],
+  "turns": [
+    {
+      "user": "hello",
+      "expect": {
+        "kind": "greeting",
+        "contains": [
+          "I can",
+          "find out why a pipeline run failed",
+          "rerun a failed pipeline run",
+          "backfill a pipeline over a range of days"
+        ],
+        "outcomes": [],
+        "pending": null,
+        "receipts": 0,
+        "verification": null
+      }
+    }
+  ]
+}

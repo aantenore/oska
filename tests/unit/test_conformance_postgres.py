@@ -176,8 +176,9 @@ def test_the_platform_nests_each_pair_inside_the_run_namespace(
         assert "/".join(pair) in {
             storage_namespace("default", "operations"),
             storage_namespace("default", "access"),
+            storage_namespace("default", "data"),
         }
-    assert {n.rsplit("/", 1)[-1] for n in seen} == {"operations", "access"}
+    assert {n.rsplit("/", 1)[-1] for n in seen} == {"operations", "access", "data"}
 
 
 # Against a live PostgreSQL.

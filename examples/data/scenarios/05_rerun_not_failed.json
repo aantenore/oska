@@ -1,0 +1,72 @@
+{
+  "name": "05_rerun_not_failed",
+  "description": "A rerun asked for on a run that is still running is refused as an illegal move before anything is sent, and no approval is asked for.",
+  "level": 2,
+  "provider_script": [
+    {
+      "purpose": "router classification",
+      "expect_contains": "rerun run-0419",
+      "response": {
+        "kind": "new_task",
+        "runbook_id": "runbook.run_rerun",
+        "confidence": 0.9,
+        "language": "en"
+      }
+    },
+    {
+      "purpose": "plan",
+      "expect_contains": "the inventory snapshot looks stuck",
+      "response": {
+        "runbook_id": "runbook.run_rerun",
+        "operations": [
+          {
+            "integration_id": "integration.orchestrator",
+            "operation": "run.get",
+            "payload": {
+              "run_id": "run-0419"
+            },
+            "write": false,
+            "purpose": "read the state of the run before starting it again"
+          },
+          {
+            "integration_id": "integration.orchestrator",
+            "operation": "run.rerun",
+            "payload": {
+              "run_id": "run-0419"
+            },
+            "write": true,
+            "purpose": "start the run again"
+          }
+        ],
+        "missing": [],
+        "reply_intent": "report what happened to the rerun of run-0419"
+      }
+    },
+    {
+      "purpose": "reply writing",
+      "expect_contains": "the pipeline_run is running and run.rerun is not a legal move from there",
+      "response": {
+        "reply": "Nothing was sent. run-0419 is still running, and a rerun is legal only for a run that failed, so it was refused before the call went out. If it finishes as failed, ask again."
+      }
+    }
+  ],
+  "turns": [
+    {
+      "user": "rerun run-0419, the inventory snapshot looks stuck",
+      "expect": {
+        "kind": "new_task",
+        "contains": [
+          "Nothing was sent",
+          "still running"
+        ],
+        "outcomes": [
+          "read",
+          "invalid_plan"
+        ],
+        "pending": null,
+        "receipts": 0,
+        "verification": null
+      }
+    }
+  ]
+}

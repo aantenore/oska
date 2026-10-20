@@ -1,0 +1,9 @@
+{
+  "cases": [
+    { "text": "rerun the failed orders run", "expects": "this", "language": "en" },
+    { "text": "retry the load that failed last night", "expects": "this", "language": "en" },
+    { "text": "rilancia il run fallito degli ordini", "expects": "this", "language": "it" },
+    { "text": "why did the nightly pipeline fail", "expects": "not this", "language": "en" },
+    { "text": "backfill ten days of the orders pipeline", "expects": "not this", "language": "en" }
+  ]
+}

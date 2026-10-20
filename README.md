@@ -129,14 +129,16 @@ oska evaluate catalog         # 18 cases, precision 1.0, recall 1.0
 oska conform                  # 26 scenarios, conformance level 3
 ```
 
-`examples/access/` is the second pack, access management, sharing no
-vocabulary with the first. `examples/platform.yaml` serves both as two domains
-of one process:
+`examples/access/` is the second pack, access management, and `examples/data/`
+the third, data pipelines; none shares vocabulary with another.
+`examples/platform.yaml` serves all three as domains of one process:
 
 ```sh
 oska pack check examples/access
+oska pack check examples/data
 oska conform --platform examples/platform.yaml
-oska run --platform examples/platform.yaml --domain access --session demo --text "hello"
+oska run --platform examples/platform.yaml --domain access --session access-demo --text "hello"
+oska run --platform examples/platform.yaml --domain data --session data-demo --text "hello"
 ```
 
 With no provider configured, a turn answers what the runtime can do and
@@ -299,7 +301,8 @@ ops/              slo.md and alerts.yml: the service-level targets and the alert
 src/oska/         the packages listed in the layer table, plus platform, storage, kit and observability
 examples/ops/     the reference pack: services, deployments, incidents and alerts
 examples/access/  the second reference pack: accounts, groups and access requests
-examples/platform.yaml   both packs served as two domains of one platform
+examples/data/    the third reference pack: pipelines, runs and partitions
+examples/platform.yaml   the three packs served as three domains of one platform
 spec/             the OSKA standard, including the platform blueprint and its schemas
 docs/             how this implementation works
 tests/            unit tests and the scenario suite
@@ -322,11 +325,12 @@ enough to build a pack against, and not yet stable enough to depend on; the
 standard is a draft.
 
 The twenty-six scenarios under `examples/ops/scenarios/` reach conformance
-level 3 (Adaptive); the eight under `examples/access/scenarios/` reach level 2
-(Governed), every level they declare a scenario for. Served together as
+level 3 (Adaptive); the eight under `examples/access/scenarios/` and the seven
+under `examples/data/scenarios/` reach level 2 (Governed), every level they
+declare a scenario for. Served together as
 `examples/platform.yaml`, each domain is checked and reported on its own.
-Three procedures of the operational pack and two of the access pack carry an
-evaluation set, all at precision 1.0 and recall 1.0. More
+Three procedures of the operational pack, two of the access pack and three of
+the data pack carry an evaluation set, all at precision 1.0 and recall 1.0. More
 than 1,500 unit and scenario tests run offline on Python 3.11, 3.12 and 3.13;
 the PostgreSQL storage contract and conformance isolation tests run only
 against a real server named by `OSKA_TEST_POSTGRES_URL`, and the `postgres`

@@ -1,0 +1,68 @@
+{
+  "version": 1,
+  "resilience": {
+    "timeout_seconds": 30.0,
+    "failures_before_open": 3,
+    "recovery_seconds": 30.0
+  },
+  "integrations": {
+    "integration.orchestrator": {
+      "type": "mock",
+      "fixture": "../fixtures/orchestrator.json",
+      "operations": {
+        "pipeline.get": {
+          "collection": "pipelines",
+          "match": "name",
+          "payload_field": "pipeline",
+          "as": "pipeline"
+        },
+        "run.latest": {
+          "collection": "runs",
+          "match": "pipeline",
+          "payload_field": "pipeline",
+          "where": { "latest": true },
+          "as": "pipeline_run"
+        },
+        "run.get": {
+          "collection": "runs",
+          "match": "id",
+          "payload_field": "run_id",
+          "as": "pipeline_run"
+        },
+        "run.list": {
+          "collection": "runs",
+          "filter": ["pipeline", "state"],
+          "limit_field": "limit",
+          "limit_default": 5,
+          "as": "pipeline_runs"
+        },
+        "run.rerun": {
+          "collection": "runs",
+          "match": "id",
+          "payload_field": "run_id",
+          "as": "pipeline_run",
+          "set": { "state": "queued", "attempt": "+1", "failed_task": null, "error": null }
+        },
+        "partition.list": {
+          "collection": "partitions",
+          "filter": ["pipeline", "state"],
+          "limit_field": "limit",
+          "limit_default": 31,
+          "as": "partitions"
+        },
+        "pipeline.backfill": {
+          "collection": "pipelines",
+          "match": "name",
+          "payload_field": "pipeline",
+          "as": "pipeline",
+          "set": {
+            "backfill_state": "queued",
+            "backfill_from": "$start_date",
+            "backfill_days": "$days",
+            "backfill_reason": "$reason"
+          }
+        }
+      }
+    }
+  }
+}

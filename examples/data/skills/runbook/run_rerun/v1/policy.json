@@ -1,0 +1,12 @@
+{
+  "skill_id": "runbook.run_rerun",
+  "default": "deny",
+  "rules": [
+    {
+      "operation": "run.rerun",
+      "effect": "allow",
+      "max_per_session": 3,
+      "reason": "A rerun repeats work the pipeline was already meant to do, for the same partition, and touches nothing that succeeded."
+    }
+  ]
+}

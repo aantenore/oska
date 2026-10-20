@@ -1,4 +1,4 @@
-# A platform of two domains served from one process. Each domain answers as
+# A platform of three domains served from one process. Each domain answers as
 # its own host, reads only its own pack, and keeps its state apart.
 name: reference
 packs:
@@ -7,6 +7,9 @@ packs:
     version: "0.1.0"
   access:
     path: access
+    version: "0.1.0"
+  data:
+    path: data
     version: "0.1.0"
 domains:
   - name: operations
@@ -21,6 +24,13 @@ domains:
     host:
       name: the access desk
       voice: careful and plain
+      languages: [en]
+    tenants: [default]
+  - name: data
+    packs: [data]
+    host:
+      name: the pipeline desk
+      voice: exact and unhurried
       languages: [en]
     tenants: [default]
 default_domain: operations

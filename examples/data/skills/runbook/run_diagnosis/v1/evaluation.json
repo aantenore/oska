@@ -1,0 +1,9 @@
+{
+  "cases": [
+    { "text": "why did the nightly orders pipeline fail", "expects": "this", "language": "en" },
+    { "text": "what was the error on the latest run of the customer copy", "expects": "this", "language": "en" },
+    { "text": "perché è fallita la pipeline degli ordini stanotte", "expects": "this", "language": "it" },
+    { "text": "rerun the failed orders run", "expects": "not this", "language": "en" },
+    { "text": "reload the partitions of last week", "expects": "not this", "language": "en" }
+  ]
+}

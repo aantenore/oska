@@ -1,0 +1,9 @@
+{
+  "cases": [
+    { "text": "backfill the orders pipeline from the first of March", "expects": "this", "language": "en" },
+    { "text": "the source was corrected, reload those days", "expects": "this", "language": "en" },
+    { "text": "ricarica le partizioni dei primi dieci giorni", "expects": "this", "language": "it" },
+    { "text": "start the failed run again", "expects": "not this", "language": "en" },
+    { "text": "show me the error of the latest run", "expects": "not this", "language": "en" }
+  ]
+}

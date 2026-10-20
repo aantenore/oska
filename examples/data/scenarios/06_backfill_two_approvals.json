@@ -1,0 +1,155 @@
+{
+  "name": "06_backfill_two_approvals",
+  "description": "A backfill longer than the policy's seven days asks the person for the reason, writes it as given, and needs two approvals before it is queued and read back.",
+  "level": 2,
+  "provider_script": [
+    {
+      "purpose": "router classification",
+      "expect_contains": "backfill orders_nightly for the ten days from 2026-03-01",
+      "response": {
+        "kind": "new_task",
+        "runbook_id": "runbook.partition_backfill",
+        "confidence": 0.9,
+        "language": "en"
+      }
+    },
+    {
+      "purpose": "plan, which asks for the reason",
+      "expect_contains": "backfill orders_nightly",
+      "response": {
+        "runbook_id": "runbook.partition_backfill",
+        "operations": [],
+        "missing": [
+          {
+            "field": "reason",
+            "question": "Why are these days being reloaded?"
+          }
+        ],
+        "reply_intent": "ask why the ten days are being reloaded"
+      }
+    },
+    {
+      "purpose": "router classification of the answer",
+      "expect_contains": "corrected its refunds",
+      "response": {
+        "kind": "provide_input",
+        "runbook_id": "runbook.partition_backfill",
+        "confidence": 0.9,
+        "language": "en"
+      }
+    },
+    {
+      "purpose": "plan with the reason the person gave",
+      "expect_contains": "Inputs already collected",
+      "response": {
+        "runbook_id": "runbook.partition_backfill",
+        "operations": [
+          {
+            "integration_id": "integration.orchestrator",
+            "operation": "pipeline.get",
+            "payload": {
+              "pipeline": "orders_nightly"
+            },
+            "write": false,
+            "purpose": "read whether the schedule is in force"
+          },
+          {
+            "integration_id": "integration.orchestrator",
+            "operation": "partition.list",
+            "payload": {
+              "pipeline": "orders_nightly"
+            },
+            "write": false,
+            "purpose": "read which days are stale or missing"
+          },
+          {
+            "integration_id": "integration.orchestrator",
+            "operation": "pipeline.backfill",
+            "payload": {
+              "pipeline": "orders_nightly",
+              "start_date": "2026-03-01",
+              "days": 10,
+              "reason": "the order database corrected its refunds for the first ten days of March and the daily totals are wrong"
+            },
+            "write": true,
+            "purpose": "queue the reload with the reason the person gave"
+          }
+        ],
+        "missing": [],
+        "reply_intent": "report whether the backfill of orders_nightly is queued and whether the read-back confirmed it"
+      }
+    },
+    {
+      "purpose": "reply writing",
+      "expect_contains": "\"kind\": \"receipt\"",
+      "response": {
+        "reply": "The backfill of orders_nightly from 2026-03-01 for 10 days is queued, and reading the pipeline back shows it with that range and that reason, so the receipt is verified."
+      }
+    }
+  ],
+  "turns": [
+    {
+      "user": "backfill orders_nightly for the ten days from 2026-03-01",
+      "expect": {
+        "kind": "new_task",
+        "contains": [
+          "Why are these days being reloaded?"
+        ],
+        "outcomes": [],
+        "pending": "input",
+        "receipts": 0,
+        "verification": null
+      }
+    },
+    {
+      "user": "the order database corrected its refunds for the first ten days of March and the daily totals are wrong",
+      "expect": {
+        "kind": "provide_input",
+        "contains": [
+          "pipeline.backfill",
+          "{\"days\":10,\"pipeline\":\"orders_nightly\",\"reason\":\"the order database corrected its refunds for the first ten days of March and the daily totals are wrong\",\"start_date\":\"2026-03-01\"}",
+          "1 of 2"
+        ],
+        "outcomes": [
+          "read",
+          "read",
+          "approval_pending"
+        ],
+        "pending": "approval",
+        "receipts": 0,
+        "verification": null
+      }
+    },
+    {
+      "user": "yes",
+      "expect": {
+        "kind": "approve",
+        "contains": [
+          "1 of 2 approvals recorded"
+        ],
+        "outcomes": [
+          "approval_pending"
+        ],
+        "pending": "approval",
+        "receipts": 0,
+        "verification": null
+      }
+    },
+    {
+      "user": "yes",
+      "expect": {
+        "kind": "approve",
+        "contains": [
+          "pipeline.backfill",
+          "verified"
+        ],
+        "outcomes": [
+          "receipt"
+        ],
+        "pending": null,
+        "receipts": 1,
+        "verification": "verified"
+      }
+    }
+  ]
+}

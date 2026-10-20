@@ -1,0 +1,33 @@
+{
+  "name": "02_off_scope",
+  "description": "A request the catalog cannot answer is declined with the scope it does declare, even when it is about data.",
+  "level": 1,
+  "provider_script": [
+    {
+      "purpose": "router classification",
+      "expect_contains": "write me a query for monthly revenue by region",
+      "response": {
+        "kind": "off_scope",
+        "runbook_id": null,
+        "confidence": 0.95,
+        "language": "en"
+      }
+    }
+  ],
+  "turns": [
+    {
+      "user": "write me a query for monthly revenue by region",
+      "expect": {
+        "kind": "off_scope",
+        "contains": [
+          "not something I can do here",
+          "find out why a pipeline run failed"
+        ],
+        "outcomes": [],
+        "pending": null,
+        "receipts": 0,
+        "verification": null
+      }
+    }
+  ]
+}

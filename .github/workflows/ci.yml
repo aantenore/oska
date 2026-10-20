@@ -45,6 +45,9 @@ jobs:
       - name: Evaluate the access catalog
         run: oska evaluate catalog --skills examples/access/skills
 
+      - name: Evaluate the data catalog
+        run: oska evaluate catalog --skills examples/data/skills
+
       - name: Conform the operational catalog
         run: oska conform
 
@@ -54,6 +57,13 @@ jobs:
           --skills examples/access/skills
           --scenarios examples/access/scenarios
           --connectors examples/access/configs/connectors.json
+
+      - name: Conform the data catalog
+        run: >-
+          oska conform
+          --skills examples/data/skills
+          --scenarios examples/data/scenarios
+          --connectors examples/data/configs/connectors.json
 
   package:
     # The built wheel, installed the way an adopter installs it: into a fresh
@@ -184,6 +194,20 @@ jobs:
           --skills examples/access/skills
           --scenarios examples/access/scenarios
           --connectors examples/access/configs/connectors.json
+
+      - name: Conform the data catalog (first run)
+        run: >-
+          oska conform
+          --skills examples/data/skills
+          --scenarios examples/data/scenarios
+          --connectors examples/data/configs/connectors.json
+
+      - name: Conform the data catalog (second run)
+        run: >-
+          oska conform
+          --skills examples/data/skills
+          --scenarios examples/data/scenarios
+          --connectors examples/data/configs/connectors.json
 
       - name: Conform the platform (first run)
         run: oska conform --platform examples/platform.yaml

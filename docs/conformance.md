@@ -18,10 +18,10 @@ Without `--scenarios` the directory comes from `OSKA_SCENARIOS_DIR`, which
 defaults to `examples/ops/scenarios`. The command exits non-zero when any
 scenario fails, so it drops into a build without further ceremony.
 
-### The two reference catalogs
+### The reference catalogs
 
-A suite belongs to the catalog it was written for, so there are two runs, not
-one. The operational catalog is the default: `oska conform` runs its
+A suite belongs to the catalog it was written for, so there is one run per
+catalog, not one for all. The operational catalog is the default: `oska conform` runs its
 twenty-six scenarios and reports conformance level 3. The access catalog
 needs its own roots, its own scenarios and its own connector bindings, and
 `--skills` replaces the catalog roots rather than adding to them, which is what
@@ -35,7 +35,19 @@ oska conform --skills examples/access/skills \
 
 Eight scenarios, conformance level 2. That is every level it declares a
 scenario for: the evolution lifecycle of level 3 is a property of the runtime
-rather than of a domain, and is exercised once, by the operational suite.
+rather than of a domain, and is exercised once, by the operational suite. The
+data pipelines catalog runs the same way:
+
+```sh
+oska conform --skills examples/data/skills \
+  --scenarios examples/data/scenarios \
+  --connectors examples/data/configs/connectors.json
+```
+
+Seven scenarios, conformance level 2: a rerun that stops for approval, is read
+back and is not sent twice, a rerun refused because the run has not failed, a
+backfill that needs two approvals and a reason only the person may give, and one
+the person rejects.
 
 Both are also packs, and a pack is checked the same way in isolation, without
 naming its roots, its scenarios and its bindings separately:
@@ -43,6 +55,7 @@ naming its roots, its scenarios and its bindings separately:
 ```sh
 oska pack check examples/ops
 oska pack check examples/access
+oska pack check examples/data
 ```
 
 Served together as `examples/platform.yaml`, conformance is reported per

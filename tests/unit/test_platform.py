@@ -335,7 +335,7 @@ def test_the_manifest_resolves_pack_paths_beside_it(examples: Path) -> None:
     manifest = load_platform(examples / "platform.yaml")
 
     assert manifest.packs["ops"].path == (examples / "ops").resolve()
-    assert [domain.name for domain in manifest.domains] == ["operations", "access"]
+    assert [domain.name for domain in manifest.domains] == ["operations", "access", "data"]
     assert manifest.domain().host.name == "the operations desk"
 
 
@@ -990,7 +990,7 @@ def test_the_binding_is_asked_of_the_session_stores_whatever_backend_keeps_them(
     with pytest.raises(DomainMismatch, match="belongs to domain operations"):
         example_platform.turn("access", None, "shared", "hello")
 
-    assert set(MemorySessions.held) == {"default/operations", "default/access"}
+    assert set(MemorySessions.held) == {"default/operations", "default/access", "default/data"}
     assert MemorySessions.held["default/operations"]["shared"].domain == "operations"
     assert "shared" not in MemorySessions.held["default/access"]
     assert not list(Path(platform_settings.state_dir).rglob("sessions.sqlite"))

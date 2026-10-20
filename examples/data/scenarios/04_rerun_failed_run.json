@@ -1,0 +1,152 @@
+{
+  "name": "04_rerun_failed_run",
+  "description": "A failed run is read, rerun on one approval and read back queued; asking for the same rerun again answers from the receipt instead of sending it.",
+  "level": 2,
+  "provider_script": [
+    {
+      "purpose": "router classification",
+      "expect_contains": "rerun run-0412",
+      "response": {
+        "kind": "new_task",
+        "runbook_id": "runbook.run_rerun",
+        "confidence": 0.9,
+        "language": "en"
+      }
+    },
+    {
+      "purpose": "plan",
+      "expect_contains": "the lock on orders_daily has cleared",
+      "response": {
+        "runbook_id": "runbook.run_rerun",
+        "operations": [
+          {
+            "integration_id": "integration.orchestrator",
+            "operation": "run.get",
+            "payload": {
+              "run_id": "run-0412"
+            },
+            "write": false,
+            "purpose": "read the state of the run before starting it again"
+          },
+          {
+            "integration_id": "integration.orchestrator",
+            "operation": "run.rerun",
+            "payload": {
+              "run_id": "run-0412"
+            },
+            "write": true,
+            "purpose": "start the failed run again for the same partition"
+          }
+        ],
+        "missing": [],
+        "reply_intent": "report whether run-0412 is queued again and whether the read-back confirmed it"
+      }
+    },
+    {
+      "purpose": "reply writing",
+      "expect_contains": "\"kind\": \"receipt\"",
+      "response": {
+        "reply": "run-0412 is queued again as its second attempt, and reading the run back shows it queued, so the receipt is verified."
+      }
+    },
+    {
+      "purpose": "router classification",
+      "expect_contains": "rerun run-0412 again",
+      "response": {
+        "kind": "new_task",
+        "runbook_id": "runbook.run_rerun",
+        "confidence": 0.9,
+        "language": "en"
+      }
+    },
+    {
+      "purpose": "plan",
+      "expect_contains": "I did not see it start",
+      "response": {
+        "runbook_id": "runbook.run_rerun",
+        "operations": [
+          {
+            "integration_id": "integration.orchestrator",
+            "operation": "run.get",
+            "payload": {
+              "run_id": "run-0412"
+            },
+            "write": false,
+            "purpose": "read the state of the run before starting it again"
+          },
+          {
+            "integration_id": "integration.orchestrator",
+            "operation": "run.rerun",
+            "payload": {
+              "run_id": "run-0412"
+            },
+            "write": true,
+            "purpose": "start the failed run again for the same partition"
+          }
+        ],
+        "missing": [],
+        "reply_intent": "report that this rerun was already done in this session"
+      }
+    },
+    {
+      "purpose": "reply writing",
+      "expect_contains": "\"kind\": \"ledger_hit\"",
+      "response": {
+        "reply": "Nothing was sent again: this session already queued run-0412 once, and the receipt from that rerun still stands."
+      }
+    }
+  ],
+  "turns": [
+    {
+      "user": "rerun run-0412, the lock on orders_daily has cleared",
+      "expect": {
+        "kind": "new_task",
+        "contains": [
+          "approval",
+          "run.rerun",
+          "{\"run_id\":\"run-0412\"}"
+        ],
+        "outcomes": [
+          "read",
+          "approval_pending"
+        ],
+        "pending": "approval",
+        "receipts": 0,
+        "verification": null
+      }
+    },
+    {
+      "user": "yes",
+      "expect": {
+        "kind": "approve",
+        "contains": [
+          "run.rerun",
+          "verified"
+        ],
+        "outcomes": [
+          "receipt"
+        ],
+        "pending": null,
+        "receipts": 1,
+        "verification": "verified"
+      }
+    },
+    {
+      "user": "rerun run-0412 again, I did not see it start",
+      "expect": {
+        "kind": "new_task",
+        "contains": [
+          "already queued run-0412",
+          "was already done in this session"
+        ],
+        "outcomes": [
+          "read",
+          "ledger_hit"
+        ],
+        "pending": null,
+        "receipts": 1,
+        "verification": "verified"
+      }
+    }
+  ]
+}

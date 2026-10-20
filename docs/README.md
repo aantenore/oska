@@ -27,6 +27,7 @@ what you came to do.
 - [skill-contract.md](skill-contract.md): the skill file format for entities, integrations, procedures and composites, and the validator rules.
 - [../examples/ops/README.md](../examples/ops/README.md): the reference pack, services, deployments, incidents and alerts.
 - [../examples/access/README.md](../examples/access/README.md): the second reference pack, the smallest one that exercises the whole write path.
+- [../examples/data/README.md](../examples/data/README.md): the third reference pack, data pipelines: a failed run, a rerun as a lifecycle move, and a backfill whose reason only a person may give.
 - [conformance.md](conformance.md): the scenario format, the levels, recording a session against a real model and replaying it, and the manual workflow that runs the runtime against a live model.
 - [learning.md](learning.md): drafting a procedure from a session, its lifecycle, and the change request publication composes.
 

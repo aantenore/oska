@@ -30,8 +30,8 @@ out so it can be deployed on its own or alongside other packs.
 <pack root>/phrases.json             optional: phrases the pack's domains say
 ```
 
-`examples/ops/` and `examples/access/` are both packs; each carries its own
-`pack.yaml`.
+`examples/ops/`, `examples/access/` and `examples/data/` are all packs; each
+carries its own `pack.yaml`.
 
 ### `pack.yaml`, annotated
 
@@ -77,8 +77,8 @@ skill it does not list is refused too. `oska pack check` runs this check
 before it validates anything else, so a pack whose manifest has drifted from
 its `skills/` fails immediately rather than three steps later.
 
-`depends_on` (omitted above, since `ops` and `access` need nothing from each
-other) names other packs and the version range this pack accepts of each. A
+`depends_on` (omitted above, since none of the reference packs needs anything
+from another) names other packs and the version range this pack accepts of each. A
 platform resolves dependencies inside one domain — a pack whose dependency is
 not deployed in the same domain, whose version falls outside the range, or
 whose dependencies cycle, is refused, naming the packs involved.
@@ -112,7 +112,7 @@ oska pack check examples/ops/pack.yaml --json
 it — the pack's own catalog, its own `configs/connectors.json`, its own
 `scenarios/`, nothing borrowed from any other pack — validates it, runs its
 evaluation sets and its scenarios, and reports the conformance level it
-reaches against the level it claims. Neither reference pack binds a shell
+reaches against the level it claims. No reference pack binds a shell
 integration, so this is what it prints:
 
 ```
@@ -168,6 +168,9 @@ packs:
   access:
     path: access
     version: "0.1.0"
+  data:
+    path: data
+    version: "0.1.0"
 domains:
   - name: operations           # a scope a person talks to
     packs: [ops]                # this domain's catalog is the union of these packs, and nothing else
@@ -181,6 +184,13 @@ domains:
     host:
       name: the access desk
       voice: careful and plain
+      languages: [en]
+    tenants: [default]
+  - name: data
+    packs: [data]
+    host:
+      name: the pipeline desk
+      voice: exact and unhurried
       languages: [en]
     tenants: [default]
 default_domain: operations       # which domain a request naming none reaches
@@ -406,15 +416,22 @@ level 1: 1/1 scenarios pass
 level 2: 7/7 scenarios pass
 conformance level 2
 
+domain data
+...
+level 1: 3/3 scenarios pass
+level 2: 4/4 scenarios pass
+conformance level 2
+
 domain operations: conformance level 3
 domain access: conformance level 2
+domain data: conformance level 2
 platform reference: target level 2
 ```
 
 `target_level` in `platform.yaml` is the floor every domain must clear for the
 platform as a whole to pass; a platform whose access domain fell to level 1
 would fail even though `operations` still reaches level 3, because averaging
-the two would describe neither.
+them would describe none of them.
 
 ## Where this sits in the codebase
 
