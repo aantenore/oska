@@ -1,79 +1,212 @@
 # OSKA
 
-OSKA is a layered standard for systems in which a language model acts on real
-systems on behalf of a person: ontology first, skill driven, with every effect
-on the world crossing a governance boundary no configuration can lower. `oska`
-is its reference implementation — a Python package that gives a team a
-runtime and a kit to build its own platform from declarations, rather than a
-single fixed application. The standard is in [`spec/`](spec/README.md); the
-implementation is in `src/oska/`; the design notes for each package are in
-[`docs/`](docs/).
+[![ci](https://github.com/aantenore/oska/actions/workflows/ci.yml/badge.svg)](https://github.com/aantenore/oska/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Python 3.11 | 3.12 | 3.13](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue.svg)](pyproject.toml)
 
-A team writes packs — versioned directories of entities, integrations and
-procedures for one business area — and a manifest that groups them into
-domains. One runtime process serves as many packs, domains and tenants as the
-manifest names, each isolated from the others, with nothing hand-written
-about what any of them can say or do. `examples/ops/` and `examples/access/`
-are the two reference packs; `examples/platform.yaml` serves each as its own
-domain from one process.
+**Let a model plan; let code decide what touches production.**
 
-## The problem
+OSKA, the Ontology-first, Skill-driven Agentic architecture, is a standard and
+a Python runtime for systems in which a language model acts on real systems on
+behalf of a person. The ontology comes first: entities, states and relations
+are declared before anything acts on them. Behavior comes from versioned skill
+files, not from prompts or code.
 
-Operational knowledge rots. A procedure is written in a wiki, correct on the
-day it is written, and then the API changes, the service is renamed, and the
-runbook stays. What is automated sits in a script nobody dares run under
-pressure; what is not is done by hand at three in the morning, from memory.
+A tool-calling agent loop acts before anyone can see the effect. OSKA turns the
+intended effect into an object first: a typed plan of declared operations. A
+policy judges it, a person approves the exact payload, the write is read back
+from the system of record, and the receipt is recorded once in a ledger. The
+model proposes; the runtime decides.
 
-Handing the job to a prompt-first agent does not help. If the prompt describes
-what the agent can do, the description and the system drift apart the same way
-the wiki did, and the code has no way to tell a real operation from an invented
-one. The risk is not that the model is wrong about a fact. It is that it is
-wrong about a write, the write goes out anyway, and nobody can say afterwards
-what was sent, who agreed to it, or whether it worked — or that it never
-arrived and is reported as a refusal.
+## Thirty seconds
 
-## The model
+A session recorded against a hosted model, replayed offline with no endpoint
+and no key. A person asks, in Italian, to restart a stuck service, approves
+it, then asks again:
 
-- **Declared operations.** An integration skill lists every operation with a
-  name, a read or write flag, an input schema, an output schema and an entity
-  binding. Nothing outside that list can be planned, approved or executed.
-- **Ontology first.** Entities declare their fields, identifier, states and
-  relations before any procedure refers to them, and how they are named and
-  compared — `noun`, `display_fields`, `comparable_fields` — before anything
-  shows one to a person.
-- **Lifecycle as a declaration.** An entity with a lifecycle declares the
-  legal moves between its states and the operation that causes each. Current
-  state is read from the system of record, never inferred, so an illegal move
-  stops before approval is asked for.
-- **Governed write path.** A write is checked against the declarations, looked
-  up in the ledger, judged by a policy, frozen on the exact payload and held
-  for approval, recorded as an intent, executed, read back, and only then
-  reported. No setting turns a step off.
-- **A capability that is down is not a refusal.** A connector says whether the
-  system answered no, whether the request was never well formed, or whether it
-  never arrived — and, among those that never arrived, whether nothing was
-  ever sent or the answer is merely unknown. Only the last two open a circuit
-  breaker, and neither settles anything in the ledger.
-- **What is shown is what may be bound.** A procedure may declare a
-  presentation directive at a named moment, bound to evidence this turn
-  actually produced — a completed read, a verified receipt, the record a
-  person's follow-up resolved to. A binding the evidence cannot answer drops
-  the whole directive; nothing here is written by a model or fed back into a
-  decision.
-- **A release is a trusted artifact.** Building a revision validates the
-  catalog, copies what held up where nothing writes again, and names it after
-  a hash of its contents; signing it lets a deployment refuse a revision that
-  was not built with a specific key, or that was changed after the fact.
-- **Human-controlled evolution.** A new procedure enters as a proposal, moves
-  state by state with a named actor on every move, and publishing one composes
-  a change request — a directory for a person to review, or a branch of a git
-  repository opened for review there. The process that answers people can
-  propose a change to the catalog it answers from and can never make one.
-- **Isolation is structural, not conventional.** A domain's catalog, its
-  connectors, its guardrails and its state are its packs' and nothing else's;
-  a tenant changes only wording, languages and resilience, never identity,
-  storage or the catalog. A platform of one domain behaves exactly as a single
-  catalog always did.
+```sh
+printf '%s\n' \
+  "Il servizio search in staging è bloccato, riavvialo per favore" \
+  "sì" \
+  "Il servizio search in staging è bloccato, riavvialo per favore" \
+| OSKA_STATE_DIR="$(mktemp -d)" oska run --session demo \
+    --replay examples/ops/cassettes/restart-in-italian.json
+```
+
+```text
+> Questa operazione modifica qualcosa, quindi serve prima la tua approvazione.
+service.restart su integration.container_runtime con {"service":"search"}
+Rispondi sì per approvarla, oppure no per lasciare tutto com'è.
+awaiting approval 267d414d-611d-453e-a8b7-47e2901aea1f
+  integration.container_runtime service.restart {"service":"search"}
+  approvals 0 of 1
+read  integration.container_runtime service.status
+approval_pending  integration.container_runtime service.restart
+> Il riavvio del servizio search in staging è stato eseguito e verificato. Il servizio è ora in esecuzione con due repliche.
+L'operazione service.restart è stata eseguita e la rilettura ha confermato service.name, service.status. La ricevuta fb44c3dc-948c-4ca4-9590-962d874a54c8 è verificata.
+receipt  integration.container_runtime service.restart  fb44c3dc-948c-4ca4-9590-962d874a54c8
+read  integration.container_runtime service.status
+> Il riavvio del servizio search è stato eseguito e verificato. L'operazione è confermata con la ricevuta ec9a0a66-3063-4ce3-9d4b-493255ff4552.
+L'operazione service.restart era già stata eseguita in questa sessione, ricevuta fb44c3dc-948c-4ca4-9590-962d874a54c8.
+ledger_hit  integration.container_runtime service.restart  fb44c3dc-948c-4ca4-9590-962d874a54c8
+```
+
+What happened, turn by turn:
+
+1. **The write stopped.** The model planned a status read and a restart. The
+   read ran; the restart was frozen on its exact payload, `{"service":"search"}`,
+   and nothing was sent.
+2. **"sì" approved it.** The checks ran again, the intent was recorded, the
+   restart was sent, and the declared read-back confirmed `service.name` and
+   `service.status`. The receipt says `verified` because the read-back did.
+3. **The repeat did not run twice.** The ledger recognized the same request and
+   returned the original receipt.
+
+The third reply shows why the account of a write is never left to the model.
+Its prose comes from the recording and names the receipt of the day it was
+recorded. The line under it is written by the runtime from the ledger, and
+names the receipt this run actually holds.
+
+The same session in English, against scripted model answers:
+`oska run --session walk --provider scripted --script examples/ops/scenarios/02_restart_staging.json`,
+then type the three turns.
+
+## Quickstart
+
+Python 3.11 or later. The package is not on PyPI yet: install it from source.
+
+```sh
+git clone https://github.com/aantenore/oska && cd oska
+uv venv --seed && source .venv/bin/activate
+uv pip install -e '.[dev,api]'
+```
+
+Or with the standard library alone (`python3` must be 3.11 or later):
+
+```sh
+python3 -m venv .venv && source .venv/bin/activate
+pip install -e '.[dev,api]'
+```
+
+Without cloning, for the kit alone:
+`pip install "oska[api] @ git+https://github.com/aantenore/oska"`. Add the
+`postgres` extra for the relational backend.
+
+### Build your own platform
+
+```sh
+oska new pack widgets --entity widget --system inventory --host "Widget Desk"
+oska pack check widgets
+oska new platform storefront --pack widgets
+oska conform --platform storefront/platform.yaml
+oska run --platform storefront/platform.yaml --session demo --text "hello"
+```
+
+`new pack` writes one entity, one integration, one read and one governed
+write, which is enough to exercise the whole write path. `pack check`
+validates it, runs its evaluation set and its scenarios, and reports
+`claims level 2, reaches level 2`. `new platform` wraps it in a manifest with
+one domain and a CI workflow; `conform` reports `conformance level 2`; `run`
+answers `Hello. I am Storefront. I can check a widget's status and archive a
+widget.`, a sentence derived from the catalog, not written by hand.
+
+[docs/building-a-platform.md](docs/building-a-platform.md) continues from
+here: replacing the mock connector with a real system, a second pack and
+domain, signed revisions, token identity, PostgreSQL, CI and metrics. Every
+command in it is run against this repository.
+
+### Explore the reference packs
+
+From the repository root, against `examples/ops/`, which the defaults point at:
+
+```sh
+oska validate                 # 15 skills, no issues
+oska capabilities             # the procedures on offer, in the catalog's words
+oska ontology --format mermaid
+oska evaluate catalog         # 18 cases, precision 1.0, recall 1.0
+oska conform                  # 26 scenarios, conformance level 3
+```
+
+`examples/access/` is the second pack, access management, sharing no
+vocabulary with the first. `examples/platform.yaml` serves both as two domains
+of one process:
+
+```sh
+oska pack check examples/access
+oska conform --platform examples/platform.yaml
+oska run --platform examples/platform.yaml --domain access --session demo --text "hello"
+```
+
+With no provider configured, a turn answers what the runtime can do and
+declines to plan. That is a working configuration, and what every command
+above runs against.
+
+### Connect a real model
+
+Fill `.env` from `.env.example` and export it; nothing in the package loads a
+`.env` file:
+
+```sh
+set -a; . ./.env; set +a
+oska run --session ops --text "how is the checkout service doing"
+```
+
+`OSKA_PROVIDER` picks the provider: `openai_compatible` or `anthropic` for one
+endpoint, or `profiles` for several endpoints tried in order, which moves to
+the next only on a failure worth retrying and records every fallback in the
+audit trail. See [docs/configuration.md](docs/configuration.md#configsmodeljson).
+`--record` writes a session to a cassette and `--replay` plays it back
+offline; see [docs/conformance.md](docs/conformance.md#recording-a-real-session).
+
+### Serve it over HTTP
+
+`oska serve` serves the same runtime, reasoning with the same provider: turns,
+receipts and drafting a proposal per session (`/sessions/{id}/turns`,
+`/sessions/{id}/receipts`, `/proposals/from-session/{id}`, each also reachable
+under `/domains/{domain}/...` of a platform), the review queue and change
+requests for a reviewer, `GET /domains`, `GET /metrics` and `GET /health`.
+
+It authenticates nobody by default: identity arrives in headers an
+authenticated proxy sets or, with `identity.mode: token`, in a signed session
+token the runtime verifies itself. It warns on stderr before it starts
+whenever it binds an address other than `127.0.0.1` while `identity.required`
+is off: anyone who can reach that port can then hold a conversation and ask
+for writes. See [docs/governance.md#identity](docs/governance.md#identity).
+
+## How a turn works
+
+```mermaid
+flowchart TD
+    T(["a person's turn"]) --> R["route<br/>rules, fast path, then model"]
+    R --> P["plan<br/>one typed plan of declared operations"]
+    P --> V{"validate<br/>declared, and allowed by the skill?"}
+    V -- no --> X[invalid plan, said plainly]
+    V -- read --> RD[run the read]
+    V -- write --> L{"ledger<br/>already done in this session?"}
+    L -- yes --> H[return the original receipt]
+    L -- no --> PO{"policy, and a legal move<br/>from the current state?"}
+    PO -- deny --> D[denied, with the reason]
+    PO -- allow --> A[["approval<br/>exact payload, hashed<br/>the turn ends here"]]
+    A -- "next turn: yes" --> I["intent recorded<br/>checks run again"]
+    I --> E[execute]
+    E --> RB["read back<br/>the declared verification"]
+    RB --> LG[receipt written to the ledger]
+    RD --> RP["reply<br/>from stated outcomes only"]
+    H --> RP
+    D --> RP
+    X --> RP
+    LG --> RP
+    classDef model fill:#eef,stroke:#669
+    class R,P,RP model
+```
+
+A language model appears in exactly four places: ranking candidate
+procedures, classifying a turn, writing the plan and phrasing the reply (the
+shaded steps). Each is checked by code below it before it has any effect. A
+"yes" with nothing pending approves nothing, because that is a question about
+session state, not a classification. The full algorithm is in
+[docs/architecture.md](docs/architecture.md#the-turn-algorithm); the write
+path step by step is in [docs/governance.md](docs/governance.md#the-write-path).
 
 ## The layers
 
@@ -88,112 +221,69 @@ arrived and is reported as a refusal.
 | L6 Interaction | Session state, the turn engine, presentation directives and subject tracking, the model budget, the channels a person reaches it through. | `oska.engine`, `oska.api`, `oska.cli` |
 | L7 Evolution | Proposals, quality gates, the lifecycle, change requests (directory or git branch), the self-improvement job. | `oska.learning`, `oska.improvement` |
 
-A layer depends only on the layers below it and on the contracts, which are
-owned by none of them. Three things sit beside the layers rather than inside
-one. `oska.platform` assembles a process from several packs into domains and
-tenants, one runtime per (tenant, domain), and behaves as a no-op when nothing
-names a manifest. `oska.storage` is the persistence protocol the session store
-and the write ledger are written against — SQLite by default, PostgreSQL
-behind the `postgres` extra, both satisfying one contract suite, which CI
-also runs against a live PostgreSQL server.
-`oska.observability` reads the audit trail and the traces back and computes
-the service-level numbers, exposed as text or as `GET /metrics`. `oska.kit`
-is build-time only: it generates a pack or a platform from the templates
-under `src/oska/templates/`, and checks or builds one pack in isolation; it is
-never imported by anything that serves a turn. See
-[`spec/02-layers.md`](spec/02-layers.md) for the dependency rule,
-[`spec/14-platform-blueprint.md`](spec/14-platform-blueprint.md) for the
-platform, and [`docs/architecture.md`](docs/architecture.md) for how the code
-keeps all of it.
+A layer depends only on the layers below it and on the contracts, which no
+layer owns; `tests/unit/test_layering.py` checks it over the imports. Beside
+the layers: `oska.platform` assembles several packs into domains and tenants,
+one runtime per (tenant, domain); `oska.storage` is the persistence protocol,
+SQLite by default and PostgreSQL behind the `postgres` extra, both held to one
+contract suite; `oska.observability` computes the service-level numbers from
+the audit trail; `oska.kit` generates and checks packs and platforms at build
+time and is never imported by anything that serves a turn. See
+[spec/02-layers.md](spec/02-layers.md) and
+[docs/architecture.md](docs/architecture.md).
 
-## Quickstart: from nothing to a checked platform
+## How it differs from a tool-calling agent loop
 
-Python 3.11 or later.
+A loop hands the model the tools and lets it call them until it decides it is
+done. That is the right shape for open-ended work: research, coding,
+exploration. Approval, verification and idempotency can be built around a
+loop, but they are the application's job, and often they live in the prompt.
+In OSKA they are the shape of the runtime.
 
-```sh
-uv venv && source .venv/bin/activate
-pip install -e '.[dev,api]'
+| | Tool-calling agent loop | OSKA |
+| --- | --- | --- |
+| What the model can reach | the tools it is given | only operations a skill declares, with a schema; anything else is a rejected plan |
+| When the effect is visible | as each call is made | before anything runs: one plan, validated whole, the write frozen on its exact payload |
+| Approval | of the next call, if the application adds it | of the exact payload and its digest, on every write; no setting turns it off |
+| "Did it work?" | what the model says | a declared read-back; the reply reports what the receipt says |
+| The same request twice | up to the tool | the ledger returns the original receipt |
+| What it says it can do | the prompt | computed from the catalog |
+| Model calls per turn | open-ended | bounded by a configured budget |
+| Testing it | with a live model, or mocks | the whole conformance suite offline, against scripted answers or a recorded session |
 
-oska new pack widgets --entity widget --system inventory --host "Widget Desk"
-oska pack check widgets              # validates, evaluates, runs its scenarios, reports its level
-oska new platform storefront --pack widgets
-oska conform --platform storefront/platform.yaml
-```
+The cost is real: an OSKA system cannot invent a capability at run time, and a
+new one is a reviewed file. [docs/why-oska.md](docs/why-oska.md) makes the
+full argument, including when not to use it.
 
-`new pack` writes one entity, one integration, one read and one governed
-write — enough to exercise the whole write path — and `pack check` passes on
-it as generated. `new platform` wraps it in a manifest with one domain.
-[`docs/building-a-platform.md`](docs/building-a-platform.md) continues from
-here: replacing the mock connector with a real system, adding a second pack
-and domain, signing revisions, moving to token identity, moving to
-PostgreSQL, wiring CI and metrics — every command in it run and verified
-against this repository.
+## What you get
 
-## Quickstart: the two reference packs
-
-Every command below runs from the repository root against `examples/ops/`,
-which is what the defaults point at.
-
-```sh
-oska validate                 # parse and cross-check every skill
-oska capabilities             # the procedures on offer, in the catalog's words
-oska ontology --format mermaid
-oska evaluate catalog         # run the evaluation set each skill carries
-oska conform                  # run the scenario suite, report the level reached
-```
-
-`validate` reports `15 skills, no issues`. `evaluate catalog` runs the
-eighteen cases the three procedures that carry a set declare, at precision 1.0
-and recall 1.0, and names the ones that carry none. `conform` runs the
-twenty-six scenarios under `examples/ops/scenarios/` and prints
-`conformance level 3`. `examples/access/` is the second pack — access
-management, sharing no vocabulary with the first — checked the same way:
-
-```sh
-oska pack check examples/access
-```
-
-Both packs served from one process, as domains of one manifest:
-
-```sh
-oska conform --platform examples/platform.yaml
-oska run --platform examples/platform.yaml --domain access --session demo --text "hello"
-```
-
-With no provider configured, a turn answers what the runtime can do and
-declines to plan — a working configuration, and what every command above ran
-against. For a scripted turn against recorded answers, offline and
-deterministic:
-
-```sh
-oska run --session walk --provider scripted \
-  --script examples/ops/scenarios/02_restart_staging.json
-```
-
-For a real provider, fill `.env` from `.env.example` and export it:
-
-```sh
-set -a; . ./.env; set +a
-oska run --session ops --text "how is the checkout service doing"
-```
-
-`OSKA_PROVIDER` picks the provider: `openai_compatible` or `anthropic` for one
-endpoint, or `profiles` for several endpoints tried in order, which moves to the
-next only on a failure worth retrying and records every fallback in the audit
-trail. See [docs/configuration.md](docs/configuration.md#configs-modeljson).
-`oska serve` reasons with the same provider.
-
-`oska serve` serves the same runtime over HTTP: turns, receipts and drafting
-a proposal per session (`/sessions/{id}/turns`, `/sessions/{id}/receipts`,
-`/proposals/from-session/{id}`, each also reachable under
-`/domains/{domain}/...` of a platform), the review queue and change requests
-for a reviewer, `GET /domains`, `GET /metrics` and `GET /health`. It
-authenticates nobody by default: identity arrives in headers an authenticated
-proxy sets — or, with `identity.mode: token`, in a signed session token the
-runtime verifies itself. It warns on stderr before it starts whenever it binds
-an address other than `127.0.0.1` while `identity.required` is off: anyone who
-can reach that port can then hold a conversation and ask for writes. See
-[docs/governance.md#identity](docs/governance.md#identity).
+- **The runtime.** Routing, planning, the governed write path, read-back
+  verification, the idempotent ledger, audit events and traces, per-session
+  state.
+- **The kit.** `oska new pack`, `oska new platform`, `oska pack check` and
+  `oska pack build`. A generated pack passes its own check as written, and a
+  generated platform comes with a CI workflow that runs its conformance suite.
+- **Providers with fallback.** One endpoint speaking either of the two
+  supported wire protocols, or several profiles tried in order, moving on
+  only on a failure worth retrying and recording every fallback.
+  A scripted provider for tests, and none at all for a runtime that only
+  answers what it can do.
+- **Multilingual turns.** A turn is answered in the language it was asked in.
+  The runtime's own sentences ship in English and Italian, and a deployment
+  can add its own; a catalog is reached in more languages than it was written
+  in through paraphrases derived outside the turn.
+- **Storage.** SQLite by default, PostgreSQL behind an extra, both held to one
+  contract suite that CI runs against a live server.
+- **Conformance.** Three levels (Declared, Governed, Adaptive), a scenario
+  format, and `oska conform` to report the level a catalog reaches, per domain
+  of a platform.
+- **Cassettes.** Record a session against a real model once; replay it
+  offline in CI, in the recorded order, with each call checked against the
+  request it answered when it was recorded.
+- **An HTTP API**, token or proxy identity, signed catalog revisions,
+  `GET /metrics`, a guardrail catalog that says which promises are enforced by
+  code and which are only instructions, and a learning loop that drafts
+  procedures from sessions, while publishing one always takes a named person.
 
 ## Repository layout
 
@@ -210,31 +300,42 @@ docs/             how this implementation works
 tests/            unit tests and the scenario suite
 ```
 
-Start with [`examples/ops/README.md`](examples/ops/README.md) to see how a
-pack is declared, [`docs/skill-contract.md`](docs/skill-contract.md) for the
-file format, [`docs/packs-and-platforms.md`](docs/packs-and-platforms.md) for
-the pack and manifest contracts, [`docs/building-a-platform.md`](docs/building-a-platform.md)
-for the practitioner path, and [`docs/operating.md`](docs/operating.md) for
-the jobs that belong to whoever runs an installation.
+## Documentation
+
+- [docs/README.md](docs/README.md): every document, grouped by what you came to do.
+- [docs/why-oska.md](docs/why-oska.md): the argument, the trade-offs, and when not to use it.
+- [spec/README.md](spec/README.md): the standard, layer by layer.
+- [examples/ops/README.md](examples/ops/README.md): how a pack is declared.
+- [docs/skill-contract.md](docs/skill-contract.md): the skill file format.
+- [docs/packs-and-platforms.md](docs/packs-and-platforms.md): the pack and manifest contracts.
+- [docs/operating.md](docs/operating.md): the jobs that belong to whoever runs an installation.
 
 ## Status
 
-Version 0.1. Draft, private, not published anywhere. The interfaces are
-stable enough to build a second pack against — one now exists — and not
-stable enough to depend on. The twenty-six scenarios under
-`examples/ops/scenarios/` reach conformance level 3 (Adaptive); the eight
-under `examples/access/scenarios/` reach level 2 (Governed), which is every
-level they declare a scenario for; served together as `examples/platform.yaml`,
-each domain is checked and reported on its own. Three procedures of the
-operational pack and two of the access pack carry an evaluation set, both at
-precision 1.0 and recall 1.0, and the command names the ones that do not.
-1516 unit and scenario tests pass, offline; 26 are skipped — the PostgreSQL
-storage contract and conformance isolation tests, which run only against a
-real server named by `OSKA_TEST_POSTGRES_URL`. The `postgres` job of CI runs
-them against a live PostgreSQL 16 service container on every change, together
-with both reference conformance suites and the platform on the relational
-backend, each twice in a row over one database; a conformance run keeps to
-namespaces it creates and leaves nothing behind.
+Alpha (0.1). Not on PyPI yet; install from source. The interfaces are stable
+enough to build a pack against, and not yet stable enough to depend on; the
+standard is a draft.
+
+The twenty-six scenarios under `examples/ops/scenarios/` reach conformance
+level 3 (Adaptive); the eight under `examples/access/scenarios/` reach level 2
+(Governed), every level they declare a scenario for. Served together as
+`examples/platform.yaml`, each domain is checked and reported on its own.
+Three procedures of the operational pack and two of the access pack carry an
+evaluation set, all at precision 1.0 and recall 1.0. More
+than 1,500 unit and scenario tests run offline on Python 3.11, 3.12 and 3.13;
+the PostgreSQL storage contract and conformance isolation tests run only
+against a real server named by `OSKA_TEST_POSTGRES_URL`, and the `postgres`
+job of CI runs them against a live PostgreSQL 16 on every change, with both
+reference suites and the platform on the relational backend, each twice in a
+row over one database. A further CI job installs the built wheel outside the
+checkout and runs the kit end to end.
+
+Changes are recorded in [CHANGELOG.md](CHANGELOG.md).
+
+## Contributing and security
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for setup and the checks a change runs.
+Report a vulnerability privately, as described in [SECURITY.md](SECURITY.md).
 
 ## License
 

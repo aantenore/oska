@@ -26,7 +26,10 @@
         "guardrail",
         "trace",
         "budget",
-        "model_fallback"
+        "model_fallback",
+        "revision",
+        "unavailable",
+        "retention"
       ],
       "description": "Which step of the turn this event records."
     },
@@ -73,13 +76,13 @@
         "missing": { "type": "array", "description": "plan: the inputs still needed." },
         "reply_intent": { "type": "string", "description": "plan: what the reply should be about." },
         "skill_id": { "type": "string", "description": "policy: the procedure the policy belongs to." },
-        "operation": { "type": "string", "description": "policy, execute, verify, ledger_hit: the operation." },
+        "operation": { "type": "string", "description": "policy, execute, verify, ledger_hit, unavailable, retention: the operation." },
         "effect": {
           "type": "string",
           "enum": ["allow", "deny", "require_second_approval"],
           "description": "policy: the effect applied."
         },
-        "reason": { "type": "string", "description": "policy, approval_decided, guardrail: why." },
+        "reason": { "type": "string", "description": "policy, approval_decided, guardrail, revision: why." },
         "point": {
           "type": "string",
           "enum": ["input", "planning", "execution", "output"],
@@ -126,7 +129,22 @@
         "pending": { "type": ["string", "null"], "description": "reply: what the session waits for." },
         "proposal_id": { "type": "string", "description": "proposal: the proposal." },
         "state": { "type": "string", "description": "proposal: the state moved to." },
-        "by": { "type": "string", "description": "proposal: the actor who moved it." }
+        "by": { "type": "string", "description": "proposal: the actor who moved it." },
+        "from": { "type": "string", "description": "revision: the catalog revision the session left, empty for the first." },
+        "to": { "type": "string", "description": "revision: the catalog revision the session is now served by." },
+        "answered": { "type": "array", "description": "model_fallback: the profiles that answered, with their roles." },
+        "fallbacks": { "type": "array", "description": "model_fallback: every move to another profile, with its reason." },
+        "breaker": { "type": "string", "description": "unavailable: the state of the integration's circuit breaker." },
+        "consecutive_failures": { "type": "integer", "description": "unavailable: failed calls in a row." },
+        "retry_in_seconds": { "type": ["integer", "null"], "description": "unavailable: when the call may be tried again." },
+        "receipts": { "type": "integer", "description": "retention: receipts removed." },
+        "events": { "type": "integer", "description": "retention: audit events removed." },
+        "session_states": { "type": "integer", "description": "retention: stored session states removed." },
+        "feedback": { "type": "integer", "description": "retention: feedback entries removed." },
+        "preferences": { "type": "integer", "description": "retention: preference entries removed." },
+        "trace_spans": { "type": "integer", "description": "retention: trace spans removed." },
+        "proposals": { "type": "integer", "description": "retention: proposals removed." },
+        "change_requests": { "type": "integer", "description": "retention: change requests removed." }
       }
     }
   }
