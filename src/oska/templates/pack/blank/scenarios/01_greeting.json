@@ -10,8 +10,8 @@
         "kind": "greeting",
         "contains": [
           "I can",
-          "check a ${entity}'s status",
-          "archive a ${entity}"
+          "check ${a_entity}'s status",
+          "archive ${a_entity}"
         ],
         "outcomes": [],
         "pending": null,

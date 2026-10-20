@@ -1,6 +1,6 @@
 {
   "name": "02_${entity}_archive",
-  "description": "Archiving a ${entity} needs one approval; once verified, repeating the same request replays from the ledger instead of writing again.",
+  "description": "Archiving ${a_entity} needs one approval; once verified, repeating the same request replays from the ledger instead of writing again.",
   "level": 2,
   "provider_script": [
     {

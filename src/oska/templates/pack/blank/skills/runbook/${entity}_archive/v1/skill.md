@@ -3,7 +3,7 @@ id: runbook.${entity}_archive
 type: runbook
 version: 1
 status: published
-description: Archives a ${entity} after confirming its current status, and verifies the read-back.
+description: Archives ${a_entity} after confirming its current status, and verifies the read-back.
 triggers:
   - archive ${entity} demo-1
   - retire ${entity} demo-1, it is done
@@ -23,7 +23,7 @@ guardrails:
   - guardrail.exact_payload_approval
   - guardrail.read_back_before_confirmation
 runtime:
-  action: archive a ${entity}
+  action: archive ${a_entity}
   action_on_selection: archive it
   order: 2
 policy: policy.json

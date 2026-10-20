@@ -57,6 +57,18 @@ def test_new_pack_uses_the_names_it_is_given(tmp_path: Path) -> None:
     assert manifest["provides"]["entities"] == ["entity.widget"]
 
 
+def test_new_pack_puts_the_right_article_before_its_entity(tmp_path: Path) -> None:
+    """An entity starting with a vowel reads "an item", and the pack still conforms."""
+    target = new_pack("vowel_pack", into=tmp_path, entity="item")
+    text = "\n".join(
+        path.read_text(encoding="utf-8") for path in target.rglob("*") if path.is_file()
+    )
+    assert "an item" in text
+    assert "a item" not in text
+    report = check_pack(target)
+    assert report.ok, (report.errors, report.validation_issues)
+
+
 def test_new_pack_refuses_to_overwrite(tmp_path: Path) -> None:
     new_pack("sample_pack", into=tmp_path)
     with pytest.raises(FileExistsError):

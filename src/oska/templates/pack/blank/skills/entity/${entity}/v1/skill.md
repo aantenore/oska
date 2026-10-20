@@ -3,7 +3,7 @@ id: entity.${entity}
 type: entity
 version: 1
 status: published
-description: A ${entity} tracked by this pack, identified by name and moved through a simple lifecycle.
+description: ${A_entity} tracked by this pack, identified by name and moved through a simple lifecycle.
 fields:
   - name: name
     type: string

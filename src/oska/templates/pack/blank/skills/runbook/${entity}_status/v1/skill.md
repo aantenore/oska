@@ -3,7 +3,7 @@ id: runbook.${entity}_status
 type: runbook
 version: 1
 status: published
-description: Reports the current status of a ${entity} by reading it back from the system of record.
+description: Reports the current status of ${a_entity} by reading it back from the system of record.
 triggers:
   - what is the status of ${entity} demo-1
   - check ${entity} demo-1
@@ -18,14 +18,14 @@ capabilities:
 guardrails:
   - guardrail.identifiers_are_never_invented
 runtime:
-  action: check a ${entity}'s status
+  action: check ${a_entity}'s status
   action_on_selection: check its status
   order: 1
 ---
 
 ## Purpose
 
-The read-only half of this pack: confirm what a ${entity} is doing right now,
+The read-only half of this pack: confirm what ${a_entity} is doing right now,
 with nothing planned beyond the read.
 
 ## Preconditions

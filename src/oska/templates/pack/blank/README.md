@@ -19,7 +19,7 @@ a placeholder for a real business area; replace it piece by piece and re-run
   needs: a read (`${entity}.get`) and a governed write (`${entity}.archive`),
   each with its input and output shape. The write declares its own read-back
   in `verify`, which is what proves an archive actually happened.
-- `skills/runbook/${entity}_status/v1/skill.md` — reads a ${entity} back and
+- `skills/runbook/${entity}_status/v1/skill.md` — reads ${a_entity} back and
   reports its status. No policy file: it writes nothing, so nothing here needs
   approval.
 - `skills/runbook/${entity}_archive/v1/skill.md` and its `policy.json` — the

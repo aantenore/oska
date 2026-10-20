@@ -21,7 +21,7 @@
         "kind": "off_scope",
         "contains": [
           "not something I can do here",
-          "check a ${entity}'s status"
+          "check ${a_entity}'s status"
         ],
         "outcomes": [],
         "pending": null,

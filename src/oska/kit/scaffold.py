@@ -97,6 +97,8 @@ def new_pack(
         "entity": entity,
         "Entity": entity[:1].upper() + entity[1:],
         "entities": _pluralize(entity),
+        "a_entity": f"{_article(entity)} {entity}",
+        "A_entity": f"{_article(entity).capitalize()} {entity}",
         "system": system,
         "host": host,
     }
@@ -290,6 +292,11 @@ def _check_name(value: str, what: str) -> None:
 def _check_identifier(value: str, what: str) -> None:
     if not _IDENTIFIER.match(value):
         raise ValueError(f"{what} {value!r} must be lowercase letters, digits and _ only")
+
+
+def _article(word: str) -> str:
+    """The indefinite article before a word, by its first letter, as the catalog wording reads."""
+    return "an" if word[:1].lower() in "aeiou" else "a"
 
 
 def _pluralize(word: str) -> str:
