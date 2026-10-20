@@ -3,7 +3,9 @@
 Every operation declares its argument vector up front. Placeholders in it are
 filled from the payload, one argument at a time, after the value has been
 checked. The command is never assembled into a string and never handed to a
-shell, so a payload value can only ever become one argument.
+shell, so a payload value can only ever become one argument, and never an
+option: a value that would start an argument with `-` is refused unless the
+declared command ends its options with `--` first.
 
 The timeout is the one the binding's resilience configuration carries, and an
 operation that needs longer than the binding allows declares its own. A command
@@ -36,6 +38,7 @@ __all__ = ["ShellConnector"]
 
 _PLACEHOLDER = re.compile(r"\{([A-Za-z_][A-Za-z0-9_]*)\}")
 _ALLOWED = (str, int, float, bool)
+_END_OF_OPTIONS = "--"
 
 
 class ShellConnector(BaseConnector):
@@ -99,7 +102,25 @@ def _argv_of(spec: dict) -> list[str]:
 
 
 def _render(argv: list[str], payload: dict) -> list[str]:
-    return [_PLACEHOLDER.sub(lambda match: _value(match.group(1), payload), part) for part in argv]
+    """Fill the placeholders, one argument at a time.
+
+    A value may not turn an argument into an option. When the declared part does
+    not start with `-` and the filled one does, the dash came from the payload,
+    and the command would read the value as a flag of its own; that is refused
+    unless an earlier argument is `--`, after which the command reads no options.
+    """
+    rendered: list[str] = []
+    options_ended = False
+    for part in argv:
+        filled = _PLACEHOLDER.sub(lambda match: _value(match.group(1), payload), part)
+        if not options_ended and filled.startswith("-") and not part.startswith("-"):
+            raise ConnectorError(
+                f"a payload value would start the argument {filled!r} with '-', where the "
+                "command would read it as an option; declare '--' before it to allow that"
+            )
+        options_ended = options_ended or part == _END_OF_OPTIONS
+        rendered.append(filled)
+    return rendered
 
 
 def _value(name: str, payload: dict) -> str:

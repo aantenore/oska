@@ -183,7 +183,8 @@ the field:
   that names no segment at all is refused before anything is sent.
 - **Command.** Maps each operation to an argument vector template with a
   timeout. Arguments are substituted positionally; a payload value is never
-  concatenated into a command string and never interpreted by a shell.
+  concatenated into a command string, never interpreted by a shell, and never
+  read as an option of the command.
 - **Message or tool protocol.** Maps each operation onto a remote tool
   invocation. The operation name is the tool name.
 
@@ -237,7 +238,10 @@ ConnectorRegistry:
   data, error and latency, and MUST NOT raise for a remote failure it can
   describe.
 - **OSKA-INT-7** — A command adapter MUST pass an argument vector and MUST NOT
-  interpolate payload values into a string interpreted by a shell.
+  interpolate payload values into a string interpreted by a shell. It MUST
+  refuse, without running anything, a payload value that would start an
+  argument with `-`, unless the declared vector ends the command's options with
+  `--` before that argument.
 - **OSKA-INT-8** — An HTTP adapter MUST send only the payload fields the
   operation declares for the path, query and body.
 - **OSKA-INT-9** — A connector MUST NOT receive free-form user text in any

@@ -628,6 +628,30 @@ def test_shell_refuses_a_value_that_is_not_a_single_one(value: object) -> None:
     assert "value" in (result.error or "")
 
 
+def test_shell_refuses_a_value_that_would_become_an_option() -> None:
+    """A payload value cannot slip a flag into the command."""
+    result = shell_connector().execute("sample.echo", {"value": "--kubeconfig=/elsewhere"})
+    assert result.ok is False
+    assert "option" in (result.error or "")
+
+
+def test_shell_passes_a_dashed_value_after_the_end_of_options() -> None:
+    connector = ShellConnector(
+        id="integration.sample",
+        operations={"sample.echo": {"argv": ["printf", "--", "%s", "{value}"], "timeout": 10}},
+    )
+    data = ok(connector.execute("sample.echo", {"value": "-5"}))
+    assert data["stdout"] == "-5"
+
+
+def test_shell_keeps_a_dash_the_command_itself_declares() -> None:
+    connector = ShellConnector(
+        id="integration.sample",
+        operations={"sample.echo": {"argv": ["printf", "%s", "--{value}"], "timeout": 10}},
+    )
+    assert ok(connector.execute("sample.echo", {"value": "x"}))["stdout"] == "--x"
+
+
 def test_shell_refuses_a_null_byte() -> None:
     result = shell_connector().execute("sample.echo", {"value": "a\0b"})
     assert result.ok is False

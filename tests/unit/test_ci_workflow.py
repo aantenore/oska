@@ -6,7 +6,11 @@ the catalog evaluation gate of OSKA-XC-29, and conformance, all offline and
 without secrets. This reads `.github/workflows/ci.yml` as data and holds it to
 that, rather than trusting the file's own step names.
 
-A second job exercises the relational backend against a live PostgreSQL 16
+The build job runs on every Python version the package supports. A package job
+builds the wheel, installs it into a fresh virtual environment and runs the
+newcomer path from an empty directory outside the checkout.
+
+A third job exercises the relational backend against a live PostgreSQL 16
 service container: the storage contract suite and both reference conformance
 suites, each twice in a row over the same database, which only passes when a
 run leaves nothing behind.
@@ -22,7 +26,17 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW = REPO_ROOT / ".github" / "workflows" / "ci.yml"
 OPS_SKILLS = "examples/ops/skills"
 ACCESS_SKILLS = "examples/access/skills"
+PACKAGE_JOB = "package"
 POSTGRES_JOB = "postgres"
+PYTHON_VERSIONS = ["3.11", "3.12", "3.13"]
+NEWCOMER_PATH = (
+    "oska --help",
+    "oska new platform acme",
+    "oska new pack billing --into packs",
+    "oska pack check packs/billing",
+    "oska conform --platform platform.yaml",
+    "oska run --platform platform.yaml --session s1 --text",
+)
 POSTGRES_IMAGE = "postgres:16"
 FIRST_PARTY_ACTIONS = ("actions/checkout@", "actions/setup-python@")
 CONTRACT_SUITE = "tests/unit/test_storage_contract.py"
@@ -104,3 +118,47 @@ def test_the_postgres_job_runs_every_suite_twice_in_a_row() -> None:
     selected = next(i for i, run in enumerate(runs) if "OSKA_RUNTIME_CONFIG" in run)
     assert all(runs.index(run) > selected for run in conform)
     assert "namespace LIKE 'conformance/%'" in runs[-1]
+
+
+def test_the_build_job_runs_on_every_supported_python_version() -> None:
+    job = _jobs()["build"]
+    assert job["strategy"]["matrix"]["python-version"] == PYTHON_VERSIONS
+    setups = [
+        step for step in job["steps"] if step.get("uses", "").startswith("actions/setup-python@")
+    ]
+    assert [step["with"]["python-version"] for step in setups] == ["${{ matrix.python-version }}"]
+
+
+def test_the_package_job_builds_and_checks_the_distributions() -> None:
+    runs = _runs(PACKAGE_JOB)
+    built = next(i for i, run in enumerate(runs) if "python -m build" in run)
+    checked = next(i for i, run in enumerate(runs) if "twine check dist/*" in run)
+    assert "pip install build" in runs[built]
+    assert "pip install twine" in runs[checked]
+    assert built < checked
+
+
+def test_the_package_job_installs_the_wheel_into_a_fresh_environment() -> None:
+    runs = _runs(PACKAGE_JOB)
+    installs = [run for run in runs if "dist/" in run and ".whl" in run and "[api]" in run]
+    assert len(installs) == 1
+    assert "python -m venv" in installs[0] and "$RUNNER_TEMP" in installs[0]
+    assert "pip install -e" not in " ".join(runs), "the package job installs the built wheel"
+
+
+def test_the_package_job_runs_the_newcomer_path_outside_the_checkout() -> None:
+    steps = _jobs()[PACKAGE_JOB]["steps"]
+    path = [step for step in steps if "oska new platform" in step.get("run", "")]
+    assert len(path) == 1
+    assert "working-directory" not in path[0], "the step moves itself out of the checkout"
+    script = path[0]["run"]
+    lines = [line.strip() for line in script.splitlines()]
+    assert lines[0] == "set -euo pipefail"
+    assert 'cd "$RUNNER_TEMP/workdir"' in lines
+    moved = lines.index('cd "$RUNNER_TEMP/workdir"')
+    positions = [
+        next(i for i, line in enumerate(lines) if command in line) for command in NEWCOMER_PATH
+    ]
+    assert positions == sorted(positions) and positions[0] > moved
+    assert 'grep -q "I can"' in script and 'test -n "$greeting"' in script
+    assert "configs/" not in script, "the packaged defaults are what the path uses"

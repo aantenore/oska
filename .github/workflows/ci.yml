@@ -6,13 +6,19 @@ on:
 
 jobs:
   build:
+    # The package declares `requires-python >= 3.11`: every supported minor
+    # version runs the whole job.
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: ${{ matrix.python-version }}
 
       - name: Install
         run: pip install -e '.[dev,api]'
@@ -41,6 +47,57 @@ jobs:
           --skills examples/access/skills
           --scenarios examples/access/scenarios
           --connectors examples/access/configs/connectors.json
+
+  package:
+    # The built wheel, installed the way an adopter installs it: into a fresh
+    # virtual environment, and run from an empty directory outside the checkout,
+    # so the defaults the package ships are what is used, not this repository's
+    # `configs/`. Then the newcomer path, end to end.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build the distributions
+        run: |
+          set -euo pipefail
+          python -m pip install build
+          python -m build
+
+      - name: Check the distribution metadata
+        run: |
+          set -euo pipefail
+          python -m pip install twine
+          twine check dist/*
+
+      - name: Install the wheel into a fresh environment
+        run: |
+          set -euo pipefail
+          wheels=(dist/*.whl)
+          test "${#wheels[@]}" -eq 1
+          python -m venv "$RUNNER_TEMP/adopter"
+          "$RUNNER_TEMP/adopter/bin/python" -m pip install "$PWD/${wheels[0]}[api]"
+          mkdir "$RUNNER_TEMP/workdir"
+
+      - name: Run the newcomer path outside the checkout
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/workdir"
+          export PATH="$RUNNER_TEMP/adopter/bin:$PATH"
+          test "$(command -v oska)" = "$RUNNER_TEMP/adopter/bin/oska"
+          oska --help
+          oska new platform acme
+          cd acme
+          oska new pack billing --into packs
+          oska pack check packs/billing
+          oska conform --platform platform.yaml
+          greeting="$(oska run --platform platform.yaml --session s1 --text "hello")"
+          echo "$greeting"
+          test -n "$greeting"
+          grep -q "I can" <<< "$greeting"
 
   postgres:
     # The relational backend against a live PostgreSQL 16, started as a service

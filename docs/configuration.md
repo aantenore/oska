@@ -436,7 +436,8 @@ than failing the turn. Raising it is worth doing only when turns start failing
 on a busy file rather than on the system they were talking to; lowering it
 turns contention into a failed turn sooner, which is a diagnosis and not a
 setting to run with. With `postgres`, both stores go through `psycopg`
-(the `postgres` extra: `pip install 'oska[postgres]'`) against the address
+(the `postgres` extra: add `[postgres]` to the requirement you installed `oska`
+with, as in `pip install 'oska[postgres]==<version>'`) against the address
 `url_env` names, with numbered migrations applied under an advisory lock the
 first time a process opens the database. The two backends satisfy the same
 `LedgerStore` and `SessionStateStore` protocols in `oska.storage`, run through
@@ -750,7 +751,12 @@ key and two different ones never do.
 
 The vector is declared up front and rendered one argument at a time, after each
 value is checked. The command is never assembled into a string and never handed
-to a shell, so a payload value can only ever become one argument.
+to a shell, so a payload value can only ever become one argument. It can never
+become an option either: a value that would start an argument with `-` (say
+`--kubeconfig=/elsewhere` in `["kubectl", "rollout", "restart", "{service}"]`) is
+refused before the command runs. Where a dashed value is legitimate, such as a
+negative number, declare `--` before it in the vector; a dash the vector itself
+declares (`"--name={value}"`) is always kept.
 
 ### `${ENV}` expansion
 
