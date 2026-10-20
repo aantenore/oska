@@ -10,6 +10,29 @@ Every command below accepts `--skills` to point at other catalog roots, and
 reads the same settings as the runtime. `oska config` prints what is in
 force.
 
+## Running more than one replica
+
+With `storage.backend: postgres`, the two stores a turn cannot do without are
+shared: the write ledger and the session store. A turn may land on any replica,
+the ledger still answers "already done" for a repeated write, and a session
+picks up where another replica left it. Catalogs are shared as revisions (below),
+read from a directory every replica mounts.
+
+The rest of the state directory is still a directory, one per process:
+
+| What | Where | With two replicas |
+| --- | --- | --- |
+| Audit trail | `audit.path`, a JSONL file | Two files; ship both to your log pipeline and read them together |
+| Service-level report and `/metrics` | Computed from the local audit trail | Each replica reports what it served |
+| Proposals and change requests | `state/proposals`, `changes.root` | Two review queues |
+| Traces, derived and learned phrases | `tracing.path`, the state directory | Per replica |
+
+Until those move behind store interfaces of their own, run the review and
+learning loop (`oska improve`, the proposal and change request routes, `oska
+change`) against one replica, or one shared volume, and treat audit files as
+logs to collect rather than a database to query. Nothing in the write path
+depends on them: approval, the ledger and the read-back hold across replicas.
+
 ## Releasing a catalog
 
 A directory of skill files is the right catalog for one process reading its own

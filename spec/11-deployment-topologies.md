@@ -183,6 +183,17 @@ binding points, but never identity, guardrails, storage or where state lives.
 A catalog served without a manifest is a platform of one domain, and
 everything in the sections above holds for it as written.
 
+## What a shared database shares
+
+A relational backend behind the ledger and the session store is what lets a
+turn land on any replica: the claim, the receipt and the session state are the
+records a write depends on, and they are shared. The audit trail, the proposals
+and change requests of the learning loop, traces and derived phrases are still
+kept per process in the reference runtime. That is a limit of the runtime, not
+of the layers: a system that runs several replicas either keeps those behind
+shared stores of its own, or runs the learning loop against one replica and
+collects the audit trails as logs. The write path does not read them.
+
 ## Trust boundaries
 
 | Party | Trusted for | Not trusted for |
