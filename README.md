@@ -4,6 +4,8 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python 3.11 | 3.12 | 3.13](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue.svg)](pyproject.toml)
 
+<p align="center"><img src="docs/assets/demo.svg" alt="Terminal session: a restart request in Italian stops for approval of the exact payload, the approved restart returns a verified receipt, and the repeated request is answered from the ledger with the same receipt" width="900"></p>
+
 **Let a model plan; let code decide what touches production.**
 
 OSKA, the Ontology-first, Skill-driven Agentic architecture, is a standard and

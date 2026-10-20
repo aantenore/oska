@@ -1,0 +1,19 @@
+$ oska run --session demo --replay examples/ops/cassettes/restart-in-italian.json
+> Il servizio search in staging è bloccato, riavvialo per favore
+Questa operazione modifica qualcosa, quindi serve prima la tua approvazione.
+service.restart su integration.container_runtime con {"service":"search"}
+Rispondi sì per approvarla, oppure no per lasciare tutto com'è.
+awaiting approval 79014991…
+  integration.container_runtime service.restart {"service":"search"}
+  approvals 0 of 1
+read  integration.container_runtime service.status
+approval_pending  integration.container_runtime service.restart
+> sì
+Il riavvio del servizio search in staging è stato eseguito e verificato. Il servizio è ora in esecuzione con du…
+L'operazione service.restart è stata eseguita e la rilettura ha confermato … La ricevuta b01130ad… è verificata.
+receipt  integration.container_runtime service.restart  b01130ad…
+read  integration.container_runtime service.status
+> Il servizio search in staging è bloccato, riavvialo per favore
+Il riavvio del servizio search è stato eseguito e verificato. L'operazione è confermata con la ricevuta ec9a0a6…
+L'operazione service.restart era già stata eseguita in questa sessione, ricevuta b01130ad….
+ledger_hit  integration.container_runtime service.restart  b01130ad…
