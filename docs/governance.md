@@ -602,9 +602,17 @@ its lifecycle transitions, whatever the audit trail says.
 A turn may carry a principal: the subject of whoever is signed in, and whatever
 else about them the deployment puts on the call. Over HTTP it arrives in
 `X-Principal-Subject` and `X-Principal-Attributes`, which an authenticated
-proxy sets. The runtime holds no key, checks no signature and knows no
-directory, so a deployment that lets anything but its proxy reach that port has
-handed every session whatever identity the caller typed. There is no
+proxy sets. The runtime checks no signature and knows no directory, so a
+deployment that lets anything but its proxy reach that port has handed every
+session whatever identity the caller typed, unless it names a secret the proxy
+shares with it. With `identity.proxy_secret_env` set, every call carrying
+`X-Principal-Subject`, `X-Principal-Attributes` or the configured tenant header
+must also carry that secret in `identity.proxy_secret_header`
+(`X-Proxy-Secret` by default), compared in constant time; one that does not is
+a `401 proxy_unverified`, and a named secret the environment does not hold is a
+`500 identity_key_missing`, never a fall back to trusting the headers.
+`oska serve` warns when it listens on a non-loopback address in proxy mode
+without one. There is no
 corresponding option on the command line, because there is no proxy there to
 believe.
 

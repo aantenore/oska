@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import tarfile
 from pathlib import Path
 from typing import Any
@@ -19,6 +20,7 @@ import pytest
 import yaml
 from typer.testing import CliRunner
 
+import oska
 import oska.platform.runtime as platform_runtime
 from oska.cli.commands_new import app as new_app
 from oska.cli.commands_pack import app as pack_app
@@ -91,6 +93,23 @@ def test_new_platform_manifest_validates_and_names_the_pack(tmp_path: Path) -> N
     assert (platform_dir / "packs" / "sample_pack" / "pack.yaml").is_file()
     assert (platform_dir / "configs" / "runtime.json").is_file()
     assert (platform_dir / "configs" / "guardrails.json").is_file()
+
+
+def test_new_platform_ci_installs_the_version_that_generated_it(tmp_path: Path) -> None:
+    pack_dir = new_pack("sample_pack", into=tmp_path)
+    platform_dir = new_platform("sample_platform", packs=[pack_dir], into=tmp_path)
+    workflow = platform_dir / ".github" / "workflows" / "conformance.yml"
+    text = workflow.read_text(encoding="utf-8")
+    assert f"'oska=={oska.__version__}'" in text
+    assert "vars.OSKA_INSTALL" in text
+    assert "${oska_version}" not in text
+    assert not re.search(r"pip install\s+\"?oska\"?\s*$", text, re.MULTILINE)
+    readme = (platform_dir / "README.md").read_text(encoding="utf-8")
+    assert f"oska=={oska.__version__}" in readme
+    assert "${oska_version}" not in readme
+    assert not re.search(r"pip install\s+oska\b", readme)
+    install = yaml.safe_load(text)["jobs"]["conform"]["steps"][2]
+    assert install["run"] == 'pip install "$OSKA_INSTALL"'
 
 
 def test_new_platform_refuses_to_overwrite(tmp_path: Path) -> None:

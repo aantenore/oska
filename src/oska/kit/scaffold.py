@@ -33,6 +33,7 @@ from string import Template
 
 import yaml
 
+import oska
 from oska.config import PACKAGED_CONFIGS
 from oska.contracts.platform import (
     DomainSpec,
@@ -171,7 +172,12 @@ def new_platform(
     target = _target(name, into)
     display_host = name.replace("_", " ").replace("-", " ").title() or DEFAULT_HOST
     example_pack = _pack_display_name(sources[0]) if sources else "your_pack"
-    mapping = {"platform": name, "host": display_host, "pack": example_pack}
+    mapping = {
+        "platform": name,
+        "host": display_host,
+        "pack": example_pack,
+        "oska_version": oska.__version__,
+    }
     _render_tree(_template("platform"), target, mapping)
     shutil.copytree(PACKAGED_CONFIGS, target / _CONFIGS_DIR)
     pack_names = [_copy_pack(source, target) for source in sources]

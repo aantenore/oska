@@ -13,7 +13,9 @@ jobs:
         with:
           python-version: "3.11"
       - name: install oska
-        run: pip install oska
+        env:
+          OSKA_INSTALL: ${{ vars.OSKA_INSTALL || 'oska==${oska_version}' }}
+        run: pip install "$OSKA_INSTALL"
       - name: check every pack in isolation
         run: |
           set -e

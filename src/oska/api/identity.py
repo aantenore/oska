@@ -1,8 +1,10 @@
 """Who is calling: the one place a channel turns a request into a principal.
 
 Two modes, chosen by `IdentityConfig.mode`. In `proxy` mode an authenticated
-proxy in front of the runtime sets headers and the runtime takes them as given:
-it verifies nothing itself, and saying so here is the honest description. In
+proxy in front of the runtime sets headers and the runtime takes them as given;
+what it can verify is that the proxy sent them, when the configuration names a
+secret the proxy adds to every call (`proxy_secret_env`). Without one, anyone
+who reaches the port around the proxy can set the same headers. In
 `token` mode the caller presents a signed session token as
 `Authorization: Bearer <token>` and the runtime verifies it before anything else
 runs: the signature against the key named by `IdentityConfig.key_env`, the
@@ -27,6 +29,7 @@ does not read a file on every request.
 
 from __future__ import annotations
 
+import hmac
 import json
 import os
 from collections.abc import Mapping
@@ -159,9 +162,40 @@ def resolve_principal(
     is where the verification key is read from; the process environment when
     it is not given.
     """
+    source = os.environ if env is None else env
     if config.mode == "token":
-        return _from_token(request, config, session_id, os.environ if env is None else env)
+        return _from_token(request, config, session_id, source)
+    _check_proxy_secret(request, config, source)
     return _from_proxy(request)
+
+
+def _check_proxy_secret(request: Request, config: IdentityConfig, env: Mapping[str, str]) -> None:
+    """Refuse identity headers that did not come through the proxy, when a secret is named.
+
+    A call that carries none of the headers the proxy owns is a call without an
+    identity, and is judged as one; a call that carries any of them must also
+    carry the secret, compared in constant time.
+    """
+    variable = config.proxy_secret_env.strip()
+    if not variable:
+        return
+    owned = [SUBJECT_HEADER, ATTRIBUTES_HEADER, config.tenant_header.strip()]
+    if not any(name and request.headers.get(name, "").strip() for name in owned):
+        return
+    secret = str(env.get(variable, ""))
+    if not secret:
+        raise ApiError(
+            500,
+            "identity_key_missing",
+            f"proxy identity reads its secret from {variable}, which is not set",
+        )
+    presented = request.headers.get(config.proxy_secret_header, "")
+    if not hmac.compare_digest(presented.encode(), secret.encode()):
+        raise ApiError(
+            401,
+            "proxy_unverified",
+            "the identity headers of this call did not come with the proxy's secret",
+        )
 
 
 def _from_token(

@@ -1,15 +1,36 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "oska"
 version = "0.1.0"
-description = "Governed execution of declared operational procedures."
+description = "A standard and a runtime for governed agentic systems on enterprise systems."
 readme = "README.md"
 requires-python = ">=3.11"
-license = { text = "MIT" }
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [{ name = "Antonio Antenore" }]
+keywords = [
+    "agents",
+    "agentic",
+    "governance",
+    "ontology",
+    "llm",
+    "workflow",
+    "approvals",
+    "conformance",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Typing :: Typed",
+]
 dependencies = [
     "pydantic>=2.7",
     "pyyaml>=6.0",
@@ -23,6 +44,13 @@ api = ["fastapi>=0.111", "uvicorn>=0.30"]
 postgres = ["psycopg[binary]>=3.1"]
 dev = ["pytest>=8.0", "ruff>=0.6"]
 
+[project.urls]
+Homepage = "https://github.com/aantenore/oska"
+Repository = "https://github.com/aantenore/oska"
+Documentation = "https://github.com/aantenore/oska/tree/main/docs"
+Changelog = "https://github.com/aantenore/oska/blob/main/CHANGELOG.md"
+Issues = "https://github.com/aantenore/oska/issues"
+
 [project.scripts]
 oska = "oska.cli.main:app"
 
@@ -31,6 +59,7 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 oska = [
+    "py.typed",
     "templates/**/*",
     "templates/**/.*",
     "templates/**/.*/**/*",

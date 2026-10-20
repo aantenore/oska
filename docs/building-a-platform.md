@@ -406,9 +406,11 @@ means.
 
 The generated `.github/workflows/conformance.yml` runs `oska pack check` on
 every pack and then `oska conform --platform platform.yaml`, on every push
-and pull request. It needs nothing but `pip install oska` and the platform
+and pull request. It needs nothing but the runtime and the platform
 repository: the platform's own `configs/` is read from the checkout, and the
-schemas come with the package.
+schemas come with the package. The workflow installs the exact `oska` version
+that generated the platform; set the repository variable `OSKA_INSTALL` to a
+wheel, an index requirement or a git URL to install from somewhere else.
 
 `GET /metrics` returns the same six numbers `oska slo report` prints — turn
 count, latency, fallback rate, verification-failure rate, guardrail-block

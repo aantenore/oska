@@ -145,8 +145,8 @@ def driver() -> Any:
         import psycopg
     except ImportError as error:
         raise StorageError(
-            f"the postgres backend needs the psycopg driver; install the optional extra "
-            f"with: pip install 'oska[{EXTRA}]'"
+            f"the postgres backend needs the psycopg driver; add the [{EXTRA}] extra to the "
+            f"requirement oska was installed with, as in: pip install 'oska[{EXTRA}]'"
         ) from error
     return psycopg
 

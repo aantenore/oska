@@ -367,6 +367,12 @@ class IdentityConfig(BaseModel):
     than an identity that lacks the role. A deployment in `token` mode verifies
     who each caller is, so it has more than one user, and saying `single_user`
     there is refused.
+
+    `proxy_secret_env` names a variable holding a secret the proxy sends in the
+    `proxy_secret_header` header of every call it forwards. When it is named, a
+    call carrying an identity or a tenant header without that secret is refused,
+    so a caller that reaches the port around the proxy cannot claim to be
+    anyone. It applies to `proxy` mode only.
     """
 
     mode: Literal["proxy", "token"] = "proxy"
@@ -378,6 +384,15 @@ class IdentityConfig(BaseModel):
     leeway_seconds: int = 30
     reviewer_role: str = "reviewer"
     single_user: bool = False
+    proxy_secret_env: str = ""
+    proxy_secret_header: str = "X-Proxy-Secret"
+
+    @model_validator(mode="after")
+    def _proxy_secret_is_for_the_proxy(self) -> IdentityConfig:
+        """A secret the proxy sends means nothing where tokens are verified instead."""
+        if self.proxy_secret_env.strip() and self.mode != "proxy":
+            raise ValueError("identity.proxy_secret_env applies to proxy mode only")
+        return self
 
     @model_validator(mode="after")
     def _token_mode_requires_identity(self) -> IdentityConfig:

@@ -39,7 +39,13 @@ from oska.cli.options import (
     platform_for,
     settings_for,
 )
-from oska.config import Settings, load_model_config, load_runtime_config, load_settings
+from oska.config import (
+    IdentityConfig,
+    Settings,
+    load_model_config,
+    load_runtime_config,
+    load_settings,
+)
 from oska.conformance import render_json, render_text, run_suite
 from oska.engine.phrases import PhraseCatalogError
 from oska.planner.provider import ModelProvider, ModelProviderError
@@ -103,6 +109,8 @@ def serve(
     bound_port = port if port is not None else configured.port
     if not runtime.identity.required and not is_loopback(bound_host):
         typer.echo(open_port_warning(bound_host, bound_port), err=True)
+    elif trusts_unverified_proxy(runtime.identity, bound_host):
+        typer.echo(proxy_trust_warning(bound_host, bound_port), err=True)
     provider = serving_provider(settings)
     try:
         application = create_app(
@@ -135,6 +143,26 @@ def is_loopback(host: str) -> bool:
         return ipaddress.ip_address(host.strip("[]")).is_loopback
     except ValueError:
         return False
+
+
+def trusts_unverified_proxy(identity: IdentityConfig, host: str) -> bool:
+    """Whether identity headers would be taken from anyone who reaches a public port."""
+    return (
+        identity.mode == "proxy"
+        and not identity.proxy_secret_env.strip()
+        and not is_loopback(host)
+    )
+
+
+def proxy_trust_warning(host: str, port: int) -> str:
+    """What `serve` says before it trusts proxy headers nobody can prove the proxy sent."""
+    return (
+        f"warning: listening on {host}:{port} in proxy mode with no proxy secret. Anyone "
+        "who reaches this port around the proxy can set the identity headers and be "
+        "anyone, reviewer included. Name identity.proxy_secret_env in configs/runtime.json "
+        "and have the proxy send that secret in identity.proxy_secret_header, or listen "
+        "only where the proxy alone can reach."
+    )
 
 
 def open_port_warning(host: str, port: int) -> str:

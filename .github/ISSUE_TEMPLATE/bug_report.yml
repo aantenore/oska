@@ -1,0 +1,36 @@
+name: Bug report
+description: Something does not behave as documented
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what you saw instead.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: How to reproduce
+      description: Commands, a minimal pack or a scenario. Leave secrets out.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Output of `python -c 'import oska; print(oska.__version__)'`, or the commit.
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: Python version, operating system, storage backend, identity mode.
+  - type: textarea
+    id: logs
+    attributes:
+      label: Output
+      description: The relevant error or audit lines only.
+      render: text

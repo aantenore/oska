@@ -183,7 +183,9 @@
     "tenant_header": "",
     "leeway_seconds": 30,
     "reviewer_role": "reviewer",
-    "single_user": true
+    "single_user": true,
+    "proxy_secret_env": "",
+    "proxy_secret_header": "X-Proxy-Secret"
   },
   "evaluation": {
     "min_precision": 1.0,

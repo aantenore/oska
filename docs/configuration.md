@@ -468,6 +468,8 @@ walks moving from one to the other.
 | `identity.required_claims` | `["sub", "sid", "exp"]` | Claims a token must carry |
 | `identity.tenant_claim` | `"tenant"` | Which claim a platform reads to resolve the tenant of a call |
 | `identity.tenant_header` | `""` | In `proxy` mode only, the header a fronting proxy sets to say which tenant a call is for; empty means no header is read at all, and once named it is the only place the tenant is read from |
+| `identity.proxy_secret_env` | `""` | In `proxy` mode only, the variable holding a secret the proxy sends with every call. Named, a call carrying identity or tenant headers without it is refused with `401 proxy_unverified`; empty, the headers are trusted as they arrive, and `oska serve` warns when that happens on a non-loopback address |
+| `identity.proxy_secret_header` | `"X-Proxy-Secret"` | The header the proxy puts that secret in |
 | `identity.reviewer_role` | `"reviewer"` | The role, in `roles` on the principal, a call must carry to read or move a proposal or a change request |
 | `identity.leeway_seconds` | `30` | Clock skew allowed on `exp` and `nbf` |
 | `identity.single_user` | `false` | Whoever reaches this runtime without an identity does a reviewer's work as its one user. Off by default; the `runtime.json` this package ships, and `oska new platform` copies, sets it `true` for a local single-user setup. Refused in `token` mode |

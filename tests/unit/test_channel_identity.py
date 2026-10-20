@@ -847,3 +847,87 @@ def test_an_identity_cannot_draft_from_a_session_opened_without_one(
     assert taken.status_code == 403
     assert taken.json()["error"] == "session_refused"
     assert app.state.services.proposals.list() == []
+
+
+# Proving the proxy sent the identity.
+
+PROXY_SECRET_ENV = "OSKA_TEST_PROXY_SECRET"
+
+
+@pytest.fixture
+def guarded_proxy_app(
+    example_settings: Settings, repo_root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> FastAPI:
+    """Proxy identity that only takes headers arriving with the proxy's secret."""
+    monkeypatch.setenv(PROXY_SECRET_ENV, "s3cret-shared-with-the-proxy")
+    return create_app(
+        _settings(
+            example_settings,
+            repo_root,
+            tmp_path,
+            mode="proxy",
+            required=True,
+            proxy_secret_env=PROXY_SECRET_ENV,
+        )
+    )
+
+
+def test_identity_headers_without_the_proxy_secret_are_refused(
+    guarded_proxy_app: FastAPI,
+) -> None:
+    """A caller that reaches the port around the proxy cannot claim to be a reviewer."""
+    client = TestClient(guarded_proxy_app)
+
+    forged = client.get("/proposals", headers=_proxied("mallory", roles=[REVIEWER]))
+    assert forged.status_code == 401
+    assert forged.json()["error"] == "proxy_unverified"
+    wrong = {**_proxied("mallory", roles=[REVIEWER]), "X-Proxy-Secret": "guess"}
+    assert client.get("/proposals", headers=wrong).status_code == 401
+
+
+def test_identity_headers_with_the_proxy_secret_are_taken(guarded_proxy_app: FastAPI) -> None:
+    client = TestClient(guarded_proxy_app)
+    secret = {"X-Proxy-Secret": "s3cret-shared-with-the-proxy"}
+    headers = {**_proxied("rita", roles=[REVIEWER]), **secret}
+
+    assert client.get("/proposals", headers=headers).status_code == 200
+    assert client.get("/skills").status_code == 401
+    assert client.get("/health").status_code == 200
+
+
+def test_a_named_proxy_secret_that_is_not_set_is_a_server_error(
+    example_settings: Settings, repo_root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv(PROXY_SECRET_ENV, raising=False)
+    client = TestClient(
+        create_app(
+            _settings(
+                example_settings,
+                repo_root,
+                tmp_path,
+                mode="proxy",
+                proxy_secret_env=PROXY_SECRET_ENV,
+            )
+        )
+    )
+
+    refused = client.get("/skills", headers=_proxied("rita"))
+    assert refused.status_code == 500
+    assert refused.json()["error"] == "identity_key_missing"
+    assert PROXY_SECRET_ENV in refused.json()["detail"]
+
+
+def test_a_proxy_secret_is_refused_outside_proxy_mode() -> None:
+    with pytest.raises(ValueError, match="proxy mode only"):
+        IdentityConfig(mode="token", proxy_secret_env=PROXY_SECRET_ENV)
+
+
+def test_serve_warns_when_a_public_port_trusts_proxy_headers_without_a_secret() -> None:
+    from oska.cli.commands_serve import proxy_trust_warning, trusts_unverified_proxy
+
+    assert trusts_unverified_proxy(IdentityConfig(required=True), "0.0.0.0")
+    assert not trusts_unverified_proxy(IdentityConfig(required=True), "127.0.0.1")
+    assert not trusts_unverified_proxy(
+        IdentityConfig(required=True, proxy_secret_env=PROXY_SECRET_ENV), "0.0.0.0"
+    )
+    assert "proxy_secret_env" in proxy_trust_warning("0.0.0.0", 8000)

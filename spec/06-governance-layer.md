@@ -762,6 +762,13 @@ it for that publication.
 - **OSKA-GOV-54** — Drafting from a session with no history MUST be refused
   with the same answer whether or not the session exists; the draft's model
   calls MUST be counted against the per-turn model budget.
+- **OSKA-GOV-55** — A channel that takes identity from a proxy SHOULD be able to
+  prove the proxy sent it: where a shared secret is configured, a call carrying
+  any identity or tenant header without that secret MUST be refused with 401,
+  the comparison MUST take constant time, and a secret the configuration names
+  but the environment does not hold MUST refuse the call rather than trust it.
+  A runtime that trusts proxy headers on a port others can reach without such a
+  secret MUST say so when it starts.
 
 ## Rationale
 

@@ -70,7 +70,7 @@ can be made to do.
   channel may verify itself, the identity a channel may require, the subject a
   session is held to, the reviewer role and the actor a transition is recorded
   under (`OSKA-GOV-25` to `OSKA-GOV-29`, `OSKA-GOV-38` to `OSKA-GOV-44`,
-  `OSKA-GOV-46` to `OSKA-GOV-48`, `OSKA-GOV-50`), are what a channel that knows
+  `OSKA-GOV-46` to `OSKA-GOV-48`, `OSKA-GOV-50`, `OSKA-GOV-55`), are what a channel that knows
   who is speaking must then do about it; a channel that authenticates nobody
   has nothing to carry, and a deployment that requires no identity serves a
   call that carries none as its single user only where it declares itself
@@ -723,6 +723,7 @@ accident.
 | OSKA-GOV-52 | `src/oska/engine/approvals.py`, `src/oska/engine/goals.py`, `src/oska/engine/execution.py` | `tests/unit/test_presentation.py` (`test_a_write_found_unconfirmed_in_the_ledger_stops_the_rest_of_its_plan` and `test_a_write_found_confirmed_in_the_ledger_lets_its_plan_go_on` hold the ledger half: a later write never asks for an approval past an unconfirmed receipt, and does past a confirmed one) |
 | OSKA-GOV-53 | `src/oska/engine/factory.py`, `src/oska/catalog/registry.py` | `tests/unit/test_revision.py` |
 | OSKA-GOV-54 | `src/oska/api/routes.py`, `src/oska/engine/budget.py` | `tests/unit/test_api.py` |
+| OSKA-GOV-55 | `src/oska/api/identity.py`, `src/oska/config.py`, `src/oska/cli/commands_serve.py` | `tests/unit/test_channel_identity.py` |
 
 ### Cognition (L5)
 

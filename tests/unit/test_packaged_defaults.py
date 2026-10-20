@@ -9,6 +9,7 @@ holds one.
 
 from __future__ import annotations
 
+import importlib.metadata
 import json
 import os
 from importlib import resources
@@ -247,3 +248,13 @@ def test_a_platform_generated_without_a_pack_says_so_rather_than_failing(
     result = runner.invoke(main_app, ["conform", "--platform", str(platform_dir / "platform.yaml")])
     assert result.exit_code != 0
     assert "serves no packs" in result.output
+
+
+def test_the_version_is_the_installed_distribution_version() -> None:
+    import oska
+
+    assert oska.__version__ == importlib.metadata.version("oska")
+
+
+def test_the_package_ships_its_typing_marker() -> None:
+    assert (resources.files("oska") / "py.typed").is_file()
