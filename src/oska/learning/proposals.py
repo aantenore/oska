@@ -11,8 +11,11 @@ from __future__ import annotations
 
 import json
 import re
+import sys
+import threading
 import uuid
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Iterator, Sequence
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import cast
@@ -25,13 +28,19 @@ from oska.contracts.proposal import (
     ProposalState,
     ProposalTransition,
     SkillProposal,
+    already_moved,
 )
 from oska.contracts.receipt import WriteReceipt
 from oska.contracts.skill import MIN_TRIGGERS, SkillType
 from oska.learning import quality
 from oska.planner.provider import ModelProvider
 
+if sys.platform != "win32":
+    import fcntl
+
 POLICY_FILENAME = "./policy.json"
+LOCK_FILENAME = ".transition.lock"
+"""The file a move of any proposal in a directory is taken under."""
 MAX_WRITES_PER_SESSION = 1
 
 DRAFT_SCHEMA: dict = {
@@ -91,6 +100,8 @@ _MODEL_TEXT_KEYS = (
 )
 _FRONTMATTER = re.compile(r"\A---\s*\n(.*?)\n---\s*(?:\n|\Z)", re.DOTALL)
 _NAME_ALLOWED = re.compile(r"[^a-z0-9]+")
+_DIRECTORY_LOCKS: dict[str, threading.Lock] = {}
+_DIRECTORY_LOCKS_GUARD = threading.Lock()
 
 
 class ProposalStore:
@@ -121,8 +132,25 @@ class ProposalStore:
         path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
         return path
 
+    def transition(self, proposal: SkillProposal, prior: ProposalState) -> Path:
+        """Write a proposal only while its file still holds it in `prior`. Returns its path.
+
+        The read and the write are taken under one lock on the directory: a
+        lock this process holds, and where the platform has them a file lock
+        other processes respect. Of two moves from the same state, the second
+        finds the first written and is refused with `LifecycleError`.
+        """
+        with self._locked():
+            held = self._read(proposal.proposal_id)
+            if held.state is not ProposalState(prior):
+                raise already_moved(proposal.proposal_id, held.state, prior)
+            return self.save(proposal)
+
     def get(self, proposal_id: str) -> SkillProposal:
         """Read one proposal. Raises `KeyError` when it is not there."""
+        return self._read(proposal_id)
+
+    def _read(self, proposal_id: str) -> SkillProposal:
         path = self._path(proposal_id)
         if not path.is_file():
             raise KeyError(f"unknown proposal: {proposal_id}")
@@ -150,6 +178,18 @@ class ProposalStore:
     def purge(self) -> int:
         """Remove nothing: the namespace of a directory store is its directory, not its own."""
         return 0
+
+    @contextmanager
+    def _locked(self) -> Iterator[None]:
+        self._directory.mkdir(parents=True, exist_ok=True)
+        key = str(self._directory.resolve())
+        with _DIRECTORY_LOCKS_GUARD:
+            held = _DIRECTORY_LOCKS.setdefault(key, threading.Lock())
+        with held, (self._directory / LOCK_FILENAME).open("a", encoding="utf-8") as handle:
+            if sys.platform != "win32":
+                # Released when the file is closed, so a process that dies holds nothing.
+                fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+            yield
 
     def _path(self, proposal_id: str) -> Path:
         name = Path(proposal_id).name

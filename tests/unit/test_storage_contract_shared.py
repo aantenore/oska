@@ -27,8 +27,13 @@ import pytest
 from oska.audit.events import new_event
 from oska.audit.sink import JsonlSink
 from oska.config import RuntimeConfig, Settings, StorageConfig
-from oska.contracts.change import ChangeRequestError, ChangeRequestState
-from oska.contracts.proposal import ProposalState, QualityReport, SkillProposal
+from oska.contracts.change import ChangeRequest, ChangeRequestError, ChangeRequestState
+from oska.contracts.proposal import (
+    LifecycleError,
+    ProposalState,
+    QualityReport,
+    SkillProposal,
+)
 from oska.contracts.session import SessionState
 from oska.engine.session_store import SessionStore
 from oska.governance.ledger import WriteLedger
@@ -270,6 +275,26 @@ def test_proposals_written_by_one_replica_are_listed_by_another(
     assert [held.proposal_id for held in second.list()] == [written.proposal_id]
     second.delete(written.proposal_id)
     assert first.list() == []
+
+
+def test_of_two_moves_from_one_state_only_the_first_is_written(
+    backend: Backend, session: str
+) -> None:
+    held = proposal(session, ProposalState.approved)
+    backend.proposals().save(held)
+    first = backend.proposals().get(held.proposal_id)
+    second = backend.proposals().get(held.proposal_id)
+
+    first.state = ProposalState.published
+    backend.proposals().transition(first, ProposalState.approved)
+    second.state = ProposalState.rejected
+    with pytest.raises(LifecycleError, match="another decision came first"):
+        backend.proposals().transition(second, ProposalState.approved)
+
+    assert backend.proposals().get(held.proposal_id).state is ProposalState.published
+    assert [held.proposal_id for held in backend.proposals().list(ProposalState.rejected)] == []
+    with pytest.raises(KeyError):
+        backend.proposals().transition(proposal(session), ProposalState.draft)
 
 
 # Change requests.
@@ -536,6 +561,7 @@ def test_every_shared_store_statement_is_scoped_to_the_namespace(
     changes.purge()
     for refused in (
         lambda: proposals.get("p"),
+        lambda: proposals.transition(proposal("s"), ProposalState.draft),
         lambda: proposals.delete("p"),
         lambda: changes.get("r"),
         lambda: changes.files("r"),
@@ -547,10 +573,113 @@ def test_every_shared_store_statement_is_scoped_to_the_namespace(
         with pytest.raises(KeyError):
             refused()
 
-    assert len(database.statements) >= 26
+    assert len(database.statements) >= 28
     for statement, parameters in database.statements:
         assert "namespace" in statement, statement
         assert namespace in parameters, statement
+
+
+class _Rows:
+    def __init__(self, rows: list[dict]) -> None:
+        self._rows = rows
+        self.rowcount = len(rows)
+
+    def fetchone(self) -> dict | None:
+        return self._rows[0] if self._rows else None
+
+    def fetchall(self) -> list[dict]:
+        return self._rows
+
+
+class _OneOpenRequest:
+    """Stands in for a database holding one request; its next `failures` decisions fail."""
+
+    identity = "offline"
+
+    def __init__(self, request: ChangeRequest, files: dict[str, str], failures: int) -> None:
+        self.request = request
+        self.files = files
+        self.failures = failures
+
+    @contextmanager
+    def connect(self) -> Iterator[_OneOpenRequest]:
+        yield self
+
+    def execute(self, statement: str, parameters: Any = ()) -> _Rows:
+        if statement.startswith("SELECT request"):
+            return _Rows([{"request": self.request.model_dump(mode="json")}])
+        if statement.startswith("SELECT name, content"):
+            return _Rows([{"name": name, "content": text} for name, text in self.files.items()])
+        if statement.startswith("INSERT INTO oska_change_requests"):
+            if self.failures:
+                self.failures -= 1
+                raise RuntimeError("the record could not be written")
+            self.request = ChangeRequest.model_validate(parameters[-1])
+        return _Rows([])
+
+
+def _fail_the_applied_record_once(monkeypatch: pytest.MonkeyPatch) -> None:
+    from oska.storage.postgres_changes import PostgresChangeRequestStore
+
+    write = PostgresChangeRequestStore._write
+    left = [1]
+
+    def failing(store: Any, connection: Any, request: ChangeRequest) -> None:
+        if request.state is ChangeRequestState.applied and left:
+            left.pop()
+            raise RuntimeError("the record could not be written")
+        write(store, connection, request)
+
+    monkeypatch.setattr(PostgresChangeRequestStore, "_write", failing)
+
+
+def _assert_nothing_left_and_applied_on_retry(
+    store: ChangeRequestRecordStore, request_id: str, catalog: Path
+) -> None:
+    with pytest.raises(RuntimeError, match="could not be written"):
+        store.apply(request_id, catalog, by="operator")
+
+    assert not (catalog / "runbook" / "sample_change").exists()
+    assert (catalog / "runbook" / "kept.md").is_file()
+    assert store.get(request_id).state is ChangeRequestState.open
+
+    written = store.apply(request_id, catalog, by="operator")
+    package = catalog / "runbook" / "sample_change" / "v1"
+    assert sorted(written) == [package / "policy.json", package / "skill.md"]
+    assert store.get(request_id).state is ChangeRequestState.applied
+
+
+def test_an_apply_whose_record_fails_leaves_no_file_and_can_be_retried(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    import oska.storage.postgres_changes as postgres_changes
+
+    monkeypatch.setattr(postgres_changes, "jsonb", lambda value: value)
+    request = new_request("p", SKILL_ID, 1, "reviewer", QualityReport())
+    files = {"skill.md": MARKDOWN, "policy.json": json.dumps(POLICY)}
+    database: Any = _OneOpenRequest(request, files, failures=1)
+    store = postgres_changes.PostgresChangeRequestStore("unused", database=database)
+    catalog = tmp_path / "catalog"
+    (catalog / "runbook").mkdir(parents=True)
+    (catalog / "runbook" / "kept.md").write_text("there before\n", encoding="utf-8")
+
+    _assert_nothing_left_and_applied_on_retry(store, request.request_id, catalog)
+
+
+def test_an_apply_rolled_back_by_postgres_leaves_no_file_and_can_be_retried(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    held = _postgres(_postgres_url(), f"contract/{uuid.uuid4().hex}")
+    try:
+        request_id = composed(held.changes(), "p-1")
+        catalog = tmp_path / "catalog"
+        (catalog / "runbook").mkdir(parents=True)
+        (catalog / "runbook" / "kept.md").write_text("there before\n", encoding="utf-8")
+        _fail_the_applied_record_once(monkeypatch)
+
+        _assert_nothing_left_and_applied_on_retry(held.changes(), request_id, catalog)
+    finally:
+        _purge(held)
 
 
 @pytest.mark.parametrize(

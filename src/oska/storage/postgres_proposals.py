@@ -2,15 +2,18 @@
 
 One row per proposal, holding the whole proposal as JSON beside the columns
 retention and a state filter select by. A save replaces the row, as writing the
-file replaces it in the directory store. Every row and every query carries the
-namespace of the store; `purge` removes the whole of it and refuses the default.
+file replaces it in the directory store. A move is written only while the row
+still holds the state it was decided from, in the same statement that writes
+it, so of two replicas deciding the same proposal at once the second is refused.
+Every row and every query carries the namespace of the store; `purge` removes
+the whole of it and refuses the default.
 """
 
 from __future__ import annotations
 
 import builtins
 
-from oska.contracts.proposal import ProposalState, SkillProposal
+from oska.contracts.proposal import ProposalState, SkillProposal, already_moved
 from oska.storage.postgres import Database, jsonb
 from oska.storage.protocols import DEFAULT_NAMESPACE, refuse_default_purge
 
@@ -60,6 +63,36 @@ class PostgresProposalStore:
                 ),
             )
         return self.location
+
+    def transition(self, proposal: SkillProposal, prior: ProposalState) -> str:
+        """Write a proposal only while its row still holds it in `prior`. Returns where it is kept.
+
+        Raises `LifecycleError` when another decision moved it first, and
+        `KeyError` when it is not there.
+        """
+        before = ProposalState(prior)
+        with self._database.connect() as connection:
+            cursor = connection.execute(
+                "UPDATE oska_proposals SET state = %s, source_session_id = %s, proposal = %s "
+                "WHERE namespace = %s AND proposal_id = %s AND state = %s",
+                (
+                    proposal.state.value,
+                    proposal.source_session_id,
+                    jsonb(proposal.model_dump(mode="json")),
+                    self._namespace,
+                    proposal.proposal_id,
+                    before.value,
+                ),
+            )
+            if int(cursor.rowcount):
+                return self.location
+            row = connection.execute(
+                "SELECT state FROM oska_proposals WHERE namespace = %s AND proposal_id = %s",
+                (self._namespace, proposal.proposal_id),
+            ).fetchone()
+        if row is None:
+            raise KeyError(f"unknown proposal: {proposal.proposal_id}")
+        raise already_moved(proposal.proposal_id, row["state"], before)
 
     def get(self, proposal_id: str) -> SkillProposal:
         """Read one proposal. Raises `KeyError` when it is not there."""

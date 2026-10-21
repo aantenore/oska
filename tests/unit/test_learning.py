@@ -588,6 +588,103 @@ def test_an_empty_actor_is_refused(
     assert store.get(proposal.proposal_id).state is ProposalState.draft
 
 
+class _ReadBefore(ProposalStore):
+    """A second replica: it read the proposal before the first replica's decision landed."""
+
+    def __init__(self, directory: Path, read: SkillProposal) -> None:
+        super().__init__(directory)
+        self._seen = read
+
+    def get(self, proposal_id: str) -> SkillProposal:
+        return self._seen.model_copy(deep=True)
+
+
+class _Unwritable(ChangeRequestStore):
+    """A change request store whose package cannot be written."""
+
+    def save(self, request, *, skill_markdown=None, policy=None):  # type: ignore[no-untyped-def]
+        raise OSError("the disk is full")
+
+
+def _approved(
+    store: ProposalStore,
+    registry: SkillRegistry,
+    receipts: list[WriteReceipt],
+    conversation: list[Message],
+    schemas_dir: Path,
+    changes: ChangeRequestStore,
+) -> SkillProposal:
+    proposal = _draft(registry, receipts, conversation, schemas_dir, hint="service_bounce")
+    store.save(proposal)
+    for target in (ProposalState.submitted, ProposalState.approved):
+        transition(
+            store,
+            proposal.proposal_id,
+            target,
+            ACTOR,
+            "",
+            registry=registry,
+            changes=changes,
+            schema_dir=schemas_dir,
+        )
+    return store.get(proposal.proposal_id)
+
+
+def test_two_publications_of_one_approval_compose_one_change_request(
+    store: ProposalStore,
+    learning_registry: SkillRegistry,
+    receipts: list[WriteReceipt],
+    conversation: list[Message],
+    schemas_dir: Path,
+    changes: ChangeRequestStore,
+) -> None:
+    approved = _approved(store, learning_registry, receipts, conversation, schemas_dir, changes)
+    second = _ReadBefore(store.directory, approved)
+    publish = ProposalState.published
+
+    transition(
+        store, approved.proposal_id, publish, "first", "",
+        registry=learning_registry, changes=changes, schema_dir=schemas_dir,
+    )
+    with pytest.raises(LifecycleError, match="another decision came first"):
+        transition(
+            second, approved.proposal_id, publish, "second", "",
+            registry=learning_registry, changes=changes, schema_dir=schemas_dir,
+        )
+
+    (request,) = changes.list()
+    assert request.actor == "first"
+    held = store.get(approved.proposal_id)
+    assert held.state is ProposalState.published
+    assert [entry.by for entry in held.history if entry.state is publish] == ["first"]
+
+
+def test_a_publication_whose_package_cannot_be_written_puts_the_approval_back(
+    store: ProposalStore,
+    learning_registry: SkillRegistry,
+    receipts: list[WriteReceipt],
+    conversation: list[Message],
+    schemas_dir: Path,
+    changes: ChangeRequestStore,
+) -> None:
+    approved = _approved(store, learning_registry, receipts, conversation, schemas_dir, changes)
+
+    with pytest.raises(OSError, match="disk is full"):
+        transition(
+            store, approved.proposal_id, ProposalState.published, ACTOR, "",
+            registry=learning_registry, changes=_Unwritable(changes.root),
+            schema_dir=schemas_dir,
+        )
+    assert store.get(approved.proposal_id) == approved
+
+    published = transition(
+        store, approved.proposal_id, ProposalState.published, ACTOR, "",
+        registry=learning_registry, changes=changes, schema_dir=schemas_dir,
+    )
+    assert published.state is ProposalState.published
+    assert len(changes.list()) == 1
+
+
 def test_publication_is_refused_when_the_checks_fail(
     store: ProposalStore,
     crafted: Callable[..., str],

@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import json
 import sys
+import time
+from collections.abc import Iterator
 from pathlib import Path
 
 import httpx
@@ -449,6 +451,80 @@ def test_http_failures_are_classified_by_whether_the_call_was_sent(
     result = connector.execute("ticket.get", {"ticket_id": "T-1"}, write=True)
 
     assert (result.failure, result.classification) == ("transport", classification)
+
+
+KEEP_ALIVES = 2000
+KEEP_ALIVE_GAP = 0.005
+DEADLINE = 0.2
+
+
+def _stalling_server(
+    seen: list[httpx.Request], stalled: str, content_type: str
+) -> httpx.MockTransport:
+    """A server that keeps one message waiting far longer than the timeout of the exchange.
+
+    The stalled answer is a keep-alive every few milliseconds and never the
+    answer itself, so no single read waits long; a stalled notice is answered
+    once the deadline has passed.
+    """
+
+    def keep_alives() -> Iterator[bytes]:
+        filler = b": ping\n\n" if content_type == "text/event-stream" else b" "
+        for _ in range(KEEP_ALIVES):
+            time.sleep(KEEP_ALIVE_GAP)
+            yield filler
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        if request.method == "DELETE":
+            return httpx.Response(200)
+        method = json.loads(request.content)["method"]
+        if method == stalled == "notifications/initialized":
+            time.sleep(DEADLINE * 2)
+            return httpx.Response(202)
+        if method == stalled:
+            return httpx.Response(
+                200, content=keep_alives(), headers={"Content-Type": content_type}
+            )
+        if method == "initialize":
+            result = {"protocolVersion": PROTOCOL_VERSION, "capabilities": {}}
+            return httpx.Response(200, json={"jsonrpc": "2.0", "id": 1, "result": result})
+        if method == "notifications/initialized":
+            return httpx.Response(202)
+        return httpx.Response(200, json={"jsonrpc": "2.0", "id": 2, "result": {"content": []}})
+
+    return httpx.MockTransport(handle)
+
+
+@pytest.mark.parametrize(
+    ("stalled", "content_type", "classification"),
+    [
+        ("initialize", "text/event-stream", "retryable"),
+        ("notifications/initialized", "application/json", "retryable"),
+        ("tools/call", "text/event-stream", "ambiguous"),
+        ("tools/call", "application/json", "ambiguous"),
+    ],
+)
+def test_an_exchange_over_http_ends_at_its_deadline_however_the_server_stalls(
+    stalled: str, content_type: str, classification: str
+) -> None:
+    seen: list[httpx.Request] = []
+    connector = McpConnector(
+        "integration.tickets",
+        {"ticket.get": {**ECHO, "timeout": DEADLINE}},
+        url="https://tools.example/mcp",
+        http_transport=_stalling_server(seen, stalled, content_type),
+    )
+
+    started = time.monotonic()
+    result = connector.execute("ticket.get", {"ticket_id": "T-1"}, write=True)
+    elapsed = time.monotonic() - started
+
+    assert (result.failure, result.classification) == ("transport", classification)
+    assert "timed out" in (result.error or "")
+    assert elapsed < DEADLINE * 10
+    sent = [json.loads(request.content)["method"] for request in seen if request.content]
+    assert ("tools/call" in sent) is (classification == "ambiguous")
 
 
 # Checked as a pack, and run through the engine

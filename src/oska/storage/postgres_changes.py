@@ -7,7 +7,10 @@ publish it as a branch, or have a person apply it into a catalog root.
 
 A decision is taken under a row lock: two replicas asked to apply or reject the
 same request at once find it open one at a time, and the second is refused
-because the first has decided. Every row and every query carries the namespace
+because the first has decided. Applying writes the package to disk before the
+record says so; if the record cannot be written, the files and directories that
+call created are removed again, and nothing that was there before it, so the
+request stays open and can be applied once more. Every row and every query carries the namespace
 of the store; `purge` removes the whole of it and refuses the default.
 """
 
@@ -135,26 +138,33 @@ class PostgresChangeRequestStore:
         """Write the package of one open request into a catalog root a person names.
 
         The request is locked while it is decided, so no other replica decides
-        it in between; an existing version is never overwritten.
+        it in between; an existing version is never overwritten. When the
+        decision is not recorded, what this call wrote to disk is removed.
         """
         actor = require_actor(by, "applying a change request records who applied it")
-        with self._database.connect() as connection:
-            request = self._read(connection, request_id, lock=True)
-            require_open(request)
-            files = self._files(connection, request_id)
-            if not files:
-                raise ChangeRequestError(f"change request {request_id} holds no package")
-            target = Path(catalog_root) / request.package
-            if target.exists():
-                raise ChangeRequestError(
-                    f"{target} is already there: a version is never overwritten"
-                )
-            written = write_files(files, target)
-            request.state = ChangeRequestState.applied
-            request.decided_at = datetime.now(UTC)
-            request.decided_by = actor
-            request.applied_to = str(Path(catalog_root))
-            self._write(connection, request)
+        created: builtins.list[Path] = []
+        try:
+            with self._database.connect() as connection:
+                request = self._read(connection, request_id, lock=True)
+                require_open(request)
+                files = self._files(connection, request_id)
+                if not files:
+                    raise ChangeRequestError(f"change request {request_id} holds no package")
+                target = Path(catalog_root) / request.package
+                if target.exists():
+                    raise ChangeRequestError(
+                        f"{target} is already there: a version is never overwritten"
+                    )
+                created = _absent(target, files)
+                written = write_files(files, target)
+                request.state = ChangeRequestState.applied
+                request.decided_at = datetime.now(UTC)
+                request.decided_by = actor
+                request.applied_to = str(Path(catalog_root))
+                self._write(connection, request)
+        except BaseException:
+            _remove(created)
+            raise
         return sorted(written)
 
     def reject(self, request_id: str, *, by: str, note: str = "") -> ChangeRequest:
@@ -251,6 +261,34 @@ class PostgresChangeRequestStore:
             "ON CONFLICT (namespace, request_id, name) DO UPDATE SET content = EXCLUDED.content",
             (self._namespace, request_id, name, text),
         )
+
+
+def _absent(target: Path, files: dict[str, str]) -> builtins.list[Path]:
+    """Every path writing this package into `target` would create, deepest first.
+
+    That is each file, each directory inside `target` that holds one, `target`
+    itself, and each of its parents that is not there yet. A directory that is
+    there already is never named.
+    """
+    paths = {Path(target) / package_file(name) for name in files}
+    for file in list(paths):
+        paths.update(parent for parent in file.parents if parent.is_relative_to(target))
+    paths.update(parent for parent in Path(target).parents if not parent.exists())
+    absent = [path for path in paths if not path.exists()]
+    return sorted(absent, key=lambda path: len(path.parts), reverse=True)
+
+
+def _remove(created: builtins.list[Path]) -> None:
+    """Remove what one call created: its files, then each of its directories left empty."""
+    for path in created:
+        try:
+            if path.is_dir():
+                path.rmdir()
+            else:
+                path.unlink(missing_ok=True)
+        except OSError:
+            # Something else wrote there in the meantime; what is not this call's stays.
+            continue
 
 
 def write_files(files: dict[str, str], target: Path) -> builtins.list[Path]:

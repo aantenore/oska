@@ -40,6 +40,11 @@ whether `tools/call` was sent:
 - a result with `isError` is the system answering no, and is `terminal`; so is
   a protocol error saying the request itself was not acceptable.
 
+The timeout of an operation bounds the whole exchange, not one read: over
+stdio and over HTTP alike, the exchange has a deadline set when it opens. A
+server that keeps a stream open with keep-alive comments is stopped there, and
+a message whose deadline has passed is not sent at all.
+
 The protocol defines no idempotency key, so none is sent. A write that ends
 `ambiguous` is settled by its declared read-back, as every write is.
 """
@@ -74,7 +79,6 @@ from oska.connectors.http import (
     _NEVER_LEFT,
     _NOT_SENDABLE,
     _read_prefix,
-    _read_within,
     _text,
     _TooLarge,
 )
@@ -117,6 +121,10 @@ class _Stop(Exception):
     def __init__(self, outcome: ConnectorOutcome) -> None:
         super().__init__(outcome.error)
         self.outcome = outcome
+
+
+class _Expired(Exception):
+    """An answer was still being read when the deadline of its exchange passed."""
 
 
 def _lost(error: str, effects: bool, status_code: int | None = None) -> _Stop:
@@ -321,6 +329,7 @@ class _HttpSession(_Session):
         self._client = client
         self._url = url
         self._timeout = timeout
+        self._deadline = time.monotonic() + timeout
         self._budget = budget
         self._error_limit = error_limit
         self._next_id = 0
@@ -339,9 +348,13 @@ class _HttpSession(_Session):
 
     def _send(self, message: dict, effects: bool) -> httpx.Response:
         what = str(message.get("method"))
+        remaining = self._deadline - time.monotonic()
+        if remaining <= 0:
+            # Nothing was sent, so nothing this message asks for can have happened.
+            raise _Stop(transport_failure(f"{what} was not sent: {self._expired()}"))
         try:
             request = self._client.build_request(
-                "POST", self._url, json=message, headers=self._headers(), timeout=self._timeout
+                "POST", self._url, json=message, headers=self._headers(), timeout=remaining
             )
             response = self._client.send(request, stream=True)
         except _NEVER_LEFT as error:
@@ -374,12 +387,11 @@ class _HttpSession(_Session):
         response = self._send(message, effects)
         try:
             content_type = response.headers.get("content-type", "").split(";")[0].strip()
+            chunks = _chunks(response, self._budget, self._deadline)
             if content_type.lower() == _EVENT_STREAM:
-                messages: Iterator[Any] = (
-                    _parsed(data) for data in _events(response, self._budget)
-                )
+                messages: Iterator[Any] = (_parsed(data) for data in _events(chunks))
             else:
-                messages = iter([_parsed(_read_within(response, self._budget))])
+                messages = iter([_parsed(b"".join(chunks))])
             for candidate in messages:
                 for item in candidate if isinstance(candidate, list) else [candidate]:
                     if (
@@ -393,6 +405,8 @@ class _HttpSession(_Session):
                 refused(f"the answer to {method} is larger than the budget of "
                         f"{self._budget} bytes, so it was not read")
             ) from None
+        except _Expired:
+            raise _lost(f"{method}: {self._expired()}", effects) from None
         except httpx.RequestError as error:
             raise _lost(f"{method}: {type(error).__name__}: {error}", effects) from error
         finally:
@@ -401,6 +415,9 @@ class _HttpSession(_Session):
 
     def notify(self, method: str) -> None:
         self._send({"jsonrpc": "2.0", "method": method}, effects=False).close()
+
+    def _expired(self) -> str:
+        return f"the exchange timed out after {self._timeout}s"
 
     def close(self) -> None:
         if not self._session_id:
@@ -420,15 +437,31 @@ def _parsed(data: bytes | str) -> Any:
         return None
 
 
-def _events(response: httpx.Response, budget: int) -> Iterator[str]:
-    """The data of each server-sent event, read no further than the budget."""
+def _chunks(response: httpx.Response, budget: int, deadline: float) -> Iterator[bytes]:
+    """The body as it arrives, stopped at the byte budget and at the deadline of the exchange.
+
+    A read timeout bounds the wait for one chunk, not the whole answer, so a
+    server that sends a keep-alive now and then would otherwise hold the call
+    until the budget ran out. The deadline is checked as each chunk arrives.
+    """
+    declared = response.headers.get("content-length", "")
+    if declared.isdigit() and int(declared) > budget:
+        raise _TooLarge
     size = 0
-    buffer = b""
-    data: list[str] = []
     for chunk in response.iter_bytes():
         size += len(chunk)
         if size > budget:
             raise _TooLarge
+        if time.monotonic() >= deadline:
+            raise _Expired
+        yield chunk
+
+
+def _events(chunks: Iterator[bytes]) -> Iterator[str]:
+    """The data of each server-sent event in a body read chunk by chunk."""
+    buffer = b""
+    data: list[str] = []
+    for chunk in chunks:
         buffer += chunk
         while (end := buffer.find(b"\n")) >= 0:
             line = buffer[:end].rstrip(b"\r").decode("utf-8", errors="replace")

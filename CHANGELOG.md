@@ -87,6 +87,16 @@ All notable changes to this project are recorded here. The format follows
 - A positional replay that runs out stops the turn with `ReplayExhaustedError`
   instead of being answered around, wherever in the turn it runs out.
 
+### Fixed
+
+- An `mcp` call over HTTP ends at the deadline of its exchange, so a server that
+  keeps a stream open with keep-alives no longer holds a turn until the byte
+  budget runs out; a proposal moves only while its stored state is still the one
+  the move was decided from, so two replicas publishing it at once compose one
+  change request; and applying a change request from PostgreSQL removes the
+  files it wrote when the decision cannot be recorded, so the request can be
+  applied again.
+
 ## [0.1.0]
 
 First version. The package is not published to PyPI yet; install it from a

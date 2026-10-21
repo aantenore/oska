@@ -33,6 +33,14 @@ stays open under the change request root, and `oska change publish` can try
 again. Routing it in one language is what publication promised; routing it in
 several is what enrichment adds.
 
+A move is written only while the stored proposal is still in the state it was
+decided from: the store checks and writes in one step. Two reviewers, or two
+replicas, moving the same proposal at once both pass the check against what
+they read, and the second write is refused with `LifecycleError`. Publication
+writes its move before it composes anything, so only the move that won
+composes a change request; if composing then fails, the proposal is put back
+the way it was and can be published again.
+
 Every transition records where its actor came from: an identity the channel
 authenticated, the operator at a terminal, or a name the call merely stated.
 A stated actor is recorded as given and marked unverified on the proposal's
@@ -53,6 +61,7 @@ from oska.config import EnrichmentConfig
 from oska.contracts.proposal import (
     VERIFIED_SOURCES,
     ActorSource,
+    LifecycleError,
     ProposalState,
     ProposalTransition,
     SkillProposal,
@@ -68,6 +77,8 @@ from oska.learning.changes import (
 from oska.learning.proposals import render_skill, split_skill
 from oska.learning.publishers import ChangePublisher, DirectoryPublisher
 
+__all__ = ["ALLOWED", "SKILL_FILENAME", "LifecycleError", "next_version", "transition"]
+
 ALLOWED: dict[ProposalState, frozenset[ProposalState]] = {
     ProposalState.draft: frozenset({ProposalState.submitted, ProposalState.rejected}),
     ProposalState.submitted: frozenset({ProposalState.approved, ProposalState.rejected}),
@@ -75,10 +86,6 @@ ALLOWED: dict[ProposalState, frozenset[ProposalState]] = {
 }
 
 SKILL_FILENAME = "skill.md"
-
-
-class LifecycleError(RuntimeError):
-    """A proposal cannot move the way it was asked to."""
 
 
 def transition(
@@ -108,6 +115,9 @@ def transition(
     step is a package in the change request store that a person reads and applies.
     `publisher` then puts it in front of that person; the change request root
     is the default, and a git publisher adds a branch.
+
+    The move is written only while the stored proposal is still in the state
+    it was read in; a move another decision overtook raises `LifecycleError`.
     """
     actor = by.strip()
     if not actor:
@@ -115,26 +125,47 @@ def transition(
     source = ActorSource(actor_source)
     target = ProposalState(to)
     proposal = store.get(proposal_id)
-    if target not in ALLOWED.get(proposal.state, frozenset()):
-        raise LifecycleError(f"{proposal.state.value} does not lead to {target.value}")
-    if target is ProposalState.published:
-        proposal.quality = quality.check(
-            proposal.skill_markdown,
-            registry,
-            policy=proposal.policy,
-            schema_dir=schema_dir,
-        )
-        if not quality.passed(proposal.quality):
-            store.save(proposal)
-            listed = "; ".join(proposal.quality.issues)
-            raise LifecycleError(f"the proposal does not pass its checks: {listed}")
-        markdown, composed, request = _compose(proposal, registry, changes, actor, source)
-        proposal.skill_markdown = markdown
-        note = _and(note, f"change request {request.request_id} at {changes.location}")
-        note = _published(note, request, changes, publisher or DirectoryPublisher())
-        note = _with_enrichment(
-            note, composed, request, changes, provider, enrichment, languages
-        )
+    prior = proposal.state
+    if target not in ALLOWED.get(prior, frozenset()):
+        raise LifecycleError(f"{prior.value} does not lead to {target.value}")
+    if target is not ProposalState.published:
+        _record(proposal, target, actor, note, source)
+        store.transition(proposal, prior)
+        return proposal
+    proposal.quality = quality.check(
+        proposal.skill_markdown,
+        registry,
+        policy=proposal.policy,
+        schema_dir=schema_dir,
+    )
+    if not quality.passed(proposal.quality):
+        store.transition(proposal, prior)
+        listed = "; ".join(proposal.quality.issues)
+        raise LifecycleError(f"the proposal does not pass its checks: {listed}")
+    before = proposal.model_copy(deep=True)
+    markdown, request = _prepare(proposal, registry, changes, actor, source)
+    proposal.skill_markdown = markdown
+    note = _and(note, f"change request {request.request_id} at {changes.location}")
+    _record(proposal, target, actor, note, source)
+    # The claim: of two publications decided at once, only the one written first goes on.
+    store.transition(proposal, prior)
+    try:
+        composed = _compose(request, markdown, proposal, changes)
+    except BaseException:
+        store.transition(before, target)
+        raise
+    note = _published(note, request, changes, publisher or DirectoryPublisher())
+    note = _with_enrichment(note, composed, request, changes, provider, enrichment, languages)
+    if note != proposal.history[-1].note:
+        proposal.history[-1].note = note
+        store.transition(proposal, target)
+    return proposal
+
+
+def _record(
+    proposal: SkillProposal, target: ProposalState, actor: str, note: str, source: ActorSource
+) -> None:
+    """Move the proposal in memory and append who moved it; the store writes it after."""
     proposal.state = target
     proposal.history.append(
         ProposalTransition(
@@ -146,8 +177,6 @@ def transition(
             actor_verified=source in VERIFIED_SOURCES,
         )
     )
-    store.save(proposal)
-    return proposal
 
 
 def next_version(registry: Catalog, skill_id: str) -> int:
@@ -206,18 +235,19 @@ def _and(note: str, addition: str) -> str:
     return f"{note}; {addition}" if note.strip() else addition
 
 
-def _compose(
+def _prepare(
     proposal: SkillProposal,
     registry: Catalog,
     changes: ChangeRequestRecordStore,
     actor: str,
     source: ActorSource,
-) -> tuple[str, Skill, ChangeRequest]:
-    """Write the package a person would install, under the change request root.
+) -> tuple[str, ChangeRequest]:
+    """The package text a person would install, and the request that will carry it.
 
-    The version is still read from the catalog the runtime serves, so a request
-    says which version it would become; whether that version is still free is
-    settled again by `apply`, which refuses to overwrite one that is there.
+    Nothing is written here. The version is still read from the catalog the
+    runtime serves, so a request says which version it would become; whether
+    that version is still free is settled again by `apply`, which refuses to
+    overwrite one that is there.
     """
     frontmatter, body = split_skill(proposal.skill_markdown)
     skill = parse_skill_text(proposal.skill_markdown, Path(changes.location) / SKILL_FILENAME)
@@ -228,6 +258,16 @@ def _compose(
     request = new_request(
         proposal.proposal_id, skill.id, version, actor, proposal.quality, actor_source=source
     )
+    return markdown, request
+
+
+def _compose(
+    request: ChangeRequest,
+    markdown: str,
+    proposal: SkillProposal,
+    changes: ChangeRequestRecordStore,
+) -> Skill:
+    """Write the package under the change request root, and read it back as a skill."""
     where = changes.save(request, skill_markdown=markdown, policy=proposal.policy)
     path = Path(str(where)) / request.package / SKILL_FILENAME
-    return markdown, parse_skill_text(markdown, path), request
+    return parse_skill_text(markdown, path)

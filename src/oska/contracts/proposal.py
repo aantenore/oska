@@ -42,6 +42,25 @@ class ActorSource(StrEnum):
 VERIFIED_SOURCES = frozenset({ActorSource.principal, ActorSource.operator})
 
 
+class LifecycleError(RuntimeError):
+    """A proposal cannot move the way it was asked to.
+
+    It is declared beside the proposal because a store raises it too: a move
+    from a state the stored proposal has already left is refused where the
+    proposal is kept, so of two decisions taken at once only the first lands.
+    """
+
+
+def already_moved(
+    proposal_id: str, held: ProposalState | str, prior: ProposalState | str
+) -> LifecycleError:
+    """The refusal of a move whose proposal left `prior` before the move was written."""
+    return LifecycleError(
+        f"proposal {proposal_id} is {ProposalState(held).value}, not "
+        f"{ProposalState(prior).value}: another decision came first"
+    )
+
+
 class ProposalTransition(BaseModel):
     """One recorded state change of a proposal.
 

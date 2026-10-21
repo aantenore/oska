@@ -32,11 +32,18 @@ serving several pairs from one database keeps their trails and queues apart.
 `oska forget` and `oska forget --older-than` reach the shared trail, proposals
 and change requests the same way they reach the ledger and the sessions.
 
+Two replicas deciding the same thing at once do not both win. A proposal moves
+only while its row still holds the state the move was decided from, and a
+change request is applied or rejected under a row lock; the second decision is
+refused (`409` over HTTP) and composes nothing.
+
 What stays on disk is what a job writes for the runtime to read: run
 `oska improve` against a state directory every replica mounts, or against one
 replica whose results you copy, and collect traces rather than query them.
 Applying a change request writes into the catalog root the operator names, as
-it always did, wherever the request was composed.
+it always did, wherever the request was composed. If the decision cannot be
+recorded, the files and directories that call wrote are removed again, nothing
+that was there before it, and the request stays open to apply once more.
 
 ## Releasing a catalog
 

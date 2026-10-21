@@ -817,7 +817,7 @@ declares and this binding maps can be called.
 | `cwd` | `stdio`: working directory, relative to this file |
 | `url` | `http`: the endpoint every message is posted to (streamable HTTP; a JSON or an event-stream answer) |
 | `headers` | `http`: sent with every message |
-| `timeout` | Seconds. Defaults to 30. For `stdio` it bounds the whole exchange, start-up included; for `http` each request |
+| `timeout` | Seconds. Defaults to 30. Bounds the whole exchange, from `initialize` to the answer of `tools/call`, over either transport: start-up included for `stdio`, and for `http` a stream kept open with keep-alives is cut there |
 | `operations.<name>.tool` | The one tool this operation calls |
 | `operations.<name>.arguments` | The arguments template. Absent means no arguments |
 | `operations.<name>.timeout` | Overrides the binding's timeout |

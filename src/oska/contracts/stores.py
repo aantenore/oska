@@ -39,6 +39,15 @@ class ProposalRecordStore(Protocol):
         """Write a proposal, replacing any earlier copy."""
         ...
 
+    def transition(self, proposal: SkillProposal, prior: ProposalState) -> object:
+        """Write a proposal only while the stored copy is still in `prior`.
+
+        The check and the write are one step, so of two decisions taken from
+        the same state the second is refused with `LifecycleError`. Raises
+        `KeyError` when the proposal is not there.
+        """
+        ...
+
     def get(self, proposal_id: str) -> SkillProposal:
         """Read one proposal. Raises `KeyError` when it is not there."""
         ...

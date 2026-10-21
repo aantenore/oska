@@ -93,7 +93,13 @@ through `transition`, which:
 - composes a change request when the target is `published`, and records its id
   in the transition note;
 - appends a `ProposalTransition` with the state, the time, the actor and the
-  note.
+  note;
+- writes the move only while the stored proposal is still in the state it was
+  read in. Two reviewers, or two replicas, deciding the same proposal at once
+  both pass the check against what they read; the store refuses the second
+  write with `LifecycleError` (`409` over HTTP). Publication writes its move
+  before it composes anything, so only the decision that won composes a change
+  request; if composing then fails, the proposal goes back to `approved`.
 
 `transition` takes no catalog root and cannot be given one. `published` is the
 end of what this function does: it means the package is composed and waiting
