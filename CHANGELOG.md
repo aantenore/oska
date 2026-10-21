@@ -44,6 +44,10 @@ All notable changes to this project are recorded here. The format follows
   an OpenTelemetry collector as well as to the file, with identifiers, kinds and
   counts only and never a payload or the text of a turn (`OSKA-XC-37`); two
   turns traced at once no longer nest under each other.
+- `import oska` exposes `Settings`, `load_settings`, `build_services`, `build_platform`,
+  `build_engine`, `TurnResult`, `Principal`, `ScriptedModelProvider` and `ReplayProvider`,
+  resolved on first use so the import stays light; `docs/embedding.md` walks a
+  three-turn session in code and is run by a test.
 
 ### Changed
 

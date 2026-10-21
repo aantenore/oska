@@ -165,6 +165,12 @@ offline, one command per turn when `--session` is given, the way it was
 recorded (`--replay-from-start` starts over); see
 [docs/conformance.md](docs/conformance.md#recording-a-real-session).
 
+### Use it as a library
+
+Embed it in your own program: `from oska import build_services, load_settings`
+and run governed turns in code, with the same approval stop and the same
+ledger. See [docs/embedding.md](docs/embedding.md).
+
 ### Serve it over HTTP
 
 `oska serve` serves the same runtime, reasoning with the same provider: turns,

@@ -16,6 +16,7 @@ what you came to do.
 ## Building a platform
 
 - [building-a-platform.md](building-a-platform.md): from `oska new pack` to a signed, token-authenticated platform on PostgreSQL with CI and metrics.
+- [embedding.md](embedding.md): `import oska` and drive a governed session from your own program, with a scripted provider first and a real one after.
 - [adopting.md](adopting.md): declaring an existing system by hand, one declaration at a time.
 - [packs-and-platforms.md](packs-and-platforms.md): the pack, the platform manifest, domains, tenants and the isolation between them.
 - [configuration.md](configuration.md): every environment variable and every key of `runtime.json` and `model.json`.
