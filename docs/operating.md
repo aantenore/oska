@@ -43,7 +43,11 @@ replica whose results you copy, and collect traces rather than query them.
 Applying a change request writes into the catalog root the operator names, as
 it always did, wherever the request was composed. If the decision cannot be
 recorded, the files and directories that call wrote are removed again, nothing
-that was there before it, and the request stays open to apply once more.
+that was there before it, and the request stays open to apply once more. This
+holds for the directory store too. Two different requests for one skill version
+lock different rows, so the target directory itself is the claim: it is created
+first and fails if it exists, one request wins it, and the other is refused as
+already there.
 
 ## Releasing a catalog
 

@@ -96,6 +96,10 @@ All notable changes to this project are recorded here. The format follows
   change request; and applying a change request from PostgreSQL removes the
   files it wrote when the decision cannot be recorded, so the request can be
   applied again.
+- Applying a change request is all or nothing on either store: the files copied
+  are removed when the decision cannot be recorded, and the target directory is
+  claimed with `os.mkdir` first, so of two requests for one skill version applied
+  at once exactly one wins and the other is refused as already there.
 
 ## [0.1.0]
 

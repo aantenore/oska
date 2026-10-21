@@ -52,6 +52,7 @@ from oska.contracts.change import (
     require_actor,
     require_open,
 )
+from oska.contracts.placement import claim_target
 from oska.contracts.proposal import VERIFIED_SOURCES, ActorSource, QualityReport
 
 __all__ = [
@@ -243,7 +244,11 @@ class ChangeRequestStore:
         catalog, and it is reached only from a terminal: the root it writes to
         is an argument, so no caller can install a change without saying where.
         An existing version is never overwritten; a request whose version is
-        already there is refused and stays open.
+        already there is refused and stays open. The target directory is
+        claimed with `os.mkdir` before anything is copied, so of two requests
+        for one version exactly one wins, and when the record cannot be written
+        the files this call copied are removed and the request can be applied
+        again.
         """
         actor = require_actor(by, "applying a change request records who applied it")
         request = self.get(request_id)
@@ -251,18 +256,18 @@ class ChangeRequestStore:
         source = self.directory(request_id) / request.package
         if not source.is_dir():
             raise ChangeRequestError(f"change request {request_id} holds no package")
-        target = Path(catalog_root) / request.package
-        if target.exists():
-            raise ChangeRequestError(
-                f"{target} is already there: a version is never overwritten"
-            )
-        target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copytree(source, target)
-        request.state = ChangeRequestState.applied
-        request.decided_at = datetime.now(UTC)
-        request.decided_by = actor
-        request.applied_to = str(Path(catalog_root))
-        self._write(request)
+        claim = claim_target(Path(catalog_root) / request.package)
+        target = claim.target
+        try:
+            shutil.copytree(source, target, dirs_exist_ok=True)
+            request.state = ChangeRequestState.applied
+            request.decided_at = datetime.now(UTC)
+            request.decided_by = actor
+            request.applied_to = str(Path(catalog_root))
+            self._write(request)
+        except BaseException:
+            claim.release()
+            raise
         return sorted(path for path in target.rglob("*") if path.is_file())
 
     def reject(self, request_id: str, *, by: str, note: str = "") -> ChangeRequest:

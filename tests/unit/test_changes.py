@@ -12,7 +12,9 @@ from __future__ import annotations
 import builtins
 import hashlib
 import json
+import threading
 from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
@@ -33,6 +35,7 @@ from oska.contracts.receipt import WriteReceipt
 from oska.engine.factory import build_engine
 from oska.improvement.job import run_job
 from oska.learning.changes import (
+    ChangeRequest,
     ChangeRequestError,
     ChangeRequestState,
     ChangeRequestStore,
@@ -168,6 +171,83 @@ def test_a_request_is_decided_once_and_never_overwrites_a_version(
     with pytest.raises(ChangeRequestError):
         store.apply(second, catalog_root, by="an operator")
     assert store.get(second).state is ChangeRequestState.open
+
+
+def test_an_apply_whose_record_fails_leaves_no_file_and_can_be_retried(
+    store: ChangeRequestStore, catalog_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    request_id = _saved(store)
+    (catalog_root / "runbook").mkdir(parents=True)
+    (catalog_root / "runbook" / "kept.md").write_text("there before\n", encoding="utf-8")
+    write = ChangeRequestStore._write
+    failures = [1]
+
+    def failing(self: ChangeRequestStore, request: ChangeRequest) -> None:
+        if request.state is ChangeRequestState.applied and failures:
+            failures.pop()
+            raise RuntimeError("the record could not be written")
+        write(self, request)
+
+    monkeypatch.setattr(ChangeRequestStore, "_write", failing)
+
+    with pytest.raises(RuntimeError, match="could not be written"):
+        store.apply(request_id, catalog_root, by="an operator")
+
+    assert not (catalog_root / "runbook" / "sample").exists()
+    assert (catalog_root / "runbook" / "kept.md").is_file()
+    assert store.get(request_id).state is ChangeRequestState.open
+
+    copied = store.apply(request_id, catalog_root, by="an operator")
+    assert [path.name for path in copied] == ["policy.json", "skill.md"]
+    assert store.get(request_id).state is ChangeRequestState.applied
+
+
+def test_a_failed_apply_removes_the_parents_it_created_and_no_others(
+    store: ChangeRequestStore, catalog_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    request_id = _saved(store)
+
+    def failing(self: ChangeRequestStore, request: ChangeRequest) -> None:
+        raise RuntimeError("the record could not be written")
+
+    monkeypatch.setattr(ChangeRequestStore, "_write", failing)
+    with pytest.raises(RuntimeError):
+        store.apply(request_id, catalog_root, by="an operator")
+
+    assert not list(catalog_root.rglob("*"))
+
+
+def test_two_requests_for_one_version_applied_at_once_leave_the_winner_only(
+    store: ChangeRequestStore, catalog_root: Path
+) -> None:
+    ids = []
+    for text in ("first", "second"):
+        request = new_request(
+            "proposal-1", "runbook.sample", 1, "a reviewer", QualityReport(issues=[], score=1.0)
+        )
+        store.save(request, skill_markdown=f"{MARKDOWN}\n{text}\n", policy=POLICY)
+        ids.append((request.request_id, text))
+    barrier = threading.Barrier(2)
+
+    def attempt(request_id: str) -> str:
+        barrier.wait()
+        try:
+            store.apply(request_id, catalog_root, by="an operator")
+        except ChangeRequestError as refusal:
+            assert "already there" in str(refusal)
+            return "refused"
+        return "applied"
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        outcomes = list(pool.map(attempt, [request_id for request_id, _ in ids]))
+
+    assert sorted(outcomes) == ["applied", "refused"]
+    winner = ids[outcomes.index("applied")][1]
+    package = catalog_root / "runbook" / "sample" / "v1"
+    assert sorted(path.name for path in package.iterdir()) == ["policy.json", "skill.md"]
+    assert winner in (package / "skill.md").read_text(encoding="utf-8")
+    states = {store.get(request_id).state for request_id, _ in ids}
+    assert states == {ChangeRequestState.applied, ChangeRequestState.open}
 
 
 def test_a_decision_records_who_made_it(

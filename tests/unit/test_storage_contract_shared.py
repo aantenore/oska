@@ -15,8 +15,10 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 import uuid
 from collections.abc import Callable, Iterator
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -356,6 +358,42 @@ def test_applying_writes_the_package_into_the_catalog_once(
     with pytest.raises(ChangeRequestError, match="never overwritten"):
         store.apply(again, catalog, by="operator")
     assert store.get(again).state is ChangeRequestState.open
+
+
+def test_two_requests_for_one_version_applied_at_once_leave_the_winner_only(
+    backend: Backend, tmp_path: Path
+) -> None:
+    texts = {}
+    for proposal_id in ("p-1", "p-2"):
+        request = new_request(proposal_id, SKILL_ID, 1, "reviewer", QualityReport(score=1.0))
+        backend.changes().save(
+            request, skill_markdown=f"{MARKDOWN}\n{proposal_id}\n", policy=POLICY
+        )
+        texts[request.request_id] = proposal_id
+    catalog = tmp_path / "catalog"
+    barrier = threading.Barrier(2)
+
+    def attempt(request_id: str) -> str:
+        store = backend.changes()
+        barrier.wait()
+        try:
+            store.apply(request_id, catalog, by="operator")
+        except ChangeRequestError as refusal:
+            assert "already there" in str(refusal)
+            return "refused"
+        return "applied"
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        outcomes = dict(zip(texts, pool.map(attempt, texts), strict=True))
+
+    assert sorted(outcomes.values()) == ["applied", "refused"]
+    winner = next(request_id for request_id, outcome in outcomes.items() if outcome == "applied")
+    package = catalog / "runbook" / "sample_change" / "v1"
+    assert sorted(path.name for path in package.iterdir()) == ["policy.json", "skill.md"]
+    assert texts[winner] in (package / "skill.md").read_text(encoding="utf-8")
+    for request_id, outcome in outcomes.items():
+        expected = ChangeRequestState.applied if outcome == "applied" else ChangeRequestState.open
+        assert backend.changes().get(request_id).state is expected
 
 
 def test_a_package_is_written_out_and_dropped_without_the_record(
