@@ -89,9 +89,12 @@ To have the runtime check who is calling, switch on token identity:
 ## From zero to a first governed write
 
 1. `python -m venv .venv && .venv/bin/pip install "${OSKA_INSTALL:-oska==${oska_version}}"`
-   installs the runtime version that generated this platform. Set
-   `OSKA_INSTALL` (here, or as a repository variable for the CI workflow) to a
-   wheel, an index requirement or a git URL to install from somewhere else.
+   installs the runtime version that generated this platform. Until that
+   version is on the package index, install it from source with
+   `OSKA_INSTALL="oska @ git+${oska_repository}"`; the CI workflow falls back
+   to that by itself. Set `OSKA_INSTALL` (here, or as a repository variable for
+   the CI workflow) to a wheel, an index requirement or a git URL to install
+   from somewhere else.
 2. `cp .env.example .env` and fill in a model provider, or leave
    `OSKA_PROVIDER=none` to run with the deterministic keyword router only.
 3. If this platform was generated without a pack, write one from this

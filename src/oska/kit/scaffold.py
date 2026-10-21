@@ -28,6 +28,7 @@ import re
 import shutil
 from collections.abc import Sequence
 from importlib import resources
+from importlib.metadata import PackageNotFoundError, metadata
 from importlib.resources.abc import Traversable
 from pathlib import Path
 from string import Template
@@ -71,6 +72,9 @@ _CONFIGS_DIR = "configs"
 PLATFORM_MANIFEST = "platform.yaml"
 PACKS_DIR = "packs"
 
+
+SOURCE_REPOSITORY = "https://github.com/aantenore/oska"
+"""Where the source is installed from when the distribution names no repository."""
 
 def new_pack(
     name: str,
@@ -178,6 +182,7 @@ def new_platform(
         "host": display_host,
         "pack": example_pack,
         "oska_version": oska.__version__,
+        "oska_repository": _repository(),
     }
     _render_tree(_template("platform"), target, mapping)
     shutil.copytree(PACKAGED_CONFIGS, target / _CONFIGS_DIR)
@@ -299,6 +304,18 @@ def _check_name(value: str, what: str) -> None:
 def _check_identifier(value: str, what: str) -> None:
     if not _IDENTIFIER.match(value):
         raise ValueError(f"{what} {value!r} must be lowercase letters, digits and _ only")
+
+
+def _repository() -> str:
+    """Where the runtime's source lives, as its distribution metadata names it."""
+    try:
+        for entry in metadata("oska").get_all("Project-URL") or []:
+            label, _, url = entry.partition(",")
+            if label.strip().lower() == "repository" and url.strip():
+                return url.strip()
+    except PackageNotFoundError:
+        pass
+    return SOURCE_REPOSITORY
 
 
 def _article(word: str) -> str:

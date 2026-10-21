@@ -24,7 +24,8 @@ model proposes; the runtime decides.
 
 A session recorded against a hosted model, replayed offline with no endpoint
 and no key. A person asks, in Italian, to restart a stuck service, approves
-it, then asks again:
+it, then asks again. From the repository root, after the
+[install](#quickstart):
 
 ```sh
 printf '%s\n' \
@@ -171,6 +172,8 @@ receipts and drafting a proposal per session (`/sessions/{id}/turns`,
 `/sessions/{id}/receipts`, `/proposals/from-session/{id}`, each also reachable
 under `/domains/{domain}/...` of a platform), the review queue and change
 requests for a reviewer, `GET /domains`, `GET /metrics` and `GET /health`.
+The OpenAPI description is at `/openapi.json`, with an interactive page at
+`/docs`.
 
 It authenticates nobody by default: identity arrives in headers an
 authenticated proxy sets or, with `identity.mode: token`, in a signed session
@@ -316,6 +319,7 @@ examples/ops/     the reference pack: services, deployments, incidents and alert
 examples/access/  the second reference pack: accounts, groups and access requests
 examples/data/    the third reference pack: pipelines, runs and partitions
 examples/platform.yaml   the three packs served as three domains of one platform
+deploy/compose/   runtime files for the compose stack: PostgreSQL, token or proxy identity
 spec/             the OSKA standard, including the platform blueprint and its schemas
 docs/             how this implementation works
 tests/            unit tests and the scenario suite

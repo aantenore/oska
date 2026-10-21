@@ -102,7 +102,7 @@ def platform_settings(repo_root: Path, tmp_path: Path) -> Settings:
 
 @pytest.fixture
 def example_platform(examples: Path, platform_settings: Settings) -> Platform:
-    """The example platform: two domains, each over one example pack."""
+    """The example platform: three domains, each over one example pack."""
     return Platform.from_file(examples / "platform.yaml", platform_settings)
 
 

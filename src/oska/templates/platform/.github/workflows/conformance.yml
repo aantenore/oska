@@ -13,9 +13,20 @@ jobs:
         with:
           python-version: "3.11"
       - name: install oska
+        # The version that generated this platform. Until that version is on the
+        # package index, it is installed from its source repository instead.
+        # Set the repository variable OSKA_INSTALL to install from anywhere else.
         env:
-          OSKA_INSTALL: ${{ vars.OSKA_INSTALL || 'oska==${oska_version}' }}
-        run: pip install "$OSKA_INSTALL"
+          OSKA_INSTALL: ${{ vars.OSKA_INSTALL }}
+          OSKA_PINNED: oska==${oska_version}
+          OSKA_SOURCE: oska @ git+${oska_repository}
+        run: |
+          if [ -n "$OSKA_INSTALL" ]; then
+            pip install "$OSKA_INSTALL"
+          elif ! pip install "$OSKA_PINNED"; then
+            echo "::warning::$OSKA_PINNED is not on the package index; installing from source"
+            pip install "$OSKA_SOURCE"
+          fi
       - name: check every pack in isolation
         run: |
           set -e

@@ -69,20 +69,22 @@ level, and are checked by the unit suite.
 
 ## Reference implementation
 
-The `oska` package in this repository is the reference implementation, and there are two reference
-conformance domains over two catalogs that share no vocabulary. The reference
+The `oska` package in this repository is the reference implementation, and there are three reference
+conformance domains over three catalogs that share no vocabulary. The reference
 implementation is normative only where this specification points at it; where
 the two disagree, this specification wins.
 
-There are two reference suites, and a level is attained per suite. Run against
-`examples/ops/scenarios`, the operational suite attains Level 3 (Adaptive).
-Run against `examples/access/scenarios`, the access suite attains Level 2
-(Governed): it declares no scenario of level 3, so it claims none. Every
-scenario of both suites passes, as `oska conform` reports for each: 26 of 26
-in the operational suite, 8 of 8 in the access suite. Run together as the
-reference platform, `oska conform --platform examples/platform.yaml` reports
-the domain `operations` at Level 3 and the domain `access` at Level 2, so the
-platform attains its target of Level 2.
+There are three reference suites, and a level is attained per suite. Run
+against `examples/ops/scenarios`, the operational suite attains Level 3
+(Adaptive). Run against `examples/access/scenarios` and
+`examples/data/scenarios`, the access and data pipeline suites attain Level 2
+(Governed): neither declares a scenario of level 3, so neither claims one.
+Every scenario of every suite passes, as `oska conform` reports for each: 26
+of 26 in the operational suite, 8 of 8 in the access suite, 7 of 7 in the data
+pipeline suite. Run together as the reference platform, `oska conform
+--platform examples/platform.yaml` reports the domain `operations` at Level 3
+and the domains `access` and `data` at Level 2, so the platform attains its
+target of Level 2.
 
 ## How to cite
 

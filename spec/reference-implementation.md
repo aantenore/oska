@@ -1,10 +1,11 @@
 # Reference implementation
 
-The `oska` package in this repository is the reference implementation of OSKA 0.1. There are two reference
+The `oska` package in this repository is the reference implementation of OSKA 0.1. There are three reference
 conformance domains. `examples/ops` is a small estate of services, deployments,
 incidents and alerts, with the procedures an operator would run against it;
 `examples/access` is an access management domain of accounts, groups and
-requests, sharing no vocabulary with the first.
+requests, sharing no vocabulary with the first; `examples/data` is a data
+pipelines domain of pipelines, runs and partitions, sharing none with either.
 
 The reference implementation is normative only where this specification points
 at it. Where the two disagree, the specification wins.

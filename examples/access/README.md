@@ -5,7 +5,7 @@ It exists to show the runtime running a domain it shares no words with: the
 core knows about skills, operations, policies and receipts, and learns what an
 account, a group and a membership are only by reading these files.
 
-It is also the smaller of the two reference packs, and the one to copy when
+It is also the smaller of the first two reference packs, and the one to copy when
 declaring a pack of your own: three entities, three integrations, four
 procedures and a composite, which is about the least that still exercises
 reads, a governed write, a second approval and a sequence. `oska new pack`

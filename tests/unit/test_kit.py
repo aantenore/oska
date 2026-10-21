@@ -100,8 +100,10 @@ def test_new_platform_ci_installs_the_version_that_generated_it(tmp_path: Path) 
     platform_dir = new_platform("sample_platform", packs=[pack_dir], into=tmp_path)
     workflow = platform_dir / ".github" / "workflows" / "conformance.yml"
     text = workflow.read_text(encoding="utf-8")
-    assert f"'oska=={oska.__version__}'" in text
+    assert f"OSKA_PINNED: oska=={oska.__version__}" in text
+    assert "OSKA_SOURCE: oska @ git+https://github.com/" in text
     assert "vars.OSKA_INSTALL" in text
+    assert "${oska_repository}" not in text
     assert "${oska_version}" not in text
     assert not re.search(r"pip install\s+\"?oska\"?\s*$", text, re.MULTILINE)
     readme = (platform_dir / "README.md").read_text(encoding="utf-8")
@@ -109,7 +111,9 @@ def test_new_platform_ci_installs_the_version_that_generated_it(tmp_path: Path) 
     assert "${oska_version}" not in readme
     assert not re.search(r"pip install\s+oska\b", readme)
     install = yaml.safe_load(text)["jobs"]["conform"]["steps"][2]
-    assert install["run"] == 'pip install "$OSKA_INSTALL"'
+    assert 'pip install "$OSKA_INSTALL"' in install["run"]
+    assert 'pip install "$OSKA_PINNED"' in install["run"]
+    assert "${{" not in install["run"]
 
 
 def test_new_platform_refuses_to_overwrite(tmp_path: Path) -> None:

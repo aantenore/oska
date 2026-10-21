@@ -29,7 +29,7 @@ oska conform                           # the scenario suite and the level reache
 `ruff format` is not used here; keep a change to the lines it needs.
 
 The full suite (`pytest -q`) runs in CI on every push and pull request, together
-with the catalog validation and conformance runs for both reference domains.
+with the catalog validation and conformance runs for every reference domain.
 Run it locally before a release or after a change to shared code.
 
 A behavior change comes with a test that fails before the change and passes
