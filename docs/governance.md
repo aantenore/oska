@@ -458,6 +458,12 @@ last one matters: a new task cancels the approval waiting for an answer, with
 the reason `the approval waiting for an answer was cancelled by the new
 request`. A goal is replaced, never merged.
 
+A turn the model could not read is none of those. When the rules do not
+recognize the answer and the model fails to classify it, the approval, or the
+question, that was waiting stays exactly as it was and is asked again with the
+words the rules accept; nothing is cancelled and no decision is recorded. The
+route event says the model could not classify the turn.
+
 ## Verification
 
 The verification spec is resolved from the operation that was executed.

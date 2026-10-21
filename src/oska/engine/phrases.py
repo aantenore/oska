@@ -46,7 +46,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from string import Formatter
 
@@ -142,6 +142,8 @@ class Phrases:
 
     catalog: Mapping[str, Mapping[str, Entry]]
     default_language: str = REFERENCE_LANGUAGE
+    accepted: Mapping[str, frozenset[str]] = field(default_factory=dict)
+    """The approval words the router's rules accept, by key; empty when no rules were given."""
 
     def __post_init__(self) -> None:
         _check(self.catalog)
@@ -166,7 +168,29 @@ class Phrases:
         phrases = cls(_merge(layers), default_language=default_language)
         if rules is not None:
             phrases.check_words(rules, (default_language, *spoken))
+            phrases = replace(
+                phrases,
+                accepted={
+                    "approve_word": frozenset(_token_set(rules.approve_tokens)),
+                    "reject_word": frozenset(_token_set(rules.reject_tokens)),
+                },
+            )
         return phrases
+
+    def answer_word(self, language: str, key: str) -> str:
+        """The word an approval request tells a person to type, one the rules accept.
+
+        The words are checked at load for the languages the deployment declares.
+        A session can still end up in another language the catalog holds; when
+        that language's word is not one the rules accept, the default language's
+        word is shown instead, so a person is never told to type something only
+        a model could read.
+        """
+        word = self.say(language, key)
+        tokens = self.accepted.get(key)
+        if tokens and normalize(word) not in tokens:
+            return self.say(self.default_language, key)
+        return word
 
     def languages(self) -> tuple[str, ...]:
         """Every language the catalog holds, the reference first."""

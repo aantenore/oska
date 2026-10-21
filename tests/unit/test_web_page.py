@@ -159,3 +159,12 @@ def test_the_endpoints_the_page_reads_answer_what_it_expects_from_a_replay(
     assert [(r["receipt_id"], r["verification"]) for r in listed] == [
         (receipts[0]["receipt_id"], "verified")
     ]
+
+
+def test_the_page_cannot_be_framed_by_another_site(example_settings: Settings) -> None:
+    """A page with an Approve button refuses to be drawn inside someone else's page."""
+    headers = _client(example_settings).get("/").headers
+
+    assert headers["x-frame-options"] == "DENY"
+    assert "frame-ancestors 'none'" in headers["content-security-policy"]
+    assert headers["x-content-type-options"] == "nosniff"

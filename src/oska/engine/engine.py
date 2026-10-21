@@ -36,6 +36,7 @@ from oska.connectors.registry import ConnectorRegistry
 from oska.contracts.common import (
     Message,
     PendingGoal,
+    PendingInfo,
     RouteDecision,
     TurnKind,
     TurnResult,
@@ -63,7 +64,7 @@ from oska.governance.policy_engine import PolicyEngine
 from oska.governance.verification import Verifier
 from oska.index.discovery import Discovery
 from oska.planner.planner import Planner
-from oska.router import RoutingContext, TurnRouter
+from oska.router import MODEL_UNAVAILABLE, RoutingContext, TurnRouter
 from oska.storage.protocols import LedgerStore, SessionStateStore
 
 __all__ = ["BudgetExceeded", "BudgetedProvider", "Engine", "ModelBudget"]
@@ -328,10 +329,35 @@ class Engine:
             return self._approvals.approve(ctx, notes)
         if kind is TurnKind.reject:
             return self._approvals.reject(ctx)
+        if decision.reason == MODEL_UNAVAILABLE:
+            held = self._held(state)
+            if held is not None:
+                return held
         answers_a_question = kind in (TurnKind.provide_input, TurnKind.continue_task)
         if answers_a_question and state.pending_goal is not None and not state.pending_approval:
             return self._continue(ctx, text, notes)
         return self._new_task(ctx, decision, text, notes)
+
+    def _held(self, state: SessionState) -> Answer | None:
+        """What the session was waiting for, asked again, when the model could not read the turn.
+
+        A turn the model could not classify is never taken as a decision: an
+        approval or a question that was waiting stays exactly as it was, and is
+        asked again with the words the rules accept, so the person can answer it
+        without a model. Nothing is cancelled and nothing is recorded as decided.
+        """
+        if state.pending_approval is not None:
+            return Answer(
+                "approval_request",
+                pending=PendingInfo(kind="approval", approval=state.pending_approval),
+            )
+        goal = state.pending_goal
+        if goal is not None and goal.missing:
+            return Answer(
+                "input_question",
+                pending=PendingInfo(kind="input", question=goal.missing[0].question),
+            )
+        return None
 
     def _cancel(self, ctx: TurnContext) -> Answer:
         state = ctx.state

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
@@ -594,3 +595,36 @@ def test_a_turn_routed_without_the_model_learns_the_language_from_the_plan(
     )
     engine.turn("lang", "come sta il servizio search?")
     assert engine.state("lang").language == "it"
+
+
+def test_a_model_that_cannot_read_the_answer_leaves_the_approval_waiting(
+    example_settings: Settings, repo_root: Path
+) -> None:
+    """A turn the model could not classify is never taken as a decision on a held write."""
+    scenario = json.loads(
+        (repo_root / "examples" / "ops" / "scenarios" / "02_restart_staging.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    # The router and the plan of the first turn only: the next call finds no answer.
+    script = scenario["provider_script"][:2]
+    engine = build_engine(
+        example_settings, provider=ScriptedModelProvider(script), audit_sink=MemorySink()
+    )
+
+    asked = engine.turn("held", scenario["turns"][0]["user"])
+    assert asked.pending is not None and asked.pending.approval is not None
+    approval_id = asked.pending.approval.approval_id
+
+    unread = engine.turn("held", "go on then, do it please")
+
+    assert unread.pending is not None and unread.pending.approval is not None
+    assert unread.pending.approval.approval_id == approval_id
+    assert engine.state("held").pending_approval is not None
+    assert not [event for event in unread.events if event.kind == "approval_decided"]
+    route = next(event for event in unread.events if event.kind == "route")
+    assert route.data["reason"] == "the model could not classify the turn"
+    assert "yes" in unread.reply
+
+    approved = engine.turn("held", "yes")
+    assert [outcome.kind for outcome in approved.outcomes if outcome.kind == "receipt"]

@@ -8,7 +8,14 @@ from oska.router.base import RoutingContext, RuleRouter
 from oska.router.fast_path import FastPath
 from oska.router.model_router import ModelRouter
 
-__all__ = ["FastPath", "ModelRouter", "RoutingContext", "RuleRouter", "TurnRouter"]
+__all__ = [
+    "MODEL_UNAVAILABLE",
+    "FastPath",
+    "ModelRouter",
+    "RoutingContext",
+    "RuleRouter",
+    "TurnRouter",
+]
 
 
 MODEL_UNAVAILABLE = "the model could not classify the turn"

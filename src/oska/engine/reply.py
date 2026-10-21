@@ -335,8 +335,8 @@ def _approval_request(pending: PendingInfo | None, phrases: Phrases, language: s
         phrases.say(
             language,
             "approval_tail",
-            approve=phrases.say(language, "approve_word"),
-            reject=phrases.say(language, "reject_word"),
+            approve=phrases.answer_word(language, "approve_word"),
+            reject=phrases.answer_word(language, "reject_word"),
         )
     )
     return "\n".join(lines)

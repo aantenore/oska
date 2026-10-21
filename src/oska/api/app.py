@@ -134,7 +134,18 @@ def _serve_page(app: FastAPI) -> None:
 
     @app.get("/", include_in_schema=False, response_class=HTMLResponse)
     def _page() -> HTMLResponse:
-        return HTMLResponse(page, headers={"Cache-Control": "no-cache"})
+        return HTMLResponse(page, headers=PAGE_HEADERS)
+
+
+PAGE_HEADERS = {
+    "Cache-Control": "no-cache",
+    # A page that approves writes must not be framed by another site, where a
+    # click on something else could land on its Approve button.
+    "Content-Security-Policy": "frame-ancestors 'none'",
+    "X-Frame-Options": "DENY",
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "no-referrer",
+}
 
 
 class _ReplaySessions:

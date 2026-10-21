@@ -420,8 +420,10 @@ whichever it was.
   no provider is configured.
 - **OSKA-COG-5** — Routing MUST evaluate rules first, then the fast path, then
   the model, and MUST record which stage decided. A model that fails to
-  classify the turn MUST NOT fail it: the turn is routed as it would be without
-  a model, and the record says the model could not classify it. A model that
+  classify the turn MUST NOT fail it, and MUST NOT be taken as a decision: an
+  approval or a question that was waiting stays as it was and is asked again,
+  and otherwise the turn is routed as it would be without a model; either way
+  the record says the model could not classify it. A model that
   fails to plan leaves the procedure without a plan, recorded as an invalid
   plan with that reason, never as an error of the turn.
 - **OSKA-COG-6** — The fast path MUST be skipped when the session has a pending

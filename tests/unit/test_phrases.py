@@ -473,3 +473,14 @@ def test_claim_words_of_every_language_are_read(tmp_path: Path) -> None:
     assert not _check_receipts_are_stated(
         [receipt], ["Beleg r-1 ist nicht bestätigt."], phrases
     )
+
+
+def test_an_approval_request_never_names_a_word_the_rules_do_not_accept() -> None:
+    """A session in a language the rules were not set up for is shown the default words."""
+    english_only = RouterRules(approve_tokens=["yes"], reject_tokens=["no"])
+    phrases = Phrases.load(rules=english_only, spoken=("en",))
+
+    assert phrases.answer_word("de", "approve_word") == "yes"
+    assert phrases.answer_word("de", "reject_word") == "no"
+    assert phrases.answer_word("en", "approve_word") == "yes"
+    assert Phrases.load().answer_word("de", "approve_word") == "ja"
