@@ -16,6 +16,11 @@ can then hold a conversation, and nothing but the network stands in the way.
 `serve` reasons with the model provider `model.json` and `OSKA_PROVIDER`
 describe, in both modes; with `none` it serves without one. A provider that
 cannot be built stops the command with one line before anything listens.
+
+`serve --replay` answers from a recorded session instead, keyed by the request
+so concurrent sessions each get their own answers, and says so on stderr before
+it listens. It is a demonstration with no model and no key, so it is refused
+when the configuration names a real provider: one or the other, never both.
 """
 
 from __future__ import annotations
@@ -50,6 +55,7 @@ from oska.conformance import render_json, render_text, run_suite
 from oska.engine.phrases import PhraseCatalogError
 from oska.planner.provider import ModelProvider, ModelProviderError
 from oska.planner.providers import build_provider
+from oska.planner.recording import KeyedReplayProvider
 from oska.platform import PlatformError
 from oska.platform.conformance import (
     passed,
@@ -63,6 +69,7 @@ __all__ = [
     "is_loopback",
     "open_port_warning",
     "register",
+    "replay_notice",
     "serve",
     "serving_provider",
 ]
@@ -74,6 +81,15 @@ HostOption = Annotated[
 PortOption = Annotated[
     int | None,
     typer.Option("--port", help="Port to listen on. Defaults to the configured one."),
+]
+ServeReplayOption = Annotated[
+    Path | None,
+    typer.Option(
+        "--replay",
+        help="Answer from this recorded session instead of a model. A demonstration: "
+        "nothing reaches a model, and requests the recording does not hold get the "
+        "answer the runtime gives without one.",
+    ),
 ]
 ScenariosOption = Annotated[
     Path | None,
@@ -92,6 +108,7 @@ def serve(
     port: PortOption = None,
     skills: SkillsOption = None,
     platform: PlatformOption = None,
+    replay: ServeReplayOption = None,
 ) -> None:
     """Serve the HTTP application, over one catalog or every domain of a platform."""
     if platform is not None and skills:
@@ -111,7 +128,7 @@ def serve(
         typer.echo(open_port_warning(bound_host, bound_port), err=True)
     elif trusts_unverified_proxy(runtime.identity, bound_host):
         typer.echo(proxy_trust_warning(bound_host, bound_port), err=True)
-    provider = serving_provider(settings)
+    provider = serving_provider(settings, replay)
     try:
         application = create_app(
             settings,
@@ -127,12 +144,37 @@ def serve(
     uvicorn.run(application, host=bound_host, port=bound_port)
 
 
-def serving_provider(settings: Settings) -> ModelProvider | None:
-    """The model provider the configuration describes, or none; one that cannot be built stops."""
+def serving_provider(settings: Settings, replay: Path | None = None) -> ModelProvider | None:
+    """The model provider the configuration describes, or none; one that cannot be built stops.
+
+    With `replay`, the recorded session at that path, refused when the
+    configuration also names a provider.
+    """
     try:
-        return build_provider(load_model_config(settings=settings))
+        model_config = load_model_config(settings=settings)
+    except (OSError, ValueError) as exc:
+        fail(f"the model provider could not be built: {exc}")
+    if replay is not None:
+        if model_config.provider != "none":
+            fail(
+                f"--replay answers from a recording and the configuration names the "
+                f"{model_config.provider} provider; set OSKA_PROVIDER=none or drop --replay"
+            )
+        try:
+            provider = KeyedReplayProvider(replay)
+        except ModelProviderError as exc:
+            fail(f"the recorded session could not be read: {exc}")
+        typer.echo(replay_notice(replay), err=True)
+        return provider
+    try:
+        return build_provider(model_config)
     except (OSError, ValueError, ModelProviderError) as exc:
         fail(f"the model provider could not be built: {exc}")
+
+
+def replay_notice(path: Path) -> str:
+    """What `serve --replay` says before it listens, so nobody takes the replay for a model."""
+    return f"demo: answering from the recorded session in {path}; nothing reaches a model"
 
 
 def is_loopback(host: str) -> bool:

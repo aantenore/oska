@@ -16,6 +16,7 @@ from oska.engine.factory import build_engine
 from oska.planner.provider import ModelProvider, ModelProviderError, provider_embeds
 from oska.planner.recording import (
     RecordingProvider,
+    ReplayExhaustedError,
     ReplayProvider,
     cassette_to_script,
     read_cassette,
@@ -214,10 +215,11 @@ def test_replay_says_when_the_cassette_runs_out(tmp_path: Path) -> None:
     replay = ReplayProvider(path)
     _ask(replay, RESTART)
 
-    with pytest.raises(ModelProviderError) as raised:
+    with pytest.raises(ReplayExhaustedError) as raised:
         _ask(replay, RESTART)
 
     assert "exhausted after 1 step(s)" in str(raised.value)
+    assert not isinstance(raised.value, ModelProviderError), "nothing may answer around it"
 
 
 def test_replay_embeds_a_text_the_cassette_never_saw(tmp_path: Path) -> None:

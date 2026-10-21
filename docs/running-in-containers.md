@@ -12,8 +12,8 @@ What is in the box:
 | --- | --- |
 | `Dockerfile` | Builds the wheel, then installs it with the `api` and `postgres` extras into `python:3.12-slim`. Runs as user `oska` (uid 10001) in `/srv/oska`. |
 | `.dockerignore` | Keeps `.env`, `.git`, `state/`, caches, tests and docs out of the build context. |
-| `compose.yaml` | The image plus `postgres:16`, with the record kept in PostgreSQL and the API published on `127.0.0.1:8000`. |
-| `deploy/compose/runtime.json` | The runtime configuration the compose file mounts: PostgreSQL storage, nothing else. |
+| `compose.yaml` | The image plus `postgres:16`, with the record kept in PostgreSQL, the API published on `127.0.0.1:8000`, and the recorded session answering by default (`OSKA_DEMO_REPLAY`). |
+| `deploy/compose/runtime.json` | The runtime configuration the compose file mounts: PostgreSQL storage, with the default discovery and routing kept, since a runtime file replaces the defaults whole. |
 | `deploy/compose/runtime.token.json`, `runtime.proxy.json` | The same, with token identity or a proxy secret turned on. |
 
 ## Build and run
@@ -41,7 +41,8 @@ warning: listening on 0.0.0.0:8000 with identity.required off. Anyone who can re
 this port can hold a conversation and ask for writes. ...
 ```
 
-That is intended here. Inside a container, `127.0.0.1` would be unreachable
+followed by the line that says the stack is the demo (next section). The
+warning is intended here. Inside a container, `127.0.0.1` would be unreachable
 from the host, so the process listens on `0.0.0.0` and the port mapping does the
 restricting: `compose.yaml` publishes `127.0.0.1:8000:8000`, so only this
 machine reaches it.
@@ -51,78 +52,53 @@ the image carries no `curl`.
 
 ## A session with the API
 
-The image carries no model. The commands below are the ones that need none, and
-their output was taken from a running `docker compose up`.
+`compose.yaml` sets `OSKA_DEMO_REPLAY`, so the stack serves
+`oska serve --replay examples/ops/cassettes/restart-in-italian.json`: a session
+recorded against a hosted model, answered from the recording. Nothing reaches a
+model and no key is needed. The process says so before it listens, after the
+open-port warning:
+
+```
+demo: answering from the recorded session in examples/ops/cassettes/restart-in-italian.json; nothing reaches a model
+```
+
+and `/health` says so to anyone who asks:
 
 ```sh
 curl -s http://127.0.0.1:8000/health
 ```
 
 ```json
-{"status":"ok","skills":15,"fingerprint":"7b682b2cb8faeea89663f54a19d9588f32d6f6b311d707d7a080e0d3eda6249f"}
+{"status":"ok","skills":15,"fingerprint":"7b682b2cb8faeea89663f54a19d9588f32d6f6b311d707d7a080e0d3eda6249f","provider":"replay"}
 ```
+
+The replay answers by the request, not by its place in the file: each call is
+matched to the recorded call that asked the same thing, so several sessions can
+run the conversation at once and each gets its own answers. Everything else is
+the real runtime: the catalog, the policy, the approval gate, the mock
+connector, the read-back, the ledger and PostgreSQL. A receipt id the recorded
+answer quoted is replaced by this run's.
+
+The output below is from `docker compose up -d --build` on this repository,
+trimmed: `events`, `directives` and the plan are left out of the turns.
+
+Ask for the restart, in Italian:
 
 ```sh
 curl -s -X POST http://127.0.0.1:8000/sessions/demo-1/turns \
   -H 'content-type: application/json' \
-  -d '{"text":"restart the search service in staging"}'
-```
-
-The response is a `TurnResult`: `reply`, `outcomes`, `pending`, `events` and
-`directives`. Trimmed to the reply:
-
-```
-Planning a procedure needs a model provider, and none is configured. I can still tell you what
-this installation can do. I can check the health of a service, search a service's logs, restart
-a service, roll a service back to an earlier version, silence an alert, triage an incident on a
-service and add a note to an incident.
-```
-
-`events` shows the runtime found the right procedure (`runbook.service_restart`
-ranked first, score 0.43) and stopped because planning is the model's job. The
-agent proposes and the runtime decides: without a model nothing is proposed, so
-nothing is written.
-
-```sh
-curl -s http://127.0.0.1:8000/sessions/demo-1/receipts
-```
-
-```json
-[]
-```
-
-The tables are in PostgreSQL, created on start:
-
-```
-$ docker compose exec postgres psql -U oska -d oska -c '\dt'
- oska_audit_events, oska_change_request_files, oska_change_requests, oska_migrations,
- oska_proposals, oska_receipts, oska_sessions, oska_write_claims
-```
-
-### The approval and the receipt
-
-A write needs a plan, so it needs a model (next section). Once one is
-configured, the same two calls produce the exchange below. These responses were
-recorded in-process against the same routes with the scripted provider that
-replays `examples/ops/scenarios/02_restart_staging.json`, not from the
-container, and trimmed (`events`, `directives` and the plan are left out). A real
-model words the `reply` differently; the shape does not change.
-
-```sh
-curl -s -X POST http://127.0.0.1:8000/sessions/demo-1/turns \
-  -H 'content-type: application/json' \
-  -d '{"text":"the search service in staging needs a restart, it is wedged again"}'
+  -d '{"text":"Il servizio search in staging è bloccato, riavvialo per favore"}'
 ```
 
 ```json
 {
-  "reply": "This changes something, so it needs your approval first.\nservice.restart on integration.container_runtime with {\"service\":\"search\"}\nReply yes to approve it, or no to leave it alone.",
+  "reply": "Questa operazione modifica qualcosa, quindi serve prima la tua approvazione.\nservice.restart su integration.container_runtime con {\"service\":\"search\"}\nRispondi sì per approvarla, oppure no per lasciare tutto com'è.",
   "outcomes": [
     {"kind": "read", "operation": "service.status",
      "data": {"ok": true, "data": {"service": {"name": "search", "environment": "staging",
               "status": "running", "version": "0.8.2", "replicas": 2, "restarts": 0}}}},
     {"kind": "approval_pending", "operation": "service.restart",
-     "data": {"approval_id": "e0b5584d-75c0-4769-a8cc-5b3bf7fcb9c8",
+     "data": {"approval_id": "e8344b14-33ed-4807-97a3-fa3d16f24ded",
               "payload": {"service": "search"}, "approvals_required": 1, "approvals_given": 0}}
   ],
   "pending": {
@@ -138,26 +114,54 @@ curl -s -X POST http://127.0.0.1:8000/sessions/demo-1/turns \
 }
 ```
 
-The write has not run. `pending.approval` holds the exact payload and its
-digest. Approving is another turn in the same session:
+The status read ran; the write has not. `pending.approval` holds the exact
+payload and its digest. Approving is another turn in the same session:
 
 ```sh
 curl -s -X POST http://127.0.0.1:8000/sessions/demo-1/turns \
-  -H 'content-type: application/json' -d '{"text":"yes"}'
+  -H 'content-type: application/json' -d '{"text":"sì"}'
 ```
 
 ```json
 {
-  "reply": "search has been restarted and the read-back shows it running again under the same name, so the receipt is verified.\nservice.restart ran and the read-back confirmed service.name, service.status. Receipt d1211850-7d96-41c6-b14b-4440c8ca2967 is verified.",
+  "reply": "Il riavvio del servizio search in staging è stato eseguito e verificato. Il servizio è ora in esecuzione con due repliche.\nL'operazione service.restart è stata eseguita e la rilettura ha confermato service.name, service.status. La ricevuta 9b1c2094-5cc0-4c6f-a36d-6c6c842ef013 è verificata.",
   "outcomes": [
     {"kind": "receipt", "operation": "service.restart",
-     "receipt_id": "d1211850-7d96-41c6-b14b-4440c8ca2967",
+     "receipt_id": "9b1c2094-5cc0-4c6f-a36d-6c6c842ef013",
      "data": {"status": "executed", "verification": "verified",
-              "evidence": ["service.name", "service.status"]}}
+              "evidence": ["service.name", "service.status"], "payload": {"service": "search"}}},
+    {"kind": "read", "operation": "service.status",
+     "data": {"ok": true, "data": {"service": {"name": "search", "status": "running",
+              "replicas": 2, "restarts": 1}}}}
   ],
   "pending": null
 }
 ```
+
+The receipt says `verified` because the read-back did: the runtime read the
+service again after the restart and compared it with what the procedure
+declared. Ask for the same thing again:
+
+```sh
+curl -s -X POST http://127.0.0.1:8000/sessions/demo-1/turns \
+  -H 'content-type: application/json' \
+  -d '{"text":"Il servizio search in staging è bloccato, riavvialo per favore"}'
+```
+
+```json
+{
+  "reply": "Il riavvio del servizio search è stato eseguito e verificato. L'operazione è confermata con la ricevuta 9b1c2094-5cc0-4c6f-a36d-6c6c842ef013.\nL'operazione service.restart era già stata eseguita in questa sessione, ricevuta 9b1c2094-5cc0-4c6f-a36d-6c6c842ef013.",
+  "outcomes": [
+    {"kind": "ledger_hit", "operation": "service.restart",
+     "receipt_id": "9b1c2094-5cc0-4c6f-a36d-6c6c842ef013",
+     "data": {"status": "executed", "verification": "verified", "payload": {"service": "search"}}}
+  ],
+  "pending": null
+}
+```
+
+The repeat is a `ledger_hit`: the ledger already holds this write, so it is not
+sent twice and nothing asks for approval again. The session holds one receipt:
 
 ```sh
 curl -s http://127.0.0.1:8000/sessions/demo-1/receipts
@@ -166,27 +170,59 @@ curl -s http://127.0.0.1:8000/sessions/demo-1/receipts
 ```json
 [
   {
-    "receipt_id": "d1211850-7d96-41c6-b14b-4440c8ca2967",
+    "receipt_id": "9b1c2094-5cc0-4c6f-a36d-6c6c842ef013",
     "session_id": "demo-1",
+    "ledger_key": "d5e1598688113c3ad962edc433da2847d51fa5a94a7bf4946e8b748b563640f1",
     "integration_id": "integration.container_runtime",
     "operation": "service.restart",
     "payload": {"service": "search"},
     "status": "executed",
     "verification": "verified",
-    "verification_evidence": {"comparisons": {
-      "service.name": {"expected": "search", "actual": "search", "match": true},
-      "service.status": {"expected": "running", "actual": "running", "match": true}}}
+    "verification_evidence": {"operation": "service.status", "ok": true, "comparisons": {
+      "service.name": {"found": true, "match": true, "actual": "search", "expected": "search"},
+      "service.status": {"found": true, "match": true, "actual": "running", "expected": "running"}}},
+    "created_at": "2026-10-21T00:12:01.232414Z"
   }
 ]
 ```
 
-The receipt says `verified` because the read-back did: the runtime read the
-service's state again after the restart and compared it with what the procedure
-declared. With the compose file the receipt is a row in `oska_receipts`.
+It is a row in PostgreSQL:
+
+```
+$ docker compose exec postgres psql -U oska -d oska \
+    -c "select receipt_id, session_id, operation, verification from oska_receipts"
+              receipt_id              | session_id |    operation    | verification
+--------------------------------------+------------+-----------------+--------------
+ 9b1c2094-5cc0-4c6f-a36d-6c6c842ef013 | demo-1     | service.restart | verified
+(1 row)
+```
+
+A request the recording does not hold gets the answer the runtime gives
+without a model, never an invented one:
+
+```sh
+curl -s -X POST http://127.0.0.1:8000/sessions/demo-2/turns \
+  -H 'content-type: application/json' -d '{"text":"che tempo fa a Roma domani?"}'
+```
+
+```
+That is not something I can do here. I can check the health of a service, search a service's logs,
+restart a service, roll a service back to an earlier version, silence an alert, triage an incident
+on a service and add a note to an incident.
+```
 
 The example connectors are the mock one. They read and write a copy of the
 fixtures held in memory, so a container restart returns the estate to its
 original state. Nothing outside the container is touched.
+
+The image alone does not replay: without `OSKA_DEMO_REPLAY` it serves the model
+the `OSKA_PROVIDER` variables describe, or none (`"provider":"none"` on
+`/health`). To replay with it, pass the variable:
+
+```sh
+docker run --rm -p 127.0.0.1:8000:8000 \
+  -e OSKA_DEMO_REPLAY=examples/ops/cassettes/restart-in-italian.json oska:local
+```
 
 ## Pointing it at a model
 
@@ -201,7 +237,15 @@ export OSKA_MODEL_BASE_URL=https://your-provider.example/v1
 export OSKA_MODEL_API_KEY=...
 export OSKA_MODEL_CHAT=your-chat-model
 export OSKA_MODEL_EMBEDDING=your-embedding-model
+export OSKA_DEMO_REPLAY=                      # empty: no replay
 docker compose up -d
+```
+
+The replay and a model are one or the other. With `OSKA_DEMO_REPLAY` still set,
+`serve` stops with one line before it listens:
+
+```
+--replay answers from a recording and the configuration names the openai_compatible provider; set OSKA_PROVIDER=none or drop --replay
 ```
 
 For the image alone, pass them with `-e OSKA_PROVIDER=... -e OSKA_MODEL_API_KEY`

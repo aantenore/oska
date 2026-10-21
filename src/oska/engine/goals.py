@@ -27,16 +27,19 @@ from oska.contracts.common import Hydrated, Outcome, PendingInfo
 from oska.contracts.plan import Plan
 from oska.engine import outcomes as build
 from oska.engine import subject
+from oska.engine.budget import BudgetExceeded
 from oska.engine.execution import PlanExecutor, StopReason, TurnContext
 from oska.engine.outcomes import landed
 from oska.engine.reply import ReplyKind
 from oska.governance.verification import read_state
 from oska.planner.planner import InvalidPlanError, Planner
+from oska.planner.provider import ModelProviderError
 
 __all__ = ["Answer", "GoalRunner", "landed", "stopped_short", "unlanded"]
 
 UNKNOWN_PROCEDURE = "the procedure this session was working on is no longer in the catalog"
 _PLAN_FAILED = "the plan could not run"
+NO_PLAN = "the model could not write a plan"
 NOT_LANDED = "a write was not confirmed as done, so nothing planned after it was run"
 _WRITE_KINDS = frozenset({"receipt", "ledger_hit"})
 
@@ -189,6 +192,11 @@ class GoalRunner:
             return None
         return read_state(skill.frontmatter, {entity_id.split(".", 1)[-1]: record})
 
+    def _unplanned(self, ctx: TurnContext, hydrated: Hydrated, issues: list[str]) -> None:
+        """Record that the procedure has no plan this turn, and why."""
+        ctx.emit("plan", {"runbook_id": hydrated.runbook.id, "valid": False, "issues": issues})
+        ctx.record(build.invalid_plan_outcome(hydrated.runbook.id, issues))
+
     def _plan(self, ctx: TurnContext, hydrated: Hydrated, collected: dict) -> Plan | None:
         planner = self._planner
         if planner is None:
@@ -207,11 +215,14 @@ class GoalRunner:
                 ),
             )
         except InvalidPlanError as error:
-            ctx.emit(
-                "plan",
-                {"runbook_id": hydrated.runbook.id, "valid": False, "issues": error.issues},
-            )
-            ctx.record(build.invalid_plan_outcome(hydrated.runbook.id, error.issues))
+            self._unplanned(ctx, hydrated, error.issues)
+            return None
+        except BudgetExceeded:
+            raise
+        except ModelProviderError:
+            # A model that fails to answer leaves the turn without a plan, the
+            # same as one whose plan did not hold up; it does not fail the turn.
+            self._unplanned(ctx, hydrated, [NO_PLAN])
             return None
         spoken = (plan.language or "").strip().lower()
         if _LANGUAGE.fullmatch(spoken):

@@ -201,6 +201,11 @@ docker compose up -d --build
 curl -s http://127.0.0.1:8000/health
 ```
 
+The compose stack answers from the recorded session by default, so the
+approval stop, the verified receipt and the ledger hit show over HTTP with no
+model key; `/health` reports `"provider": "replay"`. To use a real model, set
+`OSKA_PROVIDER` and the model variables, and set `OSKA_DEMO_REPLAY=` empty.
+
 ## How a turn works
 
 ```mermaid

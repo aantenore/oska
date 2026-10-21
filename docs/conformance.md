@@ -538,6 +538,19 @@ changed never inherits the progress made against the old one. When the replay
 runs out, the error names the cassette and says that the session may have been
 replayed already; `--replay-from-start`, or a new state directory, starts over.
 
+Served over HTTP, a replay cannot be positional: several sessions share the
+process and their calls interleave. `oska serve --replay cassettes/restart.json`
+therefore answers each completion with the recorded step that asked the same
+thing, the same purpose and the same last user message after the volatile cut;
+among several, the one whose conversation agrees longest with the request, then
+the first this session has not used. Each session is named by the path it calls,
+and the record of used steps is held under a lock. A receipt id the recorded
+answer quotes becomes this run's. A request no step asked is a provider error,
+which the runtime answers around as it would a model that failed, and
+`/health` reports `"provider": "replay"`. It is refused beside a configured
+provider. The compose stack serves `restart-in-italian.json` this way; see
+[running-in-containers.md](running-in-containers.md#a-session-with-the-api).
+
 The volatile cut is also applied when a cassette is *loaded*, using the request
 each step carries alongside its stored `expect_contains` — so a cassette
 recorded before this cut existed, whose stored expectation was truncated mid

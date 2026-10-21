@@ -5,6 +5,10 @@ repository holds: it runs as a user that is not root, its base images are named
 by a tag that does not move to whatever is newest, it can say whether it is
 healthy, and neither the image nor the build context carries the real `.env`.
 The compose file publishes the API on the loopback address only.
+
+The demo answers from a recorded session the image carries, and only when
+`OSKA_DEMO_REPLAY` names one: compose sets it by default, the image alone does
+not, and nothing in either names a model.
 """
 
 from __future__ import annotations
@@ -20,6 +24,7 @@ DOCKERFILE = REPO_ROOT / "Dockerfile"
 DOCKERIGNORE = REPO_ROOT / ".dockerignore"
 COMPOSE = REPO_ROOT / "compose.yaml"
 COMPOSE_RUNTIME = REPO_ROOT / "deploy" / "compose" / "runtime.json"
+PACKAGED_RUNTIME = REPO_ROOT / "src" / "oska" / "defaults" / "configs" / "runtime.json"
 LOOPBACK = "127.0.0.1"
 
 
@@ -125,3 +130,35 @@ def test_compose_keeps_the_database_address_out_of_the_runtime_file() -> None:
     assert "://" not in COMPOSE_RUNTIME.read_text(encoding="utf-8")
     assert environment["OSKA_DATABASE_URL"].startswith("postgresql://")
     assert environment["OSKA_RUNTIME_CONFIG"] == "/srv/oska/runtime.json"
+
+
+def test_the_image_replays_the_recorded_session_only_when_asked() -> None:
+    command = json.loads(_arguments("CMD")[-1])
+    assert command[:2] == ["sh", "-c"]
+    script = command[2]
+    assert script.startswith("exec oska serve --host 0.0.0.0 --port 8000")
+    assert '${OSKA_DEMO_REPLAY:+--replay "$OSKA_DEMO_REPLAY"}' in script
+    assert not any("OSKA_DEMO_REPLAY" in arguments for arguments in _arguments("ENV"))
+    copied = [arguments.split()[-2] for arguments in _arguments("COPY")]
+    assert "examples/ops" in copied, "the recorded session ships with the example catalog"
+
+
+def test_compose_serves_the_recorded_session_by_default() -> None:
+    document = yaml.safe_load(COMPOSE.read_text(encoding="utf-8"))
+    environment = document["services"]["oska"]["environment"]
+    default = re.fullmatch(r"\$\{OSKA_DEMO_REPLAY-(.+)\}", environment["OSKA_DEMO_REPLAY"])
+    assert default, "an empty OSKA_DEMO_REPLAY must be able to turn the demo off"
+    cassette = default.group(1)
+    assert cassette.startswith("examples/ops/")
+    assert (REPO_ROOT / cassette).is_file()
+    assert environment["OSKA_PROVIDER"] == "${OSKA_PROVIDER:-none}"
+
+
+def test_the_compose_runtime_files_keep_the_default_routing() -> None:
+    """A runtime file replaces the defaults whole, so one that leaves the router out
+    leaves out the words that approve a write, and "yes" no longer approves."""
+    packaged = json.loads(PACKAGED_RUNTIME.read_text(encoding="utf-8"))
+    for path in sorted(COMPOSE_RUNTIME.parent.glob("runtime*.json")):
+        runtime = json.loads(path.read_text(encoding="utf-8"))
+        for section in ("discovery", "router"):
+            assert runtime.get(section) == packaged[section], f"{path.name}: {section} drifted"

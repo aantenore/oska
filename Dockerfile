@@ -21,7 +21,8 @@ COPY --from=builder /wheels /wheels
 RUN pip install "$(ls /wheels/oska-*.whl)[api,postgres]" && rm -rf /wheels
 
 WORKDIR /srv/oska
-# The example operations catalog and its connector bindings. They are read at
+# The example operations catalog, its connector bindings and its recorded
+# session (examples/ops/cassettes/restart-in-italian.json). They are read at
 # start-up, relative to the working directory.
 COPY --chown=oska:oska examples/ops ./examples/ops
 
@@ -41,4 +42,8 @@ HEALTHCHECK --interval=15s --timeout=5s --start-period=20s --retries=3 \
 
 # Listens on every interface of the container, so `serve` warns that identity is
 # not required. That is the demo image: see docs/running-in-containers.md.
-CMD ["oska", "serve", "--host", "0.0.0.0", "--port", "8000"]
+# With OSKA_DEMO_REPLAY naming a recorded session, `serve --replay` answers from
+# it, says so on stderr and reports "provider": "replay" on /health; nothing
+# reaches a model. Unset, the image serves the model the OSKA_PROVIDER and
+# OSKA_MODEL_* variables describe, or none.
+CMD ["sh", "-c", "exec oska serve --host 0.0.0.0 --port 8000 ${OSKA_DEMO_REPLAY:+--replay \"$OSKA_DEMO_REPLAY\"}"]

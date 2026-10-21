@@ -1,4 +1,90 @@
 {
+  "discovery": {
+    "min_score": 0.2,
+    "tie_margin": 0.05,
+    "limit": 5,
+    "exclude_types": [
+      "composite"
+    ],
+    "languages": [
+      "en",
+      "it"
+    ]
+  },
+  "router": {
+    "rules": {
+      "approve_tokens": [
+        "yes",
+        "y",
+        "approve",
+        "approved",
+        "confirm",
+        "confirmed",
+        "ok",
+        "okay",
+        "go ahead",
+        "si",
+        "s\u00ec",
+        "conferma",
+        "confermo",
+        "approva",
+        "procedi",
+        "va bene",
+        "s\u00ed",
+        "oui",
+        "ja"
+      ],
+      "reject_tokens": [
+        "no",
+        "reject",
+        "rejected",
+        "cancel",
+        "stop",
+        "abort",
+        "do not",
+        "don't",
+        "annulla",
+        "rifiuta",
+        "ferma",
+        "interrompi",
+        "no grazie",
+        "non",
+        "nein"
+      ],
+      "cancel_tokens": [
+        "cancel",
+        "stop",
+        "abort",
+        "never mind",
+        "nevermind",
+        "forget it",
+        "drop it",
+        "annulla",
+        "lascia stare",
+        "lascia perdere",
+        "non importa",
+        "fermati"
+      ]
+    },
+    "fast_path": {
+      "enabled": true,
+      "threshold": 0.75,
+      "routes": {
+        "greeting": [
+          "hello",
+          "hi",
+          "hey",
+          "good morning",
+          "good afternoon",
+          "good evening",
+          "ciao",
+          "salve",
+          "buongiorno",
+          "buonasera"
+        ]
+      }
+    }
+  },
   "api": {
     "host": "0.0.0.0",
     "port": 8000

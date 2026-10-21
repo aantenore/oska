@@ -20,6 +20,13 @@ or read back: a match is where the expectation is cut, and an expectation left
 with nothing stable is dropped rather than kept as an empty string. `volatile`
 lets a caller replace those patterns; it never adds to them, so a deployment
 whose own identifiers do not look like a uuid names its own instead.
+
+`KeyedReplayProvider` is the served form of a replay. Over HTTP many sessions
+share one provider and their calls interleave, so an answer cannot be the next
+one in the file: it is the recorded answer to this request. A request is found
+by what it asks, the purpose of the call and the last user message cut before
+any volatile value, and among the steps that ask the same, by the conversation
+that led to it and then by which of them this session has not used yet.
 """
 
 from __future__ import annotations
@@ -27,7 +34,10 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from collections.abc import Sequence
+import threading
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
+from contextvars import ContextVar
 from pathlib import Path
 
 from oska.contracts.common import Message
@@ -44,11 +54,15 @@ __all__ = [
     "EXHAUSTED_HINT",
     "EXPECT_LENGTH",
     "PURPOSE_WORDS",
+    "UNKNOWN_REQUEST",
+    "KeyedReplayProvider",
     "RecordingProvider",
+    "ReplayExhaustedError",
     "ReplayProvider",
     "cassette_digest",
     "cassette_to_script",
     "read_cassette",
+    "replay_session",
 ]
 
 EXPECT_LENGTH = 60
@@ -57,6 +71,13 @@ EXHAUSTED_HINT = (
     "or a new state directory, starts over"
 )
 PURPOSE_WORDS = 8
+UNKNOWN_REQUEST = (
+    "this demo knows only the conversation recorded in it, and the request is not part of it"
+)
+SESSION_LIMIT = 1024
+"""How many sessions a served replay remembers the used steps of; the oldest go first."""
+
+_SESSION: ContextVar[str | None] = ContextVar("oska_replay_session", default=None)
 
 DEFAULT_VOLATILE: tuple[str, ...] = (
     r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}",
@@ -131,6 +152,16 @@ class RecordingProvider:
             handle.flush()
 
 
+class ReplayExhaustedError(ScriptMismatchError):
+    """A positional replay was asked for one completion more than the cassette holds.
+
+    A `ScriptMismatchError` and not a `ModelProviderError`: the runtime answers
+    around a model that fails, and answering around a cassette that ran out
+    would hide that the session has drifted from the recording, or was replayed
+    already. It stops the turn, and the message says how to start over.
+    """
+
+
 class ReplayProvider:
     """Answers from a cassette, in the order the cassette was written.
 
@@ -190,14 +221,216 @@ class ReplayProvider:
         except ScriptMismatchError as exc:
             raise ScriptMismatchError(f"cassette {self._path}: {exc}") from exc
         except ModelProviderError as exc:
-            hint = f" ({EXHAUSTED_HINT})" if exhausted else ""
-            raise ModelProviderError(f"cassette {self._path}: {exc}{hint}") from exc
+            if exhausted:
+                raise ReplayExhaustedError(
+                    f"cassette {self._path}: {exc} ({EXHAUSTED_HINT})"
+                ) from exc
+            raise ModelProviderError(f"cassette {self._path}: {exc}") from exc
 
     def embed(self, texts: list[str]) -> list[list[float]]:
         """Return the recorded vector of each text, or a deterministic one."""
         return [
             self._vectors.get(text) or hash_bag_vector(text, self._dimensions) for text in texts
         ]
+
+
+@contextmanager
+def replay_session(session_id: str | None) -> Iterator[None]:
+    """Name the session the calls made inside this block belong to, for a served replay."""
+    token = _SESSION.set(session_id)
+    try:
+        yield
+    finally:
+        _SESSION.reset(token)
+
+
+class KeyedReplayProvider:
+    """Answers from a cassette by the request, not by position, for many sessions at once.
+
+    A completion is answered by the recorded step that asked the same thing: the
+    same purpose and the same last user message, each cut before any volatile
+    value. When several steps ask the same, the one whose conversation agrees
+    longest with this request's wins; then the first one the calling session
+    has not used yet; then the first in the file. A request no step asked raises
+    `ModelProviderError`, which the runtime answers around as it would answer
+    around a model that failed.
+
+    A recorded answer may repeat an identifier its request carried, a receipt id
+    above all, and that identifier was drawn for the recorded run. When the
+    recorded request and this one carry the same number of distinct volatile
+    values, each recorded value in the answer is replaced by the value at the
+    same place in this request, so the answer names this run's receipt.
+
+    The session is the one `replay_session` names, so the HTTP application sets
+    it per request; calls outside any session share one record of used steps.
+    The record is held under a lock, so overlapping turns on several threads
+    each take their own answer. Embeddings are looked up by text, as in
+    `ReplayProvider`.
+    """
+
+    name = "replay"
+
+    def __init__(self, path: Path, *, volatile: Sequence[str] | None = None) -> None:
+        self._path = Path(path)
+        self._patterns = _compile_volatile(volatile)
+        steps = read_cassette(self._path)
+        self._steps = [
+            _KeyedStep(index, step, self._patterns)
+            for index, step in enumerate(_completion_steps(steps))
+        ]
+        self._vectors = _recorded_vectors(steps)
+        self._dimensions = _dimensions(self._vectors)
+        self.embeds = any("embed" in step for step in steps)
+        self._lock = threading.Lock()
+        self._used: dict[str | None, set[int]] = {}
+
+    @property
+    def path(self) -> Path:
+        """Which cassette is being replayed."""
+        return self._path
+
+    def complete_json(
+        self,
+        system: str,
+        messages: list[Message],
+        schema: dict,
+        *,
+        temperature: float = 0.0,
+    ) -> dict:
+        """Return the recorded answer to this request."""
+        purpose = _purpose(system, schema)
+        asked = _last_user(messages, self._patterns)
+        history = _history([(m.role, m.content) for m in messages], self._patterns)
+        candidates = [step for step in self._steps if step.answers(purpose, asked)]
+        live = [message.content for message in messages]
+        if not candidates:
+            raise ModelProviderError(f"cassette {self._path}: {UNKNOWN_REQUEST}")
+        session = _SESSION.get()
+        with self._lock:
+            used = self._used.pop(session, set())
+            self._used[session] = used
+            while len(self._used) > SESSION_LIMIT:
+                del self._used[next(iter(self._used))]
+            chosen = max(
+                candidates,
+                key=lambda step: (*step.agreement(history), step.index not in used, -step.index),
+            )
+            used.add(chosen.index)
+        if not isinstance(chosen.response, dict):
+            raise ModelProviderError(
+                f"cassette {self._path}: completion {chosen.index + 1} holds no answer object"
+            )
+        return _renamed(chosen.response, chosen.carried, live, self._patterns)
+
+    def embed(self, texts: list[str]) -> list[list[float]]:
+        """Return the recorded vector of each text, or a deterministic one."""
+        return [
+            self._vectors.get(text) or hash_bag_vector(text, self._dimensions) for text in texts
+        ]
+
+
+class _KeyedStep:
+    """One recorded completion, with what it asked worked out once."""
+
+    __slots__ = ("asked", "carried", "expected", "history", "index", "purpose", "response")
+
+    def __init__(self, index: int, step: dict, patterns: Sequence[re.Pattern[str]]) -> None:
+        self.index = index
+        self.response = step.get("response", {})
+        request = step.get("request")
+        raw = request.get("messages") if isinstance(request, dict) else None
+        self.carried: list[str] = []
+        if isinstance(request, dict) and isinstance(raw, list):
+            self.carried = [
+                str(message.get("content", "")) for message in raw if isinstance(message, dict)
+            ]
+            self.purpose = _purpose(str(request.get("system", "")), request.get("schema") or {})
+            pairs = [
+                (str(message.get("role", "")), str(message.get("content", "")))
+                for message in raw
+                if isinstance(message, dict)
+            ]
+            self.history: tuple[tuple[str, str], ...] | None = _history(pairs, patterns)
+            self.asked: str | None = next(
+                (content for role, content in reversed(self.history) if role == "user"), ""
+            )
+            self.expected = ""
+        else:
+            self.purpose = str(step.get("purpose", ""))
+            self.history = None
+            self.asked = None
+            self.expected = _cut_stored_expectation(step.get("expect_contains"), patterns)
+
+    def answers(self, purpose: str, asked: str) -> bool:
+        """Whether this step asked what the live request asks."""
+        if purpose != self.purpose:
+            return False
+        if self.asked is not None:
+            return asked == self.asked
+        return self.expected in asked
+
+    def agreement(self, history: tuple[tuple[str, str], ...]) -> tuple[int, int]:
+        """How far the recorded conversation agrees with this one, and how close its length is."""
+        if self.history is None:
+            return (0, 0)
+        shared = 0
+        for recorded, live in zip(self.history, history, strict=False):
+            if recorded != live:
+                break
+            shared += 1
+        return (shared, -abs(len(self.history) - len(history)))
+
+
+def _renamed(
+    response: dict,
+    recorded: Sequence[str],
+    live: Sequence[str],
+    patterns: Sequence[re.Pattern[str]],
+) -> dict:
+    """A copy of `response`, its recorded volatile values replaced by this request's.
+
+    The values are paired by the order they first appear in each request. When
+    the two requests do not carry the same number of them, the pairing would be
+    a guess, and the answer is returned as it was recorded.
+    """
+    text = json.dumps(response, ensure_ascii=False)
+    before = _volatile_values(recorded, patterns)
+    after = _volatile_values(live, patterns)
+    if before and len(before) == len(after):
+        renames = dict(zip(before, after, strict=True))
+        for pattern in patterns:
+            text = pattern.sub(lambda match: renames.get(match.group(0), match.group(0)), text)
+    renamed: dict = json.loads(text)
+    return renamed
+
+
+def _volatile_values(texts: Sequence[str], patterns: Sequence[re.Pattern[str]]) -> list[str]:
+    """Every distinct volatile value in `texts`, in the order each first appears."""
+    found: dict[str, None] = {}
+    for text in texts:
+        matches = sorted(
+            (match.start(), match.group(0))
+            for pattern in patterns
+            for match in pattern.finditer(text)
+        )
+        for _, value in matches:
+            found.setdefault(value, None)
+    return list(found)
+
+
+def _history(
+    pairs: Sequence[tuple[str, str]], patterns: Sequence[re.Pattern[str]]
+) -> tuple[tuple[str, str], ...]:
+    """A conversation as (role, content) pairs, each content cut before any volatile value."""
+    return tuple((role, _cut_volatile(content.strip(), patterns)) for role, content in pairs)
+
+
+def _last_user(messages: list[Message], patterns: Sequence[re.Pattern[str]]) -> str:
+    """The last user message, cut before any volatile value; empty when there is none."""
+    for message in reversed(messages):
+        if message.role == "user":
+            return _cut_volatile(message.content.strip(), patterns)
+    return ""
 
 
 def cassette_digest(path: Path) -> str:

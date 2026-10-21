@@ -1,5 +1,6 @@
 # The example operations catalog served over HTTP, with its record kept in
-# PostgreSQL. For trying it on one machine: every credential below is a local
+# PostgreSQL, answering from a recorded session by default (OSKA_DEMO_REPLAY
+# below). For trying it on one machine: every credential below is a local
 # default, published ports are bound to 127.0.0.1, and identity is not required.
 # See docs/running-in-containers.md before changing any of that.
 name: oska
@@ -37,6 +38,11 @@ services:
       # The address carries the credential, so it is read from the environment
       # and never written into runtime.json.
       OSKA_DATABASE_URL: postgresql://oska:${POSTGRES_PASSWORD:-oska-local}@postgres:5432/oska
+      # The demo: answer from the recorded session in the image instead of a
+      # model, so the approval, the verified receipt and the ledger hit show
+      # with no key. /health reports "provider": "replay". Set OSKA_DEMO_REPLAY
+      # to empty to turn it off, as a real provider below requires.
+      OSKA_DEMO_REPLAY: ${OSKA_DEMO_REPLAY-examples/ops/cassettes/restart-in-italian.json}
       # Model access. Empty means no model: the runtime then routes by rule and
       # declines to plan. Set these in the shell or in .env, never in the image.
       OSKA_PROVIDER: ${OSKA_PROVIDER:-none}

@@ -301,16 +301,16 @@ class Engine:
             span.set(kind=decision.kind.value, source=decision.source)
         if decision.language:
             state.language = decision.language
-        ctx.emit(
-            "route",
-            {
-                "kind": decision.kind.value,
-                "runbook_id": decision.runbook_id,
-                "confidence": decision.confidence,
-                "source": decision.source,
-                "language": decision.language,
-            },
-        )
+        routed = {
+            "kind": decision.kind.value,
+            "runbook_id": decision.runbook_id,
+            "confidence": decision.confidence,
+            "source": decision.source,
+            "language": decision.language,
+        }
+        if decision.reason:
+            routed["reason"] = decision.reason
+        ctx.emit("route", routed)
         return decision
 
     def _dispatch(

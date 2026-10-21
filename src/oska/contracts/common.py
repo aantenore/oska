@@ -79,6 +79,7 @@ class RouteDecision(BaseModel):
     confidence: float = 0.0
     source: Literal["fast_path", "model", "rule"]
     language: str | None = None
+    reason: str = ""
 
 
 class PolicyDecision(BaseModel):

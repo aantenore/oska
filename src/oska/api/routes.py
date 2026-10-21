@@ -239,11 +239,16 @@ class DomainInfo(BaseModel):
 
 
 class Health(BaseModel):
-    """Whether the runtime is up, and which catalog it is holding."""
+    """Whether the runtime is up, which catalog it is holding, and what answers for the model.
+
+    `provider` is the kind of model provider in force: `replay` when a recorded
+    session answers and nothing reaches a model, `none` when there is no model.
+    """
 
     status: str
     skills: int
     fingerprint: str
+    provider: str = "none"
 
 
 @router.post("/sessions/{session_id}/turns", response_model=TurnResult)
@@ -487,8 +492,12 @@ def get_change(request_id: str, request: Request) -> ChangeRequest:
 def get_health(request: Request) -> Health:
     """Whether the runtime is up, and which catalog it is holding."""
     registry = _services(request).engine.registry
+    provider = getattr(request.app.state, "provider", None)
     return Health(
-        status="ok", skills=len(registry.current()), fingerprint=registry.fingerprint()
+        status="ok",
+        skills=len(registry.current()),
+        fingerprint=registry.fingerprint(),
+        provider=str(getattr(provider, "name", "none")) if provider is not None else "none",
     )
 
 

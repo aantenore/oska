@@ -48,6 +48,12 @@ All notable changes to this project are recorded here. The format follows
   `build_engine`, `TurnResult`, `Principal`, `ScriptedModelProvider` and `ReplayProvider`,
   resolved on first use so the import stays light; `docs/embedding.md` walks a
   three-turn session in code and is run by a test.
+- `oska serve --replay <cassette>` answers from a recorded session, keyed by the
+  request so concurrent sessions each get their own answers, with no model and
+  no key; `/health` reports the provider in force (`replay`, a provider kind, or
+  `none`). The compose stack replays `restart-in-italian.json` by default
+  (`OSKA_DEMO_REPLAY`), so the approval, the verified receipt and the ledger hit
+  show without a key.
 
 ### Changed
 
@@ -58,6 +64,13 @@ All notable changes to this project are recorded here. The format follows
   generated it. The `OSKA_INSTALL` repository variable overrides the install
   source with a wheel, an index requirement or a git URL.
 - A scaffolded pack puts the right article before its entity ("an item").
+- A model that fails to classify a turn or to write its plan no longer fails the
+  turn: routing falls back to what it does without a model, and the procedure
+  ends with an `invalid_plan` outcome.
+- The compose runtime files keep the default discovery and routing, so "yes"
+  and "sì" approve a write there without a model.
+- A positional replay that runs out stops the turn with `ReplayExhaustedError`
+  instead of being answered around, wherever in the turn it runs out.
 
 ## [0.1.0]
 

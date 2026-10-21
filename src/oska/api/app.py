@@ -45,12 +45,17 @@ routes choose among them per request. The default domain is built at start, so
 a catalog that does not hold up stops the process before it listens. When the
 application shuts down it closes the platform, and every runtime it holds, and
 then the model provider it was handed, which releases its connections.
+
+Handed a served replay, the application names the session in the path of each
+call before its handler runs, so the replay keeps what each session has used
+apart and two sessions replaying at once never take each other's answers.
 """
 
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from typing import Any
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
@@ -62,6 +67,7 @@ from oska.api.routes import ApiError, router
 from oska.config import Settings, load_runtime_config
 from oska.engine.engine import Engine
 from oska.planner.provider import ModelProvider
+from oska.planner.recording import KeyedReplayProvider, replay_session
 from oska.platform import Platform
 from oska.services import PROPOSALS_DIRNAME, Services, build_services
 from oska.storage import ProposalRecordStore
@@ -105,7 +111,30 @@ def create_app(
     app.include_router(router)
     app.include_router(metrics_router)
     _register_errors(app)
+    if isinstance(provider, KeyedReplayProvider):
+        app.add_middleware(_ReplaySessions)
     return app
+
+
+class _ReplaySessions:
+    """Names the session in the path of each call for a served replay, for as long as it runs."""
+
+    def __init__(self, app: Any) -> None:
+        self._app = app
+
+    async def __call__(self, scope: Any, receive: Any, send: Any) -> None:
+        session = _session_in_path(str(scope.get("path", ""))) if scope["type"] == "http" else None
+        with replay_session(session):
+            await self._app(scope, receive, send)
+
+
+def _session_in_path(path: str) -> str | None:
+    """The path up to the session it names, domain included, or None when it names none."""
+    parts = [part for part in path.split("/") if part]
+    for position, part in enumerate(parts[:-1]):
+        if part in {"sessions", "from-session"}:
+            return "/".join(parts[: position + 2])
+    return None
 
 
 @asynccontextmanager

@@ -173,7 +173,7 @@ The HTTP application:
 | `POST /proposals/{proposal_id}/transition` | Move one proposal to another state |
 | `GET /changes` | Every change request held |
 | `GET /changes/{request_id}` | One change request |
-| `GET /health` | Whether the runtime is up, and which catalog it holds |
+| `GET /health` | Whether the runtime is up, which catalog it holds, and which model provider answers (`replay`, a provider kind, or `none`) |
 
 Only `oska run` and `POST /sessions/{session_id}/turns` carry turns; the
 rest read the catalog or drive the evolution layer.
