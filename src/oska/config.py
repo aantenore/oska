@@ -186,10 +186,15 @@ class ReplyConfig(BaseModel):
 
 
 class ApiConfig(BaseModel):
-    """Where the HTTP application listens when it is served."""
+    """Where the HTTP application listens when it is served, and whether it serves its page.
+
+    `ui` serves the page at `GET /` that holds a conversation through the API.
+    The page carries no data and needs no identity; every call it makes does.
+    """
 
     host: str = "127.0.0.1"
     port: int = 8000
+    ui: bool = True
 
 
 class LearningConfig(BaseModel):

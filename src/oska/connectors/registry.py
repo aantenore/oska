@@ -1,9 +1,11 @@
 """Binding of an integration id to the connector that runs its operations.
 
 The map lives in a JSON file: `{"integrations": {"<id>": {"type": ..., ...}}}`.
-Relative fixture paths resolve against that file. `${NAME}` in an address or a
-header is replaced by the environment variable of that name; a variable that is
-not set becomes an empty string and is reported in `warnings`.
+Relative fixture paths, and the working directory of a tool server, resolve
+against that file. `${NAME}` in an address, a header, or the argument vector and
+environment of a tool server is replaced by the environment variable of that
+name; a variable that is not set becomes an empty string and is reported in
+`warnings`.
 
 A caller serving bindings someone else wrote narrows both. `readable` says
 which variables may be read at all, and a reference to any other is refused
@@ -29,6 +31,7 @@ from pathlib import Path
 from oska.config import ResilienceConfig
 from oska.connectors.base import Connector, ConnectorError
 from oska.connectors.http import HttpConnector
+from oska.connectors.mcp import TRANSPORTS, McpConnector
 from oska.connectors.mock import MockConnector
 from oska.connectors.shell import ShellConnector
 
@@ -41,7 +44,9 @@ __all__ = [
 ]
 
 _VARIABLE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
-_KINDS = ("mock", "http", "shell")
+_KINDS = ("mock", "http", "shell", "mcp")
+SERVER_ENVIRONMENT = ("PATH", "SYSTEMROOT")
+"""What a tool server started over stdio inherits of this process's environment."""
 
 Readable = Callable[[str], bool]
 """Whether a binding may read the environment variable of that name."""
@@ -176,7 +181,44 @@ class ConnectorRegistry:
                 operations=operations,
                 resilience=resilience,
             )
+        if kind == "mcp":
+            return self._tool_server(integration_id, spec, base_dir, env, resilience)
         raise ConnectorError(f"{integration_id}: unknown connector type {kind!r}")
+
+    def _tool_server(
+        self,
+        integration_id: str,
+        spec: dict,
+        base_dir: Path,
+        env: Mapping[str, str],
+        resilience: ResilienceConfig,
+    ) -> McpConnector:
+        operations = spec.get("operations") or {}
+        if spec.get("transport") == "http":
+            return McpConnector(
+                integration_id,
+                operations,
+                url=self._expand(spec.get("url", ""), env, integration_id),
+                headers={
+                    name: self._expand(value, env, integration_id)
+                    for name, value in (spec.get("headers") or {}).items()
+                },
+                resilience=resilience,
+            )
+        inherited = {name: env[name] for name in SERVER_ENVIRONMENT if name in env}
+        declared = {
+            name: self._expand(value, env, integration_id)
+            for name, value in (spec.get("env") or {}).items()
+        }
+        cwd = spec.get("cwd")
+        return McpConnector(
+            integration_id,
+            operations,
+            argv=[self._expand(part, env, integration_id) for part in spec.get("argv") or []],
+            environment={**inherited, **declared},
+            cwd=_resolve(base_dir, cwd) if cwd else None,
+            resilience=resilience,
+        )
 
     def _expand(self, value: str, env: Mapping[str, str], integration_id: str) -> str:
         def replace(match: re.Match[str]) -> str:
@@ -218,9 +260,11 @@ def check_bindings(
 ) -> None:
     """Refuse a binding document that reads what it may not, without building anything.
 
-    Every integration names a known kind of connector; with `readable`, every
-    `${NAME}` in an address or a header is one it admits; with `confine_to`,
-    every mock fixture resolves inside that directory.
+    Every integration names a known kind of connector, and a tool-server
+    binding has the shape its kind needs; with `readable`, every `${NAME}` in an
+    address, a header, or a tool server's argument vector and environment is one
+    it admits; with `confine_to`, every mock fixture resolves inside that
+    directory.
     """
     integrations = config.get("integrations") or {}
     if not isinstance(integrations, dict):
@@ -239,13 +283,62 @@ def check_bindings(
                     f"{integration_id}: the fixture {fixture} is outside the pack ({root}); "
                     "a mock binding reads only its own pack's files"
                 )
-        if kind == "http" and readable is not None:
-            for name in environment_references([spec.get("base_url"), spec.get("headers")]):
+        if kind == "mcp":
+            _check_tool_server(integration_id, spec)
+        if readable is not None:
+            for name in environment_references(_environment_read(kind, spec)):
                 if not readable(name):
                     raise ConnectorError(
                         f"{integration_id}: reads {name} from the environment, which is not "
                         "declared for it; name it in the manifest's environment"
                     )
+
+
+def _environment_read(kind: object, spec: dict) -> list[object]:
+    """The values of a binding that `${NAME}` is expanded in."""
+    if kind == "http":
+        return [spec.get("base_url"), spec.get("headers")]
+    if kind == "mcp":
+        return [spec.get(key) for key in ("argv", "env", "url", "headers")]
+    return []
+
+
+def _check_tool_server(integration_id: str, spec: dict) -> None:
+    """Refuse a tool-server binding that does not say how to reach it or what to call."""
+    transport = spec.get("transport")
+    if transport not in TRANSPORTS:
+        raise ConnectorError(
+            f"{integration_id}: transport is {transport!r}; a tool server is reached over "
+            f"{' or '.join(TRANSPORTS)}"
+        )
+    if transport == "stdio":
+        argv = spec.get("argv")
+        if not isinstance(argv, list) or not argv or not all(isinstance(a, str) for a in argv):
+            raise ConnectorError(f"{integration_id}: argv is not a list of strings")
+        if not _strings(spec.get("env", {})):
+            raise ConnectorError(f"{integration_id}: env is not an object of strings")
+    else:
+        if not isinstance(spec.get("url"), str) or not spec.get("url"):
+            raise ConnectorError(f"{integration_id}: the http transport declares no url")
+        if not _strings(spec.get("headers", {})):
+            raise ConnectorError(f"{integration_id}: headers is not an object of strings")
+    operations = spec.get("operations") or {}
+    if not isinstance(operations, dict):
+        raise ConnectorError(f"{integration_id}: operations is not an object")
+    for operation, mapping in operations.items():
+        if not isinstance(mapping, dict):
+            raise ConnectorError(f"{integration_id}: {operation} is not an object")
+        tool = mapping.get("tool")
+        if not isinstance(tool, str) or not tool:
+            raise ConnectorError(f"{integration_id}: {operation} declares no tool")
+        if not isinstance(mapping.get("arguments", {}), dict):
+            raise ConnectorError(
+                f"{integration_id}: the arguments of {operation} are not an object"
+            )
+
+
+def _strings(value: object) -> bool:
+    return isinstance(value, dict) and all(isinstance(item, str) for item in value.values())
 
 
 def _fixture(integration_id: str, spec: dict, base_dir: Path) -> Path:

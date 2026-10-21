@@ -94,6 +94,8 @@ from oska.learning import (
     draft_from_session,
     transition,
 )
+from oska.planner.provider import ModelProviderError
+from oska.planner.recording import KeyedReplayProvider, ReplayProvider, read_cassette
 from oska.platform import DomainMismatch, Platform, UnknownDomain, UnknownTenant
 from oska.services import Services
 from oska.storage import ChangeRequestRecordStore
@@ -102,6 +104,7 @@ __all__ = [
     "ATTRIBUTES_HEADER",
     "SUBJECT_HEADER",
     "ApiError",
+    "ApprovalWords",
     "CapabilityList",
     "DomainInfo",
     "ProcessInfo",
@@ -221,11 +224,25 @@ class ProcessInfo(BaseModel):
     description: str
 
 
+class ApprovalWords(BaseModel):
+    """What a person types to approve a held write, or to reject it, in one language."""
+
+    approve: str
+    reject: str
+
+
 class CapabilityList(BaseModel):
-    """What the runtime can do, derived from the catalog."""
+    """What the runtime can do, derived from the catalog.
+
+    `approval_words` holds, for the default reply language and each language
+    the deployment answers in, the words an approval request tells a person to
+    type, so a surface can offer them as buttons.
+    """
 
     declared_scope: str
     processes: list[ProcessInfo] = Field(default_factory=list)
+    default_language: str = ""
+    approval_words: dict[str, ApprovalWords] = Field(default_factory=dict)
 
 
 class DomainInfo(BaseModel):
@@ -293,7 +310,7 @@ def list_domains(request: Request) -> list[DomainInfo]:
 @router.get("/domains/{domain}/capabilities", response_model=CapabilityList)
 def get_domain_capabilities(domain: str, request: Request) -> CapabilityList:
     """The procedures on offer in one domain, in the words its catalog declares."""
-    return _capabilities(_services(request, domain))
+    return _capabilities(_services(request, domain), _runtime(request, domain))
 
 
 @router.get("/sessions/{session_id}/receipts", response_model=list[WriteReceipt])
@@ -337,12 +354,22 @@ def get_skill(skill_id: str, request: Request) -> SkillDetail:
 @router.get("/capabilities", response_model=CapabilityList)
 def get_capabilities(request: Request) -> CapabilityList:
     """The procedures on offer, in the words the catalog declares."""
-    return _capabilities(_services(request))
+    return _capabilities(_services(request), _runtime(request))
 
 
-def _capabilities(services: Services) -> CapabilityList:
+def _capabilities(services: Services, runtime: RuntimeConfig) -> CapabilityList:
     resolver = services.engine.resolver
+    phrases = services.engine.phrases
+    languages = dict.fromkeys((phrases.default_language, *runtime.discovery.languages))
     return CapabilityList(
+        default_language=phrases.default_language,
+        approval_words={
+            language: ApprovalWords(
+                approve=phrases.say(language, "approve_word"),
+                reject=phrases.say(language, "reject_word"),
+            )
+            for language in languages
+        },
         declared_scope=resolver.declared_scope(),
         processes=[
             ProcessInfo(
@@ -499,6 +526,37 @@ def get_health(request: Request) -> Health:
         fingerprint=registry.fingerprint(),
         provider=str(getattr(provider, "name", "none")) if provider is not None else "none",
     )
+
+
+@router.get("/demo/prompts", response_model=list[str])
+def list_demo_prompts(request: Request) -> list[str]:
+    """The requests a replayed recording holds a plan for, in the order it holds them.
+
+    Empty unless a recorded session answers for the model: anything else would
+    be a prompt nobody knows the runtime can answer.
+    """
+    provider = getattr(request.app.state, "provider", None)
+    if not isinstance(provider, KeyedReplayProvider | ReplayProvider):
+        return []
+    try:
+        steps = read_cassette(provider.path)
+    except ModelProviderError:
+        return []
+    prompts: dict[str, None] = {}
+    for step in steps:
+        response = step.get("response")
+        request_body = step.get("request")
+        if not isinstance(response, dict) or "operations" not in response:
+            continue
+        messages = request_body.get("messages") if isinstance(request_body, dict) else None
+        asked = [
+            str(message.get("content", ""))
+            for message in messages or []
+            if isinstance(message, dict) and message.get("role") == "user"
+        ]
+        if asked and asked[-1].strip():
+            prompts.setdefault(asked[-1].strip(), None)
+    return list(prompts)
 
 
 def _turn(request: Request, domain: str | None, session_id: str, text: str) -> TurnResult:

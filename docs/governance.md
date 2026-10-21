@@ -150,10 +150,13 @@ used to make a timeout look exactly like a refused connection.
 
 A result of unknown provenance — a connector that answers without classifying —
 is read as `terminal`, so nothing is ever repeated on this system's own
-initiative. Every adapter shipped with the runtime (`mock`, `http`, `shell`)
-classifies every path; only `http` and `shell` can produce `ambiguous`, since
-only they have a wire a response can go missing from — `mock` only ever
-reports `retryable` (an injected `unreachable`) or `terminal`.
+initiative. Every adapter shipped with the runtime (`mock`, `http`, `shell`,
+`mcp`) classifies every path; only `http`, `shell` and `mcp` can produce
+`ambiguous`, since only they have a wire a response can go missing from —
+`mock` only ever reports `retryable` (an injected `unreachable`) or `terminal`.
+An `mcp` call is `ambiguous` only once the tool call itself was sent: a server
+that could not be started, reached or initialized never received it, and is
+`retryable`.
 
 **In-call retries, reads only.** Before any of this reaches the write path, a
 **read** whose result is retryable, or whose HTTP status is in

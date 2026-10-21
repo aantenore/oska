@@ -18,6 +18,21 @@ All notable changes to this project are recorded here. The format follows
 
 ### Added
 
+- A page at `GET /` to try the runtime in a browser: the approval card with the
+  exact payload and its digest, and the receipts; `api.ui` turns it off.
+  `/capabilities` lists the approval words, and `GET /demo/prompts` names what a
+  replay can answer.
+- An `mcp` connector binds declared operations to tools on a Model Context
+  Protocol server, over stdio or streamable HTTP, with no new dependency. Each
+  operation names one tool and a template of its arguments filled one value at
+  a time; the server's tool list is never shown to the model. A tool error is
+  `terminal`, a failure before the tool call is sent `retryable`, and a call
+  with no answer `ambiguous`. A stdio server starts from a declared vector,
+  never through a shell, with only `PATH` and its declared `env`. `oska pack
+  check` refuses a stdio binding without `--allow-shell`, and reports an
+  operation bound to a tool the server does not list (`OSKA-INT-25` to
+  `OSKA-INT-29`).
+
 - A Dockerfile and a compose file run the example catalog with PostgreSQL on
   127.0.0.1, with token and proxy identity variants; CI builds the image and
   checks its health.

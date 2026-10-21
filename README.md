@@ -181,6 +181,13 @@ requests for a reviewer, `GET /domains`, `GET /metrics` and `GET /health`.
 The OpenAPI description is at `/openapi.json`, with an interactive page at
 `/docs`.
 
+It also serves a page at `http://127.0.0.1:8000/` that holds a conversation
+through the API: the approval card with the exact payload and its digest, and
+the receipts with their verification state. With `--replay` it says it is
+replaying a recorded session.
+
+![The page holding a restart for approval](docs/assets/web-page.png)
+
 It authenticates nobody by default: identity arrives in headers an
 authenticated proxy sets or, with `identity.mode: token`, in a signed session
 token the runtime verifies itself. It warns on stderr before it starts
@@ -306,14 +313,21 @@ full argument, including when not to use it.
   German, and a pack or a deployment can add its own; a catalog is reached in
   more languages than it was written in through paraphrases derived outside
   the turn.
+- **Connectors.** HTTP, commands, mocks for tests, and tools on an existing
+  Model Context Protocol server (stdio or HTTP). Whatever the binding, only
+  declared operations run, payloads are checked against their schemas, and a
+  write still stops for approval and is read back.
 - **Storage.** SQLite by default, PostgreSQL behind an extra, both held to one
-  contract suite that CI runs against a live server.
+  contract suite that CI runs against a live server; with PostgreSQL, replicas
+  share the ledger, the sessions, the audit trail and the review queue.
 - **Conformance.** Three levels (Declared, Governed, Adaptive), a scenario
   format, and `oska conform` to report the level a catalog reaches, per domain
   of a platform.
 - **Cassettes.** Record a session against a real model once; replay it
   offline in CI, in the recorded order, with each call checked against the
   request it answered when it was recorded.
+- **A page to try it**, served at `/`, and a Python API to embed it
+  ([docs/embedding.md](docs/embedding.md)).
 - **An HTTP API**, token or proxy identity, signed catalog revisions,
   `GET /metrics`, a guardrail catalog that says which promises are enforced by
   code and which are only instructions, and a learning loop that drafts

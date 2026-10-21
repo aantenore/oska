@@ -1,0 +1,470 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; connect-src 'self'; script-src 'sha256-grhWwasJkmsCRsC5YNzZYByAjIbM6yd8sBOnIlif0pE='; style-src 'sha256-Er5gsPBpCa8/gkhKPku52Obl2H11moiUyw6C1NJWLWA='; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<title>oska</title>
+<style>
+:root {
+  color-scheme: light dark;
+  --bg: #f6f6f3;
+  --surface: #ffffff;
+  --text: #1b1b19;
+  --muted: #5a5a54;
+  --border: #d9d9d2;
+  --accent: #1d5bb8;
+  --accent-text: #ffffff;
+  --user-bg: #e8eef8;
+  --code-bg: #f0f0eb;
+  --ok: #17653a;
+  --ok-bg: #e1f1e6;
+  --warn: #714a00;
+  --warn-bg: #f9edd2;
+  --bad: #962020;
+  --bad-bg: #f9e2e2;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #141413;
+    --surface: #1d1d1b;
+    --text: #ebebe6;
+    --muted: #a5a59d;
+    --border: #36362f;
+    --accent: #84b2ff;
+    --accent-text: #0c1a30;
+    --user-bg: #1f2a3c;
+    --code-bg: #262623;
+    --ok: #86d6a2;
+    --ok-bg: #15301f;
+    --warn: #f0c76e;
+    --warn-bg: #33280f;
+    --bad: #ff9f9f;
+    --bad-bg: #3a1818;
+  }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  min-height: 100vh;
+}
+code, pre, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; }
+button, input, textarea { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.visually-hidden {
+  position: absolute; width: 1px; height: 1px; overflow: hidden;
+  clip: rect(0 0 0 0); white-space: nowrap;
+}
+.bar {
+  display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; justify-content: space-between;
+  padding: 12px 16px; border-bottom: 1px solid var(--border); background: var(--surface);
+}
+.brand { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; }
+.name { font-weight: 650; font-size: 17px; }
+.provider { color: var(--muted); }
+.provider.replay { color: var(--warn); }
+.session { display: flex; align-items: center; gap: 8px; color: var(--muted); }
+.session code { color: var(--text); }
+button {
+  border: 1px solid var(--border); background: var(--surface); border-radius: 6px;
+  padding: 6px 12px; cursor: pointer;
+}
+button:hover { border-color: var(--muted); }
+button:disabled { opacity: .55; cursor: default; }
+button.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+.page { max-width: 1120px; margin: 0 auto; padding: 16px; }
+.notice {
+  border: 1px solid var(--warn); background: var(--warn-bg); border-radius: 8px;
+  padding: 12px 16px; margin-bottom: 16px;
+}
+.notice h2 { margin: 0 0 4px; font-size: 16px; }
+.notice p { margin: 4px 0; }
+.notice form { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 8px; }
+.notice input { flex: 1 1 220px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); }
+.layout { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 16px; align-items: start; }
+@media (max-width: 760px) { .layout { grid-template-columns: minmax(0, 1fr); } }
+.panel { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; }
+.conversation { display: flex; flex-direction: column; min-height: 60vh; }
+.log { list-style: none; margin: 0; padding: 16px; flex: 1; display: flex; flex-direction: column; gap: 12px; }
+.empty { color: var(--muted); margin: 0; }
+.msg { max-width: 100%; }
+.msg .who { font-size: 12px; color: var(--muted); margin-bottom: 2px; }
+.msg .text { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.msg.user { align-self: flex-end; max-width: 85%; }
+.msg.user .text { background: var(--user-bg); border-radius: 8px; padding: 8px 12px; }
+.msg.user .who { text-align: right; }
+.msg.error .text { color: var(--bad); }
+.outcomes { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.outcomes li { color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
+.card { border: 1px solid var(--border); border-radius: 8px; padding: 12px; margin-top: 10px; background: var(--bg); }
+.card h3 { margin: 0 0 8px; font-size: 15px; }
+.card dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 12px; margin: 0 0 8px; }
+.card dt { color: var(--muted); }
+.card dd { margin: 0; overflow-wrap: anywhere; }
+.card pre { background: var(--code-bg); border-radius: 6px; padding: 8px 10px; margin: 0 0 8px; overflow-x: auto; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 4px; }
+.hint { color: var(--muted); font-size: 13px; }
+.card.settled { opacity: .7; }
+.composer { border-top: 1px solid var(--border); padding: 12px 16px; }
+.examples { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
+.examples .row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.examples .group { color: var(--muted); font-size: 13px; margin-right: 2px; }
+.chip { border-radius: 999px; padding: 4px 10px; font-size: 13px; max-width: 100%; text-align: left; overflow-wrap: anywhere; }
+.composer form { display: flex; gap: 8px; align-items: flex-end; }
+.composer textarea {
+  flex: 1; resize: vertical; min-height: 42px; padding: 8px 10px;
+  border: 1px solid var(--border); border-radius: 6px; background: var(--surface);
+}
+.receipts { padding: 16px; }
+.receipts h2 { margin: 0 0 8px; font-size: 15px; }
+.receipts ol { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.receipt { border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; }
+.receipt .row { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+.receipt .muted, .muted { color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
+.badge { border-radius: 4px; padding: 0 6px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.badge.verified { color: var(--ok); background: var(--ok-bg); }
+.badge.unverified { color: var(--warn); background: var(--warn-bg); }
+.badge.failed { color: var(--bad); background: var(--bad-bg); }
+</style>
+</head>
+<body>
+<header class="bar">
+  <div class="brand">
+    <span class="name">oska</span>
+    <span id="provider" class="provider" aria-live="polite"></span>
+  </div>
+  <div class="session">
+    <span>Session</span>
+    <code id="session-id"></code>
+    <button id="new-session" type="button">New session</button>
+  </div>
+</header>
+<div class="page">
+  <section id="identity" class="notice" hidden aria-labelledby="identity-title">
+    <h2 id="identity-title">This runtime needs an identity</h2>
+    <p id="identity-detail"></p>
+    <p>With token identity, paste a session token issued for this session. It is kept in this page's memory only.</p>
+    <p>Behind an authenticating proxy, open this page through the proxy.</p>
+    <form id="token-form">
+      <label for="token">Session token</label>
+      <input id="token" type="password" autocomplete="off" spellcheck="false">
+      <button type="submit">Use token</button>
+    </form>
+  </section>
+  <main class="layout">
+    <section class="panel conversation" aria-label="Conversation">
+      <ol id="log" class="log" aria-live="polite">
+        <li id="empty" class="empty">Ask for something, or pick an example below.</li>
+      </ol>
+      <div class="composer">
+        <div id="examples" class="examples"></div>
+        <form id="composer">
+          <label for="message" class="visually-hidden">Message</label>
+          <textarea id="message" rows="2" placeholder="Ask for something"></textarea>
+          <button id="send" type="submit" class="primary">Send</button>
+        </form>
+      </div>
+    </section>
+    <aside class="panel receipts" aria-labelledby="receipts-title">
+      <h2 id="receipts-title">Receipts</h2>
+      <ol id="receipts"></ol>
+      <p id="no-receipts" class="muted">None in this session yet.</p>
+    </aside>
+  </main>
+</div>
+<script>
+"use strict";
+(function () {
+  const state = { session: "", token: "", words: {}, language: "en", busy: false };
+  const $ = (id) => document.getElementById(id);
+
+  function el(tag, className, text) {
+    const node = document.createElement(tag);
+    if (className) node.className = className;
+    if (text !== undefined && text !== null) node.textContent = String(text);
+    return node;
+  }
+
+  function newSessionId() {
+    const bytes = new Uint8Array(8);
+    crypto.getRandomValues(bytes);
+    return "web-" + Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+  }
+
+  async function api(method, path, body) {
+    const headers = { accept: "application/json" };
+    if (body !== undefined) headers["content-type"] = "application/json";
+    if (state.token) headers.authorization = "Bearer " + state.token;
+    let response;
+    try {
+      response = await fetch(path, {
+        method, headers, credentials: "same-origin",
+        body: body === undefined ? undefined : JSON.stringify(body),
+      });
+    } catch (error) {
+      return { ok: false, status: 0, data: { detail: "the runtime could not be reached" } };
+    }
+    let data = null;
+    try { data = await response.json(); } catch (error) { data = null; }
+    if (response.status === 401) showIdentity(data);
+    else if (response.ok) $("identity").hidden = true;
+    return { ok: response.ok, status: response.status, data };
+  }
+
+  function detail(result) {
+    const data = result.data || {};
+    return typeof data.detail === "string" && data.detail ? data.detail : "the request failed (" + result.status + ")";
+  }
+
+  function showIdentity(data) {
+    $("identity").hidden = false;
+    $("identity-detail").textContent = data && typeof data.detail === "string" ? data.detail : "";
+  }
+
+  function sessionPath(suffix) {
+    return "sessions/" + encodeURIComponent(state.session) + "/" + suffix;
+  }
+
+  function setSession(id) {
+    state.session = id;
+    $("session-id").textContent = id;
+    const log = $("log");
+    while (log.firstChild) log.removeChild(log.firstChild);
+    log.appendChild(el("li", "empty", "Ask for something, or pick an example below."));
+    renderReceipts([]);
+  }
+
+  function append(node) {
+    const empty = $("empty") || document.querySelector("#log .empty");
+    if (empty) empty.remove();
+    $("log").appendChild(node);
+    node.scrollIntoView({ block: "nearest" });
+  }
+
+  function message(kind, who, text) {
+    const item = el("li", "msg " + kind);
+    item.appendChild(el("div", "who", who));
+    item.appendChild(el("p", "text", text));
+    return item;
+  }
+
+  function short(id) {
+    return id ? String(id).slice(0, 8) : "";
+  }
+
+  const KIND = {
+    denied: "Refused", rejected: "Not run", invalid_plan: "Not planned",
+    cancelled: "Cancelled", unavailable: "Unavailable",
+  };
+
+  function outcomeLine(outcome) {
+    const op = outcome.operation || "";
+    const data = outcome.data || {};
+    switch (outcome.kind) {
+      case "approval_pending": return "";
+      case "read": return "Read " + op;
+      case "receipt": return "Wrote " + op + ", " + (data.verification || "unverified") + ", receipt " + short(outcome.receipt_id);
+      case "ledger_hit": return "Already done: " + op + ", receipt " + short(outcome.receipt_id);
+      default: {
+        const head = (KIND[outcome.kind] || outcome.kind) + (op ? ": " + op : "");
+        return outcome.reason ? head + ", " + outcome.reason : head;
+      }
+    }
+  }
+
+  function settleCards() {
+    document.querySelectorAll(".card.approval:not(.settled)").forEach((card) => {
+      card.classList.add("settled");
+      card.querySelectorAll("button").forEach((button) => { button.disabled = true; });
+    });
+  }
+
+  function approvalCard(approval) {
+    const plan = approval.plan || {};
+    const words = state.words[plan.language] || state.words[state.language] || { approve: "yes", reject: "no" };
+    const card = el("div", "card approval");
+    card.setAttribute("role", "group");
+    card.setAttribute("aria-label", "Approval");
+    card.appendChild(el("h3", "", "Approval needed"));
+    const list = el("dl");
+    const row = (term, value, className) => {
+      list.appendChild(el("dt", "", term));
+      list.appendChild(el("dd", className || "", value));
+    };
+    row("Operation", approval.operation, "mono");
+    row("Integration", approval.integration_id, "mono");
+    if ((approval.approvals_required || 1) > 1) {
+      row("Approvals", (approval.approvals_given || 0) + " of " + approval.approvals_required + " given");
+    }
+    row("Digest", approval.payload_hash || "", "mono");
+    card.appendChild(list);
+    card.appendChild(el("div", "hint", "Exact payload"));
+    card.appendChild(el("pre", "", JSON.stringify(approval.exact_payload || {}, null, 2)));
+    const actions = el("div", "actions");
+    const approve = el("button", "primary", "Approve");
+    approve.type = "button";
+    const reject = el("button", "", "Reject");
+    reject.type = "button";
+    approve.addEventListener("click", () => send(words.approve));
+    reject.addEventListener("click", () => send(words.reject));
+    actions.appendChild(approve);
+    actions.appendChild(reject);
+    actions.appendChild(el("span", "hint", "Sends “" + words.approve + "” or “" + words.reject + "”"));
+    card.appendChild(actions);
+    return card;
+  }
+
+  function reply(result) {
+    const item = message("reply", "oska", result.reply || "");
+    const lines = (result.outcomes || []).map(outcomeLine).filter(Boolean);
+    if (lines.length) {
+      const list = el("ul", "outcomes");
+      lines.forEach((line) => list.appendChild(el("li", "", line)));
+      item.appendChild(list);
+    }
+    const pending = result.pending;
+    if (pending && pending.kind === "approval" && pending.approval) item.appendChild(approvalCard(pending.approval));
+    return item;
+  }
+
+  function renderReceipts(receipts) {
+    const list = $("receipts");
+    while (list.firstChild) list.removeChild(list.firstChild);
+    $("no-receipts").hidden = receipts.length > 0;
+    receipts.slice().reverse().forEach((receipt) => {
+      const item = el("li", "receipt");
+      const row = el("div", "row");
+      row.appendChild(el("span", "mono", receipt.operation));
+      const verification = String(receipt.verification || "unverified");
+      row.appendChild(el("span", "badge " + verification, verification));
+      item.appendChild(row);
+      item.appendChild(el("div", "muted", receipt.integration_id + ", " + receipt.status));
+      item.appendChild(el("div", "muted mono", receipt.receipt_id));
+      const when = new Date(receipt.created_at);
+      if (!Number.isNaN(when.getTime())) item.appendChild(el("div", "muted", when.toLocaleString()));
+      list.appendChild(item);
+    });
+  }
+
+  async function refreshReceipts() {
+    const result = await api("GET", sessionPath("receipts"));
+    if (result.ok && Array.isArray(result.data)) renderReceipts(result.data);
+  }
+
+  async function send(text) {
+    const typed = String(text || "").trim();
+    if (!typed || state.busy) return;
+    state.busy = true;
+    $("send").disabled = true;
+    $("log").setAttribute("aria-busy", "true");
+    settleCards();
+    append(message("user", "You", typed));
+    const result = await api("POST", sessionPath("turns"), { text: typed });
+    if (result.ok && result.data) append(reply(result.data));
+    else append(message("error", "Not answered", detail(result)));
+    state.busy = false;
+    $("send").disabled = false;
+    $("log").removeAttribute("aria-busy");
+    if (result.ok) await refreshReceipts();
+  }
+
+  function chip(text, label) {
+    const button = el("button", "chip", label || text);
+    button.type = "button";
+    button.addEventListener("click", () => send(text));
+    return button;
+  }
+
+  function renderExamples(recorded, processes) {
+    const box = $("examples");
+    while (box.firstChild) box.removeChild(box.firstChild);
+    const group = (label, chips) => {
+      if (!chips.length) return;
+      const row = el("div", "row");
+      row.setAttribute("role", "group");
+      row.setAttribute("aria-label", label);
+      row.appendChild(el("span", "group", label));
+      chips.forEach((button) => row.appendChild(button));
+      box.appendChild(row);
+    };
+    group("Recorded", recorded.map((text) => chip(text)));
+    group("Catalog", processes
+      .map((process) => String(process.action || ""))
+      .filter(Boolean)
+      .map((action) => chip(action, action.charAt(0).toUpperCase() + action.slice(1))));
+  }
+
+  const PROVIDER = {
+    replay: "demo: replaying a recorded session, nothing reaches a model",
+    none: "no model: requests are routed by rule and nothing is planned",
+  };
+
+  async function load() {
+    const health = await api("GET", "health");
+    const provider = health.ok && health.data ? String(health.data.provider || "none") : "";
+    const line = $("provider");
+    line.textContent = provider ? (PROVIDER[provider] || "model provider: " + provider) : "the runtime did not answer";
+    line.classList.toggle("replay", provider === "replay");
+    const capabilities = await api("GET", "capabilities");
+    let processes = [];
+    if (capabilities.ok && capabilities.data) {
+      state.words = capabilities.data.approval_words || {};
+      state.language = capabilities.data.default_language || "en";
+      processes = capabilities.data.processes || [];
+    }
+    let recorded = [];
+    if (provider === "replay") {
+      const prompts = await api("GET", "demo/prompts");
+      if (prompts.ok && Array.isArray(prompts.data)) recorded = prompts.data;
+    }
+    renderExamples(recorded, processes);
+  }
+
+  function tokenSession(token) {
+    try {
+      const part = token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
+      const claims = JSON.parse(atob(part.padEnd(Math.ceil(part.length / 4) * 4, "=")));
+      return typeof claims.sid === "string" ? claims.sid : "";
+    } catch (error) {
+      return "";
+    }
+  }
+
+  $("composer").addEventListener("submit", (event) => {
+    event.preventDefault();
+    const box = $("message");
+    const text = box.value;
+    box.value = "";
+    send(text);
+  });
+  $("message").addEventListener("keydown", (event) => {
+    if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
+      event.preventDefault();
+      $("composer").requestSubmit();
+    }
+  });
+  $("new-session").addEventListener("click", () => {
+    state.token = "";
+    setSession(newSessionId());
+    $("message").focus();
+  });
+  $("token-form").addEventListener("submit", (event) => {
+    event.preventDefault();
+    const input = $("token");
+    state.token = input.value.trim();
+    input.value = "";
+    const sid = tokenSession(state.token);
+    if (sid && sid !== state.session) setSession(sid);
+    load();
+  });
+
+  setSession(newSessionId());
+  load();
+})();
+</script>
+</body>
+</html>

@@ -49,17 +49,22 @@ then the model provider it was handed, which releases its connections.
 Handed a served replay, the application names the session in the path of each
 call before its handler runs, so the replay keeps what each session has used
 apart and two sessions replaying at once never take each other's answers.
+
+With `api.ui` on, the default, `GET /` serves one static page that holds a
+conversation through these routes. The page carries no data and is served to
+anyone; each call it makes is resolved to an identity like any other.
 """
 
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from importlib import resources
 from typing import Any
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from oska.api.metrics import metrics_router
@@ -75,6 +80,7 @@ from oska.storage import ProposalRecordStore
 __all__ = ["PROPOSALS_DIRNAME", "Services", "create_app"]
 
 API_TITLE = "oska"
+PAGE_PATH = "static/index.html"
 
 
 def create_app(
@@ -110,10 +116,25 @@ def create_app(
     )
     app.include_router(router)
     app.include_router(metrics_router)
+    if app.state.runtime.api.ui:
+        _serve_page(app)
     _register_errors(app)
     if isinstance(provider, KeyedReplayProvider):
         app.add_middleware(_ReplaySessions)
     return app
+
+
+def _serve_page(app: FastAPI) -> None:
+    """Serve the page at `GET /`, read once from the package.
+
+    The page holds no data and is outside the routes that resolve an identity;
+    every call it makes goes through them.
+    """
+    page = resources.files("oska.api").joinpath(PAGE_PATH).read_text(encoding="utf-8")
+
+    @app.get("/", include_in_schema=False, response_class=HTMLResponse)
+    def _page() -> HTMLResponse:
+        return HTMLResponse(page, headers={"Cache-Control": "no-cache"})
 
 
 class _ReplaySessions:

@@ -11,6 +11,7 @@ from oska.connectors.base import (
     timed,
 )
 from oska.connectors.http import HttpConnector
+from oska.connectors.mcp import McpConnector
 from oska.connectors.mock import MockConnector
 from oska.connectors.registry import ConnectorRegistry
 from oska.connectors.shell import ShellConnector
@@ -24,6 +25,7 @@ __all__ = [
     "ConnectorOutcome",
     "ConnectorRegistry",
     "HttpConnector",
+    "McpConnector",
     "MockConnector",
     "ShellConnector",
     "is_unavailable",

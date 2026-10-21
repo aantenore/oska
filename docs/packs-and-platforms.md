@@ -127,7 +127,15 @@ ok
 A pack that does bind a shell integration is refused, because a check runs a
 pack's bindings on this machine and a shell binding is one nobody should run
 unread; `--allow-shell` is how the operator says a particular pack is trusted
-enough to run anyway.
+enough to run anyway. An `mcp` binding over stdio starts its server as a
+command, and is refused the same way.
+
+A pack that binds a tool server is also asked about it: the check asks each
+`mcp` server it may run for the tools it lists, and an operation bound to a tool
+the server does not list is an error. A server the check cannot reach is not
+checked, and the report says so in a warning (`tools_unchecked`) rather than
+passing it silently. `oska validate` reads the catalog alone and calls nothing,
+so it never makes this check.
 
 `oska pack build` writes a pack as a content-addressed tarball with a manifest
 listing every file and its hash — the artifact a registry or a deployment

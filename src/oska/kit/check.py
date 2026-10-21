@@ -13,8 +13,13 @@ checked the way a platform checks it, and the level it reports is the level a
 platform will measure. The bindings are held to what a platform holds them to:
 a mock fixture is read only from inside the pack and nothing is read from the
 environment. A check runs the pack's bindings, and a pack may come from anyone,
-so a `shell` binding, which runs a command on this machine, is refused unless
-the caller allows it.
+so a binding that runs a command on this machine, a `shell` binding or a tool
+server started over stdio, is refused unless the caller allows it.
+
+A tool server the check may reach is asked which tools it lists, and an
+operation bound to a tool it does not list is an error. One that cannot be
+reached is not checked, and the report says so in a warning: a check is not
+the place to decide a server is wrong because it is down.
 """
 
 from __future__ import annotations
@@ -42,7 +47,8 @@ from oska.config import (
 from oska.conformance.report import attained_level
 from oska.conformance.runner import SuiteReport, run_directories
 from oska.connectors.base import ConnectorError
-from oska.connectors.registry import read_bindings
+from oska.connectors.mcp import McpConnector
+from oska.connectors.registry import ConnectorRegistry, read_bindings
 from oska.contracts.platform import (
     DomainSpec,
     HostIdentity,
@@ -59,9 +65,11 @@ from oska.platform.errors import PackError, PlatformError
 from oska.platform.packs import Pack, check_provides, check_requires, load_pack
 from oska.platform.runtime import Platform
 
-__all__ = ["SHELL_KIND", "PackReport", "check_pack", "one_pack_domain"]
+__all__ = ["MCP_KIND", "SHELL_KIND", "PackReport", "check_pack", "one_pack_domain"]
 
 SHELL_KIND = "shell"
+MCP_KIND = "mcp"
+TOOLS_UNCHECKED = "tools_unchecked"
 
 
 class PackReport(BaseModel):
@@ -87,8 +95,9 @@ def check_pack(
 
     Each is run against the pack's own layout in isolation: its `skills/` as
     the only catalog root, its `configs/connectors.json`, its `scenarios/`,
-    through the assembly of a domain serving this one pack. With a `shell`
-    binding the scenarios are not run unless `allow_shell` is given.
+    through the assembly of a domain serving this one pack. With a binding that
+    runs a command, `shell` or a tool server over stdio, the scenarios are not
+    run unless `allow_shell` is given.
     """
     root = Path(path)
     try:
@@ -124,6 +133,10 @@ def check_pack(
     )
     refused = _refused_bindings(pack, allow_shell)
     errors.extend(refused)
+    if not refused:
+        tool_errors, notes = _tool_check(pack, domain)
+        errors.extend(tool_errors)
+        validation_issues.extend(notes)
 
     blocking = [issue for issue in validation_issues if issue.severity == "error"]
     evaluation: CatalogEvaluation | None = None
@@ -193,8 +206,16 @@ def _guardrail_ids(
         return declared_guardrail_ids(settings)
 
 
+def _runs_a_command(binding: object) -> bool:
+    """Whether a binding starts a process on this machine when it is called."""
+    if not isinstance(binding, dict):
+        return False
+    kind = binding.get("type")
+    return kind == SHELL_KIND or (kind == MCP_KIND and binding.get("transport") == "stdio")
+
+
 def _refused_bindings(pack: Pack, allow_shell: bool) -> list[str]:
-    """A refusal naming every `shell` binding of the pack, unless shell is allowed."""
+    """A refusal naming every binding of the pack that runs a command, unless that is allowed."""
     if allow_shell:
         return []
     try:
@@ -204,15 +225,69 @@ def _refused_bindings(pack: Pack, allow_shell: bool) -> list[str]:
     shell = sorted(
         integration_id
         for integration_id, binding in dict(integrations).items()
-        if isinstance(binding, dict) and binding.get("type") == SHELL_KIND
+        if _runs_a_command(binding)
     )
     if not shell:
         return []
     return [
-        f"pack {pack.name}: {', '.join(shell)} is bound to a shell command, which a check "
-        "would run on this machine; the scenarios were not run (pass --allow-shell to run "
-        "them for a pack you trust)"
+        f"pack {pack.name}: {', '.join(shell)} is bound to a shell command or a tool server "
+        "started over stdio, which a check would run on this machine; the scenarios were not "
+        "run (pass --allow-shell to run them for a pack you trust)"
     ]
+
+
+def _tool_check(pack: Pack, domain: DomainSpec) -> tuple[list[str], list[ValidationIssue]]:
+    """Errors for operations bound to tools a server does not list, and notes for servers
+    that could not be asked."""
+    try:
+        integrations = read_bindings(pack.connectors).get("integrations") or {}
+    except (OSError, ValueError, ConnectorError):
+        return [], []
+    servers = {
+        integration_id: binding
+        for integration_id, binding in dict(integrations).items()
+        if isinstance(binding, dict) and binding.get("type") == MCP_KIND
+    }
+    if not servers:
+        return [], []
+    try:
+        registry = ConnectorRegistry.from_document(
+            {"integrations": servers},
+            pack.connectors.parent,
+            readable=domain.environment.allows,
+            confine_to=pack.root,
+        )
+    except ConnectorError as exc:
+        return [f"pack {pack.name}: {exc}"], []
+    errors: list[str] = []
+    notes: list[ValidationIssue] = []
+    try:
+        for integration_id in registry.ids():
+            connector = registry.get(integration_id)
+            if not isinstance(connector, McpConnector):
+                continue
+            try:
+                missing = connector.unlisted_tools()
+            except ConnectorError as exc:
+                notes.append(
+                    ValidationIssue(
+                        skill_id=integration_id,
+                        code=TOOLS_UNCHECKED,
+                        severity="warning",
+                        path=pack.connectors,
+                        message=f"the tool server could not be asked for its tools, so the "
+                        f"tools its operations name were not checked: {exc}",
+                    )
+                )
+                continue
+            errors.extend(
+                f"pack {pack.name}: {integration_id}: {operation} is bound to the tool "
+                f"{tool}, which the server does not list"
+                for operation, tool in missing
+            )
+    finally:
+        registry.close()
+    return errors, notes
 
 
 def _settings_for(pack: Pack, settings: Settings | None) -> Settings:

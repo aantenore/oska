@@ -14,7 +14,7 @@ at it. Where the two disagree, the specification wins.
 
 | Layer | Packages |
 | --- | --- |
-| L1 Integration | `src/oska/connectors/` (base, mock, http, shell, registry); operation declarations in `src/oska/contracts/skill.py` |
+| L1 Integration | `src/oska/connectors/` (base, mock, http, shell, mcp, registry); operation declarations in `src/oska/contracts/skill.py` |
 | L2 Ontology | `src/oska/ontology/` (graph, queries, export); entity and integration skills under `examples/ops/skills/` |
 | L3 Skill | `src/oska/catalog/` (loader, registry, resolver, enrichment, revision, evaluation); `src/oska/catalog/validator.py`, the facade that runs every check (`validate`, `validate_all`, `CatalogError`), over `src/oska/catalog/checks/` (`common.py` for the issue and the schema helpers, `contract.py`, `ontology.py`, `governance.py`, `presentation.py`, `inputs.py`); `src/oska/catalog/signing.py` (signed revisions, signers chosen by name); `src/oska/contracts/skill.py` |
 | L4 Governance | `src/oska/governance/` (capabilities, policy_engine, approval, verification, ledger, guardrails, identity, retention); `configs/guardrails.json`; `src/oska/audit/` (events, sink, trace); `src/oska/storage/` (the ledger and session store interfaces and their openers, the SQLite ledger helper and `sqlite_sessions.py`, the PostgreSQL ledger and sessions with the namespace of a shared database); `src/oska/contracts/session.py` (the session state contract) |
@@ -151,8 +151,8 @@ executed one session per file by `tests/scenarios/test_scenarios.py`, through
 the same runner.
 
 A pack check runs the pack's bindings, and a pack may come from anyone, so a
-`shell` binding, which runs a command on this machine, is refused unless
-`--allow-shell` is given:
+`shell` binding or an `mcp` binding over stdio, each of which runs a command on
+this machine, is refused unless `--allow-shell` is given:
 
 ```
 oska pack check <pack> --allow-shell

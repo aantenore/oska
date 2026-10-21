@@ -366,9 +366,11 @@ neither (PLT-15).
   --platform`, or `--into packs` inside a platform directory, names the new
   pack in that platform's manifest), `oska pack check` validates one pack,
   builds the engine a one-pack domain builds, runs its evaluation sets and its
-  scenarios and reports its level, refusing a `shell` binding unless
-  `--allow-shell` is given, and `oska pack build` writes a content-addressed
-  archive that leaves out what is never shipped (PLT-27).
+  scenarios and reports its level, refusing a `shell` binding or an `mcp`
+  binding over stdio unless `--allow-shell` is given and asking every tool
+  server it may reach whether it lists the tools the pack's operations name,
+  and `oska pack build` writes a content-addressed archive that leaves out
+  what is never shipped (PLT-27).
 - Channels: `POST /domains/{domain}/sessions/{session_id}/turns`,
   `GET /domains/{domain}/sessions/{session_id}/receipts`,
   `POST /domains/{domain}/proposals/from-session/{session_id}`,

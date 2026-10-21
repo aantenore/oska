@@ -98,6 +98,19 @@ the same session returns the original receipt instead of writing twice.
 *Cost:* the runtime keeps receipts, and the author of an integration has to
 say which fields make two requests the same request.
 
+**A client of tool servers, not a server of tools.** Many systems are already
+exposed as Model Context Protocol servers, and OSKA can call them: an `mcp`
+binding maps each declared operation to one tool on such a server. It does
+not hand the server's tool list to the model, and it does not publish its own
+operations as tools for some other model to call in a loop. Either would put
+back what the plan-then-execute choice takes out: a capability surface that is
+whatever a list says today, and calls that reach a system one at a time with no
+complete payload to approve. Bound as a client, a tool server is one more
+system of record behind the integration layer, and its writes cross the same
+path as any other.
+*Cost:* a team that wants a tool reachable has to declare it in a skill, with
+a schema and a read-back, even though the server already describes it.
+
 **A capability that is down is not a refusal.** A connector says whether the
 system answered no, whether the request was never well formed, or whether it
 never arrived; and among those that never arrived, whether nothing was sent or

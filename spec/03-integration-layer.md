@@ -11,8 +11,9 @@ The layer has two halves that must not be confused. The **operation registry**
 is declarative: it is read from the catalog and it is what the model, the
 policy engine and the auditor see. The **connector** is executable: it is bound
 by configuration and it is what actually talks to a system. One operation name
-can be served by a mock in a test, an HTTP API in staging and a command-line
-tool on an operator's laptop, with no change anywhere above L1.
+can be served by a mock in a test, an HTTP API in staging, a command-line tool
+on an operator's laptop or a tool on a protocol server another team runs, with
+no change anywhere above L1.
 
 ## Modules
 
@@ -109,13 +110,13 @@ Where a connector cannot establish that a request never left, it says
 write is left to the ledger, which keeps its key open, and an `ambiguous` one
 is settled by reading it back (06, the Write Ledger).
 
-| What happened | HTTP | Command | Classification |
-|---|---|---|---|
-| never sent: not well formed | undeclared operation, unfillable path | undeclared operation, bad argument | `terminal` (rejected) |
-| never left | connection refused, name not resolved, pool exhausted, breaker open | executable not found, breaker open | `retryable` |
-| left, no usable answer | read or write timeout, connection reset after send, 5xx | timed out after it started | `ambiguous` |
-| the system said no | any 4xx, 409 included | non-zero exit | `terminal` (refused) |
-| answered past the budget | 2xx body over `max_response_bytes` | — | `terminal` (refused) |
+| What happened | HTTP | Command | Tool protocol | Classification |
+|---|---|---|---|---|
+| never sent: not well formed | undeclared operation, unfillable path | undeclared operation, bad argument | undeclared operation, unfillable argument | `terminal` (rejected) |
+| never left | connection refused, name not resolved, pool exhausted, breaker open | executable not found, breaker open | server not started or reached, no answer to `initialize`, breaker open | `retryable` |
+| left, no usable answer | read or write timeout, connection reset after send, 5xx | timed out after it started | tool call timed out, server gone or stream ended before answering, 5xx | `ambiguous` |
+| the system said no | any 4xx, 409 included | non-zero exit | tool result with `isError`, protocol error for a malformed request, 4xx | `terminal` (refused) |
+| answered past the budget | 2xx body over `max_response_bytes` | — | answer over `max_response_bytes` | `terminal` (refused) |
 
 A read may be tried again inside one call. When its failure is `retryable`, or
 its status is one the binding lists in `retry_statuses`, the connector repeats
@@ -185,8 +186,19 @@ the field:
   timeout. Arguments are substituted positionally; a payload value is never
   concatenated into a command string, never interpreted by a shell, and never
   read as an option of the command.
-- **Message or tool protocol.** Maps each operation onto a remote tool
-  invocation. The operation name is the tool name.
+- **Tool protocol.** Maps each operation onto one named tool of a server
+  speaking a tool-calling protocol, the Model Context Protocol in the
+  reference implementation, reached over its standard input and output or over
+  HTTP. The binding declares the tool and a template of its arguments; the
+  arguments are filled from the payload one value at a time, so a payload can
+  neither add an argument nor rename one. The adapter is a client of the
+  server and nothing more: the server's list of tools is never shown to a
+  model and never consulted while a turn runs, so a tool the server offers and
+  no skill declares cannot be reached. A server the adapter starts is started
+  from a declared argument vector, never through a shell, and sees none of the
+  environment beyond the search path and what the binding declares. The
+  protocol carries no idempotency key, so an `ambiguous` write is settled by
+  its read-back like any other.
 
 ### Connector Registry
 
@@ -311,6 +323,33 @@ ConnectorRegistry:
 - **OSKA-INT-24** — An HTTP binding MUST percent-encode each payload value
   placed in the path as a single segment, and MUST refuse, without sending, a
   value that is empty, `.` or `..`.
+- **OSKA-INT-25** — A tool-protocol binding MUST map each declared operation to
+  exactly one named tool, and MUST call no other tool for it. It MUST NOT
+  expose the server's list of tools to a model or consult it while a turn
+  runs, and MUST reject an operation the binding does not declare without
+  starting or contacting the server.
+- **OSKA-INT-26** — A tool-protocol binding MUST build the arguments of a call
+  from a declared template, filling each placeholder from one payload field. A
+  payload value MUST NOT add, rename or remove an argument, a payload field
+  the template does not name MUST NOT be sent, and a placeholder inside a
+  longer string that the payload cannot fill with one value MUST be rejected
+  without sending.
+- **OSKA-INT-27** — A tool-protocol binding that starts its server MUST start
+  it from a declared argument vector without a shell, and MUST NOT pass it
+  the environment of the process beyond the search path and the variables the
+  binding declares.
+- **OSKA-INT-28** — A tool-protocol binding MUST classify a failure by whether
+  the tool call was sent: a server that could not be started, reached or
+  initialized MUST be `retryable`; a tool call that timed out, or whose server
+  exited, ended its stream or reported a server error before answering, MUST
+  be `ambiguous`; a tool result marked as an error, and a protocol error
+  saying the request was malformed, MUST be `terminal`.
+- **OSKA-INT-29** — When a pack is checked and a tool server it binds can be
+  reached, an operation bound to a tool the server does not list MUST be
+  reported as an error. A server that cannot be reached MUST be reported as
+  not checked, and MUST NOT pass the check silently. A server started over
+  standard input and output runs a command on the checking machine, and MUST
+  be refused unless the operator allows commands, as a command binding is.
 
 ## Rationale
 
@@ -331,6 +370,13 @@ the auditor can read it. The execution is configuration, so a conformance suite
 runs against fixtures and production runs against the real system with the same
 catalog and the same recorded behavior.
 
+Binding operations to a tool server does not bring the tool-calling interface
+back. The server's tools are what a system offers, the way an HTTP API's
+endpoints are; the skill still says which of them exist for this system, with
+schemas, an entity and a read-back, and the binding names one tool for each.
+A tool the server adds tomorrow is invisible until a skill declares it, and a
+tool it removes is caught by the pack check rather than by a failed turn.
+
 The narrow rules — argument vectors rather than shell strings, declared fields
 only on HTTP, no free text — exist because L1 is where a mistake becomes an
 effect. Every one of them removes a class of injection in which model output
@@ -343,7 +389,9 @@ named field, then be substituted into a position the adapter chose.
 - `src/oska/connectors/` — `base.py` (protocol, result, classification,
   breaker, in-call retries of reads, the idempotency key and `invoke`),
   `mock.py`, `http.py` (what left and what did not, the response budget, the
-  `Idempotency-Key` header), `shell.py`, `registry.py`.
+  `Idempotency-Key` header), `shell.py`, `mcp.py` (the tool-protocol client
+  over stdio and streamable HTTP, its argument templates and its
+  classification), `registry.py`.
 - `src/oska/config.py` — `ResilienceConfig`: the timeout, the run of
   failures that opens a breaker, the recovery window, the in-call retries of a
   read and the response budget.
@@ -353,3 +401,4 @@ named field, then be substituted into a position the adapter chose.
 - `examples/ops/configs/connectors.json` — the fixture binding;
   `connectors.real.example.json` — the same catalog bound to an HTTP API and
   a command-line tool.
+- `src/oska/kit/check.py` — the tool check of `oska pack check`.

@@ -176,6 +176,7 @@ keeps it until another turn changes it.
 | --- | --- | --- |
 | `api.host` | `127.0.0.1` | Address `oska serve` listens on |
 | `api.port` | `8000` | Port it listens on |
+| `api.ui` | `true` | Serve the page at `GET /` that holds a conversation through the API; `false` answers 404 there and leaves the API unchanged |
 
 `--host` and `--port` on `oska serve` override these for one run. `oska serve`
 warns on stderr before it starts whenever it binds an address other than
@@ -785,14 +786,79 @@ refused before the command runs. Where a dashed value is legitimate, such as a
 negative number, declare `--` before it in the vector; a dash the vector itself
 declares (`"--name={value}"`) is always kept.
 
+### `mcp`
+
+Binds each operation to one tool on a server speaking the Model Context
+Protocol. This is a client: the server's list of tools is never shown to the
+model and never consulted during a turn, so only the operations a skill
+declares and this binding maps can be called.
+
+```json
+{
+  "integration.tickets": {
+    "type": "mcp",
+    "transport": "stdio",
+    "argv": ["tickets-server", "--read-write"],
+    "env": { "TICKETS_TOKEN": "${TICKETS_TOKEN}" },
+    "operations": {
+      "ticket.get":   { "tool": "get_ticket",   "arguments": { "id": "{ticket_id}" } },
+      "ticket.close": { "tool": "close_ticket", "arguments": { "id": "{ticket_id}",
+                                                             "reason": "{reason}" } }
+    }
+  }
+}
+```
+
+| Key | Meaning |
+| --- | --- |
+| `transport` | `stdio` or `http`. Required |
+| `argv` | `stdio`: the argument vector the server is started from, for each call. Never run through a shell |
+| `env` | `stdio`: variables the server is started with. It inherits `PATH` (and `SYSTEMROOT` on Windows) and nothing else of this process's environment |
+| `cwd` | `stdio`: working directory, relative to this file |
+| `url` | `http`: the endpoint every message is posted to (streamable HTTP; a JSON or an event-stream answer) |
+| `headers` | `http`: sent with every message |
+| `timeout` | Seconds. Defaults to 30. For `stdio` it bounds the whole exchange, start-up included; for `http` each request |
+| `operations.<name>.tool` | The one tool this operation calls |
+| `operations.<name>.arguments` | The arguments template. Absent means no arguments |
+| `operations.<name>.timeout` | Overrides the binding's timeout |
+
+The arguments are built from the template one value at a time. A string that
+is exactly `"{field}"` becomes the payload value of that field with its type
+(a number stays a number, a list stays a list), and is left out when the
+payload does not carry the field. A placeholder inside a longer string
+(`"ticket {ticket_id}"`) needs a single value and is refused, before anything
+starts, when the payload has none. Keys are never filled, so a payload cannot
+add or rename an argument, and a payload field the template does not name is
+never sent. Literal numbers, booleans and nested objects in the template are
+sent as written.
+
+A call is `initialize`, `notifications/initialized`, then `tools/call`. A
+result with `isError` is the system saying no (`terminal`), and its text is the
+reason. Otherwise `structuredContent` is the data when present, else the first
+text content that parses as JSON, else `{"text": ...}` with the text. Anything
+that goes wrong before `tools/call` is sent, including a server that cannot
+start or does not answer `initialize` in time, is `retryable`; a tool call that
+times out, or whose server exits or ends its stream before answering, is
+`ambiguous`. The protocol has no idempotency key, so none is sent; an
+`ambiguous` write is settled by its read-back.
+
+`oska pack check` refuses a `stdio` binding without `--allow-shell`, because
+it starts a command on this machine. A check that may reach the server asks it
+for its tools and reports an operation bound to a tool the server does not list
+as an error; a server it cannot reach is reported as not checked, in a warning.
+`oska validate` reads only the catalog and never contacts a server.
+
 ### `${ENV}` expansion
 
 `${NAME}` inside an address or a header is replaced by the environment variable
 of that name, so `"Authorization": "Bearer ${RUNTIME_TOKEN}"` keeps the token out
 of the file. A variable that is not set becomes an empty string and is recorded
 in `ConnectorRegistry.warnings`; the binding is still built, and the call fails
-at the far end rather than at load time. Expansion applies to `base_url` and to
-header values.
+at the far end rather than at load time. Expansion applies to `base_url` and
+header values, and for `mcp` to `argv`, `env` values, `url` and header values.
+Nothing of the payload is ever put in a header or an environment variable.
+Served from a platform, every variable a binding reads must be one its domain's
+`environment` grants.
 
 `examples/ops/configs/connectors.real.example.json` is the same catalog bound to
 an HTTP API and a command line tool. The operation names and payload fields are

@@ -50,6 +50,35 @@ machine reaches it.
 The container health check calls `GET /health` with the standard library, so
 the image carries no `curl`.
 
+## A session in the browser
+
+Open <http://127.0.0.1:8000/>. The page holds one conversation through the same
+API the next section calls with `curl`.
+
+![The page holding a restart for approval](assets/web-page.png)
+
+- The header line says what answers for the model, from `/health`: with the
+  replay it reads "demo: replaying a recorded session, nothing reaches a model".
+- The session id is drawn in the page and shown; **New session** starts another.
+- The example chips are the catalog's procedures, from `/capabilities`, and,
+  under a replay, the requests the recording holds a plan for, from
+  `GET /demo/prompts` (empty when nothing is replayed).
+- A held write shows as a card with the operation, the integration, the exact
+  payload and its digest. **Approve** and **Reject** send the approval words of
+  the conversation's language, as `/capabilities` lists them under
+  `approval_words`; they are turns like any other.
+- Receipts are read from `/sessions/{id}/receipts` after each turn, with their
+  verification state.
+
+The page itself needs no identity and holds no data. Every call it makes is
+checked like any other: with token identity it asks for a session token, kept
+in the page's memory only, and moves to the session the token's `sid` claim
+names; behind a proxy, open it through the proxy. It loads nothing from another
+origin, and its `Content-Security-Policy` allows only its own inline script and
+style and calls to its own origin. Set `api.ui` to `false` in the runtime
+configuration to stop serving it; `GET /` then answers 404 and the API is
+unchanged.
+
 ## A session with the API
 
 `compose.yaml` sets `OSKA_DEMO_REPLAY`, so the stack serves

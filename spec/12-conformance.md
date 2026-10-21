@@ -9,7 +9,7 @@ filled in.
 **Level 1 — Declared.** The system declares what exists and what can be done,
 and speaks from its own catalog.
 
-Requires: `OSKA-INT-1` to `OSKA-INT-24`; `OSKA-ONT-1` to `OSKA-ONT-27`;
+Requires: `OSKA-INT-1` to `OSKA-INT-29`; `OSKA-ONT-1` to `OSKA-ONT-27`;
 `OSKA-SKL-1` to `OSKA-SKL-17`; `OSKA-COG-11`; `OSKA-XC-1` to `OSKA-XC-4` and
 `OSKA-XC-9`. The validator passes over the whole catalog with no issues.
 Every sentence the system says about its capability is derived. The suite runs
@@ -593,6 +593,11 @@ accident.
 | OSKA-INT-22 | `src/oska/connectors/http.py` | `tests/unit/test_connectors.py` |
 | OSKA-INT-23 | `src/oska/connectors/http.py`, `src/oska/engine/settlement.py` | `tests/unit/test_connectors.py`, `tests/unit/test_resilience.py` |
 | OSKA-INT-24 | `src/oska/connectors/http.py` | `tests/unit/test_connectors.py` |
+| OSKA-INT-25 | `src/oska/connectors/mcp.py` | `tests/unit/test_mcp_connector.py` |
+| OSKA-INT-26 | `src/oska/connectors/mcp.py` | `tests/unit/test_mcp_connector.py` |
+| OSKA-INT-27 | `src/oska/connectors/mcp.py`, `registry.py` | `tests/unit/test_mcp_connector.py` |
+| OSKA-INT-28 | `src/oska/connectors/mcp.py` | `tests/unit/test_mcp_connector.py` |
+| OSKA-INT-29 | `src/oska/kit/check.py` | `tests/unit/test_mcp_connector.py` |
 
 ### Ontology (L2)
 

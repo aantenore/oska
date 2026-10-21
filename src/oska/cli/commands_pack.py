@@ -34,9 +34,10 @@ AllowShellOption = Annotated[
     typer.Option(
         "--allow-shell",
         help=(
-            "Run the scenarios of a pack that binds an integration to a shell command. "
-            "A check runs a pack's bindings on this machine, so a pack with a shell "
-            "binding is refused without this flag; give it only for a pack you trust."
+            "Run the scenarios of a pack that binds an integration to a shell command or "
+            "to a tool server started over stdio. A check runs a pack's bindings on this "
+            "machine, so such a pack is refused without this flag; give it only for a pack "
+            "you trust."
         ),
     ),
 ]
@@ -49,7 +50,7 @@ def check(
     """Validate a pack, run its evaluation sets and its scenarios, and report its level.
 
     The scenarios run the way a platform serves the pack, as the one pack of a
-    domain. A shell binding is refused unless --allow-shell is given.
+    domain. A binding that runs a command is refused unless --allow-shell is given.
     """
     report = check_pack(path, allow_shell=allow_shell)
     typer.echo(json.dumps(_as_json(report), indent=2) if as_json else _as_text(report))
