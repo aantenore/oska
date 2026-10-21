@@ -5,8 +5,10 @@ namespace under `conformance/` for every scenario, the (tenant, domain) nested
 inside it on the platform path, and no purge of a store that reports any other
 namespace. The PostgreSQL half runs when `OSKA_TEST_POSTGRES_URL` names a
 database the tests may write to: the same suites run twice over one database
-pass both times, no conformance namespace holds a row afterwards, and a row
-seeded in the default namespace is still there.
+pass both times, no namespace the run created holds a row afterwards, and a row
+seeded in the default namespace is still there. Every check is scoped to what
+this run did, never to the whole database, so a second process on the same
+database does not disturb it.
 """
 
 from __future__ import annotations
@@ -250,8 +252,28 @@ def _rows(url: str, where: str, parameters: tuple = ()) -> dict[str, int]:
     return counts
 
 
-def _conformance_rows(url: str) -> dict[str, int]:
-    return _rows(url, "namespace LIKE %s", (f"{CONFORMANCE_NAMESPACE}/%",))
+def _run_prefixes(namespaces: list[str]) -> set[str]:
+    """The `conformance/<run_id>` prefix of every namespace a run asked for."""
+    prefixes = {"/".join(namespace.split("/")[:2]) for namespace in namespaces}
+    assert prefixes, "the run built no engine, so there is nothing to check"
+    for prefix in prefixes:
+        assert prefix.startswith(f"{CONFORMANCE_NAMESPACE}/") and prefix.count("/") == 1, prefix
+    return prefixes
+
+
+def _left_by_this_run(url: str, namespaces: list[str]) -> dict[str, int]:
+    """Rows in the namespaces this run created, and nowhere else in the database."""
+    left = dict.fromkeys(TABLES, 0)
+    for prefix in _run_prefixes(namespaces):
+        found = _rows(url, "namespace = %s OR namespace LIKE %s", (prefix, f"{prefix}/%"))
+        for table in TABLES:
+            left[table] += found[table]
+    return left
+
+
+def _seed_rows(url: str, session: str) -> dict[str, int]:
+    """What the default namespace holds for the seeded session, per table."""
+    return _rows(url, "namespace = %s AND session_id = %s", (DEFAULT_NAMESPACE, session))
 
 
 def _assert_seed_untouched(seeded: Any) -> None:
@@ -268,7 +290,10 @@ def test_the_same_suite_passes_twice_over_one_database_and_leaves_nothing(
     postgres_url: str,
     seeded: Any,
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    import oska.conformance.runner as runner
+
     settings = Settings(
         skills_roots=[repo_root / "examples" / "ops" / "skills"],
         runtime_config=postgres_runtime,
@@ -278,15 +303,19 @@ def test_the_same_suite_passes_twice_over_one_database_and_leaves_nothing(
         state_dir=tmp_path / "state",
         provider="scripted",
     )
-    default_before = _rows(postgres_url, "namespace = %s", (DEFAULT_NAMESPACE,))
+    spy = _Spy()
+    monkeypatch.setattr(runner, "build_engine", spy)
+    seed_before = _seed_rows(postgres_url, seeded[0])
 
     for _ in range(RUNS):
         report = run_suite(scenario_dir, settings)
         assert report.passed, render_text(report)
-        assert _conformance_rows(postgres_url) == dict.fromkeys(TABLES, 0)
+        assert _left_by_this_run(postgres_url, spy.namespaces) == dict.fromkeys(TABLES, 0)
 
+    assert all(n.startswith(f"{CONFORMANCE_NAMESPACE}/") for n in spy.namespaces)
+    assert len(_run_prefixes(spy.namespaces)) == RUNS
     _assert_seed_untouched(seeded)
-    assert _rows(postgres_url, "namespace = %s", (DEFAULT_NAMESPACE,)) == default_before
+    assert _seed_rows(postgres_url, seeded[0]) == seed_before
 
 
 def test_the_same_scenario_passes_twice_over_one_database(
@@ -324,6 +353,7 @@ def test_the_platform_passes_twice_over_one_database_and_leaves_nothing(
     postgres_url: str,
     seeded: Any,
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     settings = Settings(
         runtime_config=postgres_runtime,
@@ -333,10 +363,16 @@ def test_the_platform_passes_twice_over_one_database_and_leaves_nothing(
         provider="none",
     )
     platform = Platform.from_file(examples / "platform.yaml", settings)
+    spy = _Spy()
+    monkeypatch.setattr(platform_runtime, "build_engine", spy)
+    seed_before = _seed_rows(postgres_url, seeded[0])
 
     for _ in range(RUNS):
         reports = run_platform(platform)
         assert passed(platform, reports), render_platform_text(platform, reports)
-        assert _conformance_rows(postgres_url) == dict.fromkeys(TABLES, 0)
+        assert _left_by_this_run(postgres_url, spy.namespaces) == dict.fromkeys(TABLES, 0)
 
+    assert all(n.startswith(f"{CONFORMANCE_NAMESPACE}/") for n in spy.namespaces)
+    assert len(_run_prefixes(spy.namespaces)) >= RUNS
     _assert_seed_untouched(seeded)
+    assert _seed_rows(postgres_url, seeded[0]) == seed_before

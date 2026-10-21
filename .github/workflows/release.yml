@@ -1,0 +1,157 @@
+name: release
+
+# Runs only when a version tag is pushed. It does nothing useful until the
+# maintainer has configured trusted publishing for the project on PyPI and
+# created the `pypi` environment in the repository settings (see CONTRIBUTING.md).
+# No secret is stored here: PyPI trusts this workflow through OpenID Connect.
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    # The distributions and the release notes are built and checked before
+    # anything is published, so a bad tag fails here and not on the index.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: The tag matches the version in pyproject.toml
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          import tomllib
+
+          with open("pyproject.toml", "rb") as handle:
+              version = tomllib.load(handle)["project"]["version"]
+          tag = os.environ["GITHUB_REF_NAME"]
+          assert tag == f"v{version}", f"tag {tag} does not match version {version}"
+          PY
+
+      - name: Extract the changelog section for this version
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          import re
+          from pathlib import Path
+
+          version = os.environ["GITHUB_REF_NAME"].removeprefix("v")
+          lines = Path("CHANGELOG.md").read_text(encoding="utf-8").splitlines()
+          heading = re.compile(rf"^## \[{re.escape(version)}\]")
+          start = next((i for i, line in enumerate(lines) if heading.match(line)), None)
+          if start is None:
+              raise SystemExit(f"CHANGELOG.md has no section for {version}")
+          end = next(
+              (i for i in range(start + 1, len(lines)) if lines[i].startswith("## [")),
+              len(lines),
+          )
+          notes = "\n".join(lines[start + 1 : end]).strip()
+          if not notes:
+              raise SystemExit(f"The CHANGELOG.md section for {version} is empty")
+          target = Path(os.environ["RUNNER_TEMP"]) / "notes" / "RELEASE_NOTES.md"
+          target.parent.mkdir()
+          target.write_text(notes + "\n", encoding="utf-8")
+          PY
+
+      - name: Build the distributions
+        run: |
+          set -euo pipefail
+          python -m pip install build
+          python -m build
+
+      - name: Check the distribution metadata
+        run: |
+          set -euo pipefail
+          python -m pip install twine
+          twine check dist/*
+
+      - name: Install the wheel into a fresh environment
+        run: |
+          set -euo pipefail
+          wheels=(dist/*.whl)
+          test "${#wheels[@]}" -eq 1
+          python -m venv "$RUNNER_TEMP/adopter"
+          "$RUNNER_TEMP/adopter/bin/python" -m pip install "$PWD/${wheels[0]}[api]"
+          mkdir "$RUNNER_TEMP/workdir"
+
+      - name: Run the newcomer path outside the checkout
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/workdir"
+          export PATH="$RUNNER_TEMP/adopter/bin:$PATH"
+          test "$(command -v oska)" = "$RUNNER_TEMP/adopter/bin/oska"
+          oska --help
+          oska new platform acme
+          cd acme
+          oska new pack billing --into packs
+          oska pack check packs/billing
+          oska conform --platform platform.yaml
+          greeting="$(oska run --platform platform.yaml --session s1 --text "hello")"
+          echo "$greeting"
+          test -n "$greeting"
+          grep -q "I can" <<< "$greeting"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-notes
+          path: ${{ runner.temp }}/notes/RELEASE_NOTES.md
+          if-no-files-found: error
+
+  publish:
+    # Held for approval by the `pypi` environment's required reviewers.
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - uses: pypa/gh-action-pypi-publish@release/v1
+
+  github-release:
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-notes
+          path: notes/
+
+      - name: Create the release from the tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --verify-tag \
+            --title "$GITHUB_REF_NAME" \
+            --notes-file notes/RELEASE_NOTES.md

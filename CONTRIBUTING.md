@@ -56,3 +56,29 @@ failed before the fix.
 
 Describe the change and how you checked it. The pull request template lists
 what a reviewer looks for.
+
+## Release
+
+A release is a version tag. Pushing a tag that matches `v*.*.*` runs
+`.github/workflows/release.yml`: it builds the distributions, checks them,
+runs the newcomer path against the built wheel, publishes to PyPI, and creates
+the GitHub release with the matching `CHANGELOG.md` section as its notes. The
+workflow stores no secret; PyPI trusts it through OpenID Connect.
+
+Once, before the first release:
+
+1. On PyPI, add a trusted publisher for the project `oska`: this repository,
+   workflow `release.yml`, environment `pypi`. For a project that does not exist
+   yet, add it as a pending publisher.
+2. In the repository settings, create the environment `pypi` and add yourself
+   as a required reviewer, so every publish waits for an approval.
+
+For each release:
+
+1. Fold `[Unreleased]` in `CHANGELOG.md` into a dated section, for example
+   `## [0.2.0] - 2026-11-03`, and leave an empty `[Unreleased]` above it.
+2. Set the same version in `pyproject.toml`. The workflow fails if the tag and
+   the version differ, or if the changelog has no section for the version.
+3. Commit, then tag and push the tag: `git tag v0.2.0 && git push origin v0.2.0`.
+4. Open the run in the Actions tab and approve the `pypi` environment when the
+   publish job asks for it.
